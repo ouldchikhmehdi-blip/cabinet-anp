@@ -89,6 +89,31 @@ export const SALARIES = [
   },
 ]
 
+export const DEPENSES = [
+  {
+    id: 'prevoyance',
+    nom: 'Prévoyance',
+    icon: '🛡',
+    couleur: '#534AB7',
+    montants: {
+      2022: [380,380,380,380,380,380,380,380,380,380,380,380],
+      2023: [410,410,410,410,410,410,410,410,410,410,410,410],
+      2024: [440,440,440,440,440,440,440,440,440,440,440,440],
+    },
+  },
+  {
+    id: 'restaurant',
+    nom: 'Restaurants',
+    icon: '🍽',
+    couleur: '#EF9F27',
+    montants: {
+      2022: [120,0,540,210,180,760,90,0,320,150,280,890],
+      2023: [180,60,620,250,240,880,140,0,380,210,340,1020],
+      2024: [240,90,710,300,290,960,180,110,450,260,410,1180],
+    },
+  },
+]
+
 export const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 export const MOIS_LONG = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 

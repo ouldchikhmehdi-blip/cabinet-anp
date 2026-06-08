@@ -5,6 +5,7 @@ import ChiffreAffaires from './pages/ChiffreAffaires'
 import SalariesCDI from './pages/SalariesCDI'
 import RemplacantsIADE from './pages/RemplacantsIADE'
 import RemplacantsMAR from './pages/RemplacantsMAR'
+import Depenses from './pages/Depenses'
 import Retrocessions from './pages/Retrocessions'
 import Tresorerie from './pages/Tresorerie'
 import ReglesVirements from './pages/ReglesVirements'
@@ -20,6 +21,7 @@ export default function App() {
       case 'salaries-cdi': return <SalariesCDI />
       case 'remplacants-iade': return <RemplacantsIADE />
       case 'remplacants-mar': return <RemplacantsMAR />
+      case 'depenses': return <Depenses />
       case 'retrocessions': return <Retrocessions />
       case 'tresorerie': return <Tresorerie />
       case 'regles-virements': return <ReglesVirements />

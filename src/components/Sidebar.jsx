@@ -6,7 +6,7 @@ const navItems = [
   { id: 'salaries-cdi', label: 'Salariés CDI', icon: '👤' },
   { id: 'remplacants-iade', label: 'Remplaçants IADE', icon: '↺', sub: true },
   { id: 'remplacants-mar', label: 'Remplaçants MAR', icon: '⚕', sub: true },
-  { id: 'depenses', label: 'Dépenses', icon: '🧾', disabled: true },
+  { id: 'depenses', label: 'Dépenses', icon: '🧾' },
   { id: 'retrocessions', label: 'Rétrocessions', icon: '⇄' },
   { id: 'tresorerie', label: 'Trésorerie', icon: '🏦' },
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
