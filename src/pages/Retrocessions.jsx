@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { RETRO_FIXE, RETRO_VARIABLE, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL , getMasqueMontants } from '../data/mockData'
+import BoutonExport from '../components/BoutonExport'
+import { RETRO_FIXE, RETRO_VARIABLE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL , getMasqueMontants } from '../data/mockData'
 
 export default function Retrocessions() {
   const [moisDe, setMoisDe] = useState(0)
@@ -31,6 +32,23 @@ export default function Retrocessions() {
   const vAll = RETRO_VARIABLE[year1] || RETRO_VARIABLE[2024]
   const cumulAujourdhui = sum(fAll.slice(0, MOIS_ACTUEL + 1)) + sum(vAll.slice(0, MOIS_ACTUEL + 1))
 
+  const exportsRetro = [{
+    label: 'Virements associés',
+    build: () => {
+      const lignes = labels.map((_, i) => ({
+        Mois: MOIS_LONG[de + i],
+        [`Fixe ${year1}`]: f1[i], [`Variable ${year1}`]: v1[i], [`Total ${year1}`]: f1[i] + v1[i],
+        [`Fixe ${year2}`]: f2[i], [`Variable ${year2}`]: v2[i], [`Total ${year2}`]: f2[i] + v2[i],
+      }))
+      lignes.push({
+        Mois: 'TOTAL',
+        [`Fixe ${year1}`]: tFixe1, [`Variable ${year1}`]: tVar1, [`Total ${year1}`]: tTot1,
+        [`Fixe ${year2}`]: sum(f2), [`Variable ${year2}`]: sum(v2), [`Total ${year2}`]: tTot2,
+      })
+      return { nomFichier: `virements-associes_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${year1}-vs-${year2}.xlsx`, lignes, feuille: 'Virements associés' }
+    }
+  }]
+
   const dataBar = labels.map((m, i) => ({
     mois: m, fixe: f1[i], variable: v1[i]
   }))
@@ -48,9 +66,12 @@ export default function Retrocessions() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Virements associés</h1>
-        <span style={{ fontSize: 11, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
-          8 associés · parts égales
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
+            8 associés · parts égales
+          </span>
+          <BoutonExport exports={exportsRetro} disabled={masque} />
+        </div>
       </div>
 
       <PeriodeFilter

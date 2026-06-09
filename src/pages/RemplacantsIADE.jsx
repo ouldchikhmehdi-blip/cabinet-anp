@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { REMPL_IADE, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
+import BoutonExport from '../components/BoutonExport'
+import { REMPL_IADE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
 
 export default function RemplacantsIADE() {
   const [moisDe, setMoisDe] = useState(0)
@@ -22,6 +23,18 @@ export default function RemplacantsIADE() {
 
   const t1 = sum(d1), t2 = sum(d2)
 
+  const exportsIADE = [{
+    label: 'Remplaçants IADE',
+    build: () => {
+      const lignes = []
+      for (let m = de; m <= a; m++) {
+        lignes.push({ Mois: MOIS_LONG[m], [`Coût ${year1}`]: d1[m - de], [`Coût ${year2}`]: d2[m - de] })
+      }
+      lignes.push({ Mois: 'TOTAL', [`Coût ${year1}`]: t1, [`Coût ${year2}`]: t2 })
+      return { nomFichier: `remplacants-iade_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${year1}-vs-${year2}.xlsx`, lignes, feuille: 'Remplaçants IADE' }
+    }
+  }]
+
   const dataBar = labels.map((m, i) => ({ mois: m, [year1]: d1[i], [year2]: d2[i] }))
   const dataCumul = labels.map((m, i) => ({
     mois: m,
@@ -36,9 +49,12 @@ export default function RemplacantsIADE() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Remplaçants IADE</h1>
-        <span style={{ fontSize: 11, background: '#FAEEDA', color: '#633806', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
-          Honoraires directs
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, background: '#FAEEDA', color: '#633806', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
+            Honoraires directs
+          </span>
+          <BoutonExport exports={exportsIADE} disabled={masque} />
+        </div>
       </div>
 
       <PeriodeFilter

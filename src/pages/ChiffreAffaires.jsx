@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CA, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
+import BoutonExport from '../components/BoutonExport'
+import { CA, MOIS_COURT, MOIS_LONG, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
 
 export default function ChiffreAffaires() {
   const [moisDe, setMoisDe] = useState(0)
@@ -21,6 +22,18 @@ export default function ChiffreAffaires() {
 
   const t1 = sum(d1), t2 = sum(d2)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
+
+  const exportsCA = [{
+    label: 'CA',
+    build: () => {
+      const lignes = []
+      for (let m = de; m <= a; m++) {
+        lignes.push({ Mois: MOIS_LONG[m], [`CA ${year1}`]: d1[m - de], [`CA ${year2}`]: d2[m - de] })
+      }
+      lignes.push({ Mois: 'TOTAL', [`CA ${year1}`]: t1, [`CA ${year2}`]: t2 })
+      return { nomFichier: `chiffre-affaires_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${year1}-vs-${year2}.xlsx`, lignes, feuille: 'CA' }
+    }
+  }]
 
   const dataMensuel = labels.map((m, i) => ({
     mois: m, [year1]: d1[i], [year2]: d2[i]
@@ -63,11 +76,14 @@ export default function ChiffreAffaires() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Chiffre d'affaires</h1>
-        <span style={{
-          fontSize: 11, background: 'var(--color-primary-light)',
-          color: 'var(--color-primary-dark)', padding: '3px 10px',
-          borderRadius: 20, fontWeight: 500
-        }}>{year1} vs {year2}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            fontSize: 11, background: 'var(--color-primary-light)',
+            color: 'var(--color-primary-dark)', padding: '3px 10px',
+            borderRadius: 20, fontWeight: 500
+          }}>{year1} vs {year2}</span>
+          <BoutonExport exports={exportsCA} disabled={masque} />
+        </div>
       </div>
 
       <PeriodeFilter

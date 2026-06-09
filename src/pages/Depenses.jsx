@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { DEPENSES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants } from '../data/mockData'
+import BoutonExport from '../components/BoutonExport'
+import { DEPENSES, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants } from '../data/mockData'
 
 export default function Depenses() {
   const [moisDe, setMoisDe] = useState(0)
@@ -41,6 +42,54 @@ export default function Depenses() {
     [year2]: sum(d2.slice(0, i + 1)),
   }))
 
+  const suffixe = `${MOIS_COURT[de]}-${MOIS_COURT[a]}_${year1}-vs-${year2}.xlsx`
+  const exports = [
+    {
+      label: 'Toutes les dépenses',
+      build: () => {
+        const lignes = labels.map((_, i) => {
+          const m = de + i
+          const row = { Mois: MOIS_LONG[m] }
+          DEPENSES.forEach(dep => {
+            row[`${dep.nom} ${year1}`] = (dep.montants[year1] || [])[m] ?? 0
+            row[`${dep.nom} ${year2}`] = (dep.montants[year2] || [])[m] ?? 0
+          })
+          row[`Total ${year1}`] = DEPENSES.reduce((s, dep) => s + ((dep.montants[year1] || [])[m] ?? 0), 0)
+          row[`Total ${year2}`] = DEPENSES.reduce((s, dep) => s + ((dep.montants[year2] || [])[m] ?? 0), 0)
+          return row
+        })
+        const totalRow = { Mois: 'TOTAL' }
+        DEPENSES.forEach(dep => {
+          totalRow[`${dep.nom} ${year1}`] = sum((dep.montants[year1] || []).slice(de, a + 1))
+          totalRow[`${dep.nom} ${year2}`] = sum((dep.montants[year2] || []).slice(de, a + 1))
+        })
+        totalRow[`Total ${year1}`] = DEPENSES.reduce((s, dep) => s + sum((dep.montants[year1] || []).slice(de, a + 1)), 0)
+        totalRow[`Total ${year2}`] = DEPENSES.reduce((s, dep) => s + sum((dep.montants[year2] || []).slice(de, a + 1)), 0)
+        lignes.push(totalRow)
+        return { nomFichier: `depenses_toutes_${suffixe}`, lignes, feuille: 'Dépenses' }
+      }
+    },
+    ...DEPENSES.map(dep => ({
+      label: dep.nom,
+      build: () => {
+        const lignes = labels.map((_, i) => {
+          const m = de + i
+          return {
+            Mois: MOIS_LONG[m],
+            [`${dep.nom} ${year1}`]: (dep.montants[year1] || [])[m] ?? 0,
+            [`${dep.nom} ${year2}`]: (dep.montants[year2] || [])[m] ?? 0,
+          }
+        })
+        lignes.push({
+          Mois: 'TOTAL',
+          [`${dep.nom} ${year1}`]: sum((dep.montants[year1] || []).slice(de, a + 1)),
+          [`${dep.nom} ${year2}`]: sum((dep.montants[year2] || []).slice(de, a + 1)),
+        })
+        return { nomFichier: `depenses_${dep.id}_${suffixe}`, lignes, feuille: dep.nom }
+      }
+    })),
+  ]
+
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
@@ -48,11 +97,14 @@ export default function Depenses() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Dépenses</h1>
-        <span style={{
-          fontSize: 11, background: 'var(--color-primary-light)',
-          color: 'var(--color-primary-dark)', padding: '3px 10px',
-          borderRadius: 20, fontWeight: 500
-        }}>SARM · 8 associés</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            fontSize: 11, background: 'var(--color-primary-light)',
+            color: 'var(--color-primary-dark)', padding: '3px 10px',
+            borderRadius: 20, fontWeight: 500
+          }}>SARM · 8 associés</span>
+          <BoutonExport exports={exports} disabled={masque} />
+        </div>
       </div>
 
       <PeriodeFilter
