@@ -213,7 +213,7 @@ export default function SalariesCDI() {
       )}
 
       <div style={{ ...cardStyle, background: '#EEEDFE', border: '0.5px solid #AFA9EC' }}>
-        <div style={{ fontSize: 12, color: 'var(--color-primary-dark)', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ fontSize: 12, color: '#3C3489', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>ℹ</span>
           <span>Les ajouts et retraits sont enregistrés sur cet appareil. Pour relier un virement à un salarié, ajoutez la règle correspondante dans « Virements / Règles virements ».</span>
         </div>

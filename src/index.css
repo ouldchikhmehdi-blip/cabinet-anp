@@ -26,6 +26,9 @@
 }
 
 :root[data-theme="sombre"] {
+  --color-primary: #A99FF0;
+  --color-primary-light: #2E2A52;
+  --color-primary-dark: #CFC9F5;
   --color-bg: #1A1A19;
   --color-surface: #242422;
   --color-border: rgba(255,255,255,0.12);
