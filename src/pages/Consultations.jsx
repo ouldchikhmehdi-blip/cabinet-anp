@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CONSULTATIONS, CONSULT_SPECIALITES, MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
+import { CONSULTATIONS, TELECONSULTATIONS, CONSULT_SPECIALITES, MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -33,6 +33,10 @@ export default function Consultations() {
   const all1 = CONSULTATIONS[year1] || CONSULTATIONS[2024]
   const cumulAujourdhui = sum(all1.slice(0, MOIS_ACTUEL + 1))
   const moyenne = d1.length ? t1 / d1.length : 0
+
+  const tc1 = sum((TELECONSULTATIONS[year1] || []).slice(de, a + 1))
+  const tc2 = sum((TELECONSULTATIONS[year2] || []).slice(de, a + 1))
+  const partTele = t1 ? Math.round(tc1 / t1 * 100) : 0
 
   const dataBar = labels.map((m, i) => ({ mois: m, [year1]: d1[i], [year2]: d2[i] }))
   const dataCumul = labels.map((m, i) => ({
@@ -107,9 +111,10 @@ export default function Consultations() {
         availableYears={ANNEES}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <KpiCard label={`Consultations · ${year1}`} value={fmtNb(t1)} sub={periode} subColor="neutral" />
         <KpiCard label={`Consultations · ${year2}`} value={fmtNb(t2)} sub={diffLabel(t1, t2, year2)} subColor={diffColor(t1, t2)} />
+        <KpiCard label={`Téléconsultations · ${year1}`} value={fmtNb(tc1)} sub={`${partTele} % · ${diffLabel(tc1, tc2, year2)}`} subColor="neutral" />
         <KpiCard label="Cumul à ce jour" value={fmtNb(cumulAujourdhui)} sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${year1}`} subColor="neutral" />
         <KpiCard label="Moyenne mensuelle" value={fmtNb(moyenne)} sub={`sur ${d1.length} mois`} subColor="neutral" />
       </div>

@@ -95,6 +95,13 @@ export const CONSULTATIONS = {
   2024: [355,330,385,375,410,345,285,255,390,420,432,375],
 }
 
+// Téléconsultations — suivi au niveau global uniquement
+export const TELECONSULTATIONS = {
+  2022: [28,25,30,29,33,27,20,18,31,34,35,30],
+  2023: [38,34,40,39,44,36,28,24,42,46,47,40],
+  2024: [52,48,56,54,60,50,40,35,57,62,64,55],
+}
+
 export const CONSULT_SPECIALITES = [
   {
     id: 'endoscopie',
