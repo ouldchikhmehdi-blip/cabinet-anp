@@ -46,7 +46,7 @@ export default function Retrocessions() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Rétrocessions associés</h1>
+        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Virements associés</h1>
         <span style={{ fontSize: 11, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
           8 associés · parts égales
         </span>
