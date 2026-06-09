@@ -1,5 +1,3 @@
-import { useState } from 'react'
-
 const navItems = [
   { id: 'vue-globale', label: 'Vue globale', icon: '⊞' },
   { id: 'chiffre-affaires', label: "Chiffre d'affaires", icon: '↗' },
@@ -13,7 +11,20 @@ const navItems = [
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
 ]
 
-export default function Sidebar({ currentPage, onNavigate }) {
+export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre }) {
+  const toggleBtn = (active) => ({
+    flex: 1,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '6px 8px',
+    fontSize: 11,
+    borderRadius: 'var(--radius-md)',
+    border: active ? '0.5px solid var(--color-primary)' : '0.5px solid var(--color-border)',
+    background: active ? 'var(--color-primary-light)' : 'var(--color-bg)',
+    color: active ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  })
+
   return (
     <aside style={{
       width: 'var(--sidebar-width)',
@@ -91,10 +102,29 @@ export default function Sidebar({ currentPage, onNavigate }) {
       <div style={{
         padding: '12px 16px',
         borderTop: '0.5px solid var(--color-border)',
-        fontSize: 11,
-        color: 'var(--color-text-tertiary)'
+        display: 'flex', flexDirection: 'column', gap: 8
       }}>
-        8 associés · parts égales
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={onToggleMasque}
+            title={masque ? 'Afficher les montants' : 'Masquer les montants'}
+            aria-pressed={masque}
+            style={toggleBtn(masque)}
+          >
+            <span>{masque ? '🙈' : '👁'}</span> Montants
+          </button>
+          <button
+            onClick={onToggleSombre}
+            title={sombre ? 'Passer en clair' : 'Passer en sombre'}
+            aria-pressed={sombre}
+            style={toggleBtn(sombre)}
+          >
+            <span>{sombre ? '☀️' : '🌙'}</span> Thème
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+          8 associés · parts égales
+        </div>
       </div>
     </aside>
   )

@@ -222,8 +222,10 @@ export const MOIS_LONG = ['Janvier','Février','Mars','Avril','Mai','Juin','Juil
 
 export const MOIS_ACTUEL = 8
 
-export const fmtEur = v => Math.round(v).toLocaleString('fr-FR') + ' €'
-export const fmtK = v => Math.round(v / 1000) + ' k€'
+let _masque = false
+export const setMasqueMontants = v => { _masque = v }
+export const fmtEur = v => _masque ? '••• €' : Math.round(v).toLocaleString('fr-FR') + ' €'
+export const fmtK = v => _masque ? '••• k€' : Math.round(v / 1000) + ' k€'
 export const sum = arr => arr.reduce((a, b) => a + b, 0)
 export const pct = (a, b) => b === 0 ? '0' : (((a - b) / b) * 100).toFixed(1)
 export const diffLabel = (a, b, ref) => {

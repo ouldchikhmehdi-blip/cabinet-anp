@@ -25,12 +25,22 @@
   --sidebar-width: 200px;
 }
 
+:root[data-theme="sombre"] {
+  --color-bg: #1A1A19;
+  --color-surface: #242422;
+  --color-border: rgba(255,255,255,0.12);
+  --color-text: #ECEAE3;
+  --color-text-secondary: #B4B2A9;
+  --color-text-tertiary: #8C8A82;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   font-size: 14px;
   line-height: 1.5;
+  transition: background 0.2s, color 0.2s;
 }
 
 button {

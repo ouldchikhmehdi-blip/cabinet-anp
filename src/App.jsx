@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { setMasqueMontants } from './data/mockData'
 import Sidebar from './components/Sidebar'
 import VueGlobale from './pages/VueGlobale'
 import ChiffreAffaires from './pages/ChiffreAffaires'
@@ -14,6 +15,26 @@ import './index.css'
 
 export default function App() {
   const [page, setPage] = useState('vue-globale')
+  const [masque, setMasque] = useState(() => localStorage.getItem('masque') === '1')
+  const [sombre, setSombre] = useState(() => localStorage.getItem('theme') === 'sombre')
+
+  // Synchronise le drapeau monétaire avant le rendu des pages (idempotent, pas de flicker)
+  setMasqueMontants(masque)
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', sombre ? 'sombre' : 'clair')
+    localStorage.setItem('theme', sombre ? 'sombre' : 'clair')
+  }, [sombre])
+
+  const toggleMasque = () => {
+    setMasque(prev => {
+      const next = !prev
+      localStorage.setItem('masque', next ? '1' : '0')
+      return next
+    })
+  }
+
+  const toggleSombre = () => setSombre(prev => !prev)
 
   const renderPage = () => {
     switch(page) {
@@ -33,7 +54,14 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar currentPage={page} onNavigate={setPage} />
+      <Sidebar
+        currentPage={page}
+        onNavigate={setPage}
+        masque={masque}
+        onToggleMasque={toggleMasque}
+        sombre={sombre}
+        onToggleSombre={toggleSombre}
+      />
       <main style={{
         flex: 1,
         overflow: 'auto',

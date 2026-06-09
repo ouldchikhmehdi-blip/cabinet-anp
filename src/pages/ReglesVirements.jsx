@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { fmtEur } from '../data/mockData'
 
 const TAXONOMIE = [
   { groupe: 'Associés',    sous: ['Rétrocession fixe', 'Rétrocession variable', 'Remboursement de frais associé'] },
@@ -41,8 +42,6 @@ const catColor = (cat) => {
   if (cat.includes('CDI') || cat.includes('CDD') || cat.includes('Salarié')) return { background: '#E1F5EE', color: '#085041' }
   return { background: '#F1EFE8', color: '#444441' }
 }
-
-const fmtEur = v => Math.round(v).toLocaleString('fr-FR') + ' €'
 
 export default function ReglesVirements() {
   const [queue, setQueue] = useState(initQueue)
