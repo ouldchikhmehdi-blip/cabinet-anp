@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { SOLDES, ENTREES, SORTIES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor } from '../data/mockData'
+import { SOLDES, ENTREES, SORTIES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
 
 export default function Tresorerie() {
   const [moisDe, setMoisDe] = useState(0)
@@ -13,6 +13,7 @@ export default function Tresorerie() {
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
+  const masque = getMasqueMontants()
 
   const sol1 = (SOLDES[year1] || SOLDES[2024]).slice(de, a + 1)
   const sol2 = (SOLDES[year2] || SOLDES[2023]).slice(de, a + 1)
@@ -109,7 +110,7 @@ export default function Tresorerie() {
           <LineChart data={dataSolde}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Line type="monotone" dataKey={year1} stroke="#534AB7" strokeWidth={2} dot={{ r: 3 }} />
             <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
@@ -135,7 +136,7 @@ export default function Tresorerie() {
           <BarChart data={dataFlux}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Bar dataKey="entrees" fill="#1D9E75" radius={[3,3,0,0]} name="Entrées" />
             <Bar dataKey="sorties" fill="#D85A30" radius={[3,3,0,0]} name="Sorties" />

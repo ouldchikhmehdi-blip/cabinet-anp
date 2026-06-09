@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { REMPL_MAR, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor } from '../data/mockData'
+import { REMPL_MAR, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
 
 export default function RemplacantsMAR() {
   const [moisDe, setMoisDe] = useState(0)
@@ -13,6 +13,7 @@ export default function RemplacantsMAR() {
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
+  const masque = getMasqueMontants()
 
   const d1 = (REMPL_MAR[year1] || REMPL_MAR[2024]).slice(de, a + 1)
   const d2 = (REMPL_MAR[year2] || REMPL_MAR[2023]).slice(de, a + 1)
@@ -82,7 +83,7 @@ export default function RemplacantsMAR() {
           <BarChart data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Bar dataKey={year1} fill="#D85A30" radius={[3,3,0,0]} />
             <Bar dataKey={year2} fill="#D3D1C7" radius={[3,3,0,0]} />
@@ -108,7 +109,7 @@ export default function RemplacantsMAR() {
           <LineChart data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Line type="monotone" dataKey={year1} stroke="#D85A30" strokeWidth={2} dot={{ r: 3 }} />
             <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />

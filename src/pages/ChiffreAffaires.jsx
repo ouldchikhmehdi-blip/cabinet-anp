@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CA, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor } from '../data/mockData'
+import { CA, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
 
 export default function ChiffreAffaires() {
   const [moisDe, setMoisDe] = useState(0)
@@ -13,6 +13,7 @@ export default function ChiffreAffaires() {
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
+  const masque = getMasqueMontants()
 
   const d1 = (CA[year1] || CA[2024]).slice(de, a + 1)
   const d2 = (CA[year2] || CA[2023]).slice(de, a + 1)
@@ -110,7 +111,7 @@ export default function ChiffreAffaires() {
           <LineChart data={dataMensuel}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Line type="monotone" dataKey={year1} stroke="#534AB7" strokeWidth={2} dot={{ r: 3 }} />
             <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
@@ -129,7 +130,7 @@ export default function ChiffreAffaires() {
           <LineChart data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Line type="monotone" dataKey={year1} stroke="#534AB7" strokeWidth={2} dot={{ r: 3 }} fill="rgba(83,74,183,0.08)" />
             <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />

@@ -224,6 +224,7 @@ export const MOIS_ACTUEL = 8
 
 let _masque = false
 export const setMasqueMontants = v => { _masque = v }
+export const getMasqueMontants = () => _masque
 export const fmtEur = v => _masque ? '••• €' : Math.round(v).toLocaleString('fr-FR') + ' €'
 export const fmtK = v => _masque ? '••• k€' : Math.round(v / 1000) + ' k€'
 export const sum = arr => arr.reduce((a, b) => a + b, 0)

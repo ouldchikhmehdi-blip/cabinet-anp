@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { DEPENSES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
+import { DEPENSES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants } from '../data/mockData'
 
 export default function Depenses() {
   const [moisDe, setMoisDe] = useState(0)
@@ -14,6 +14,7 @@ export default function Depenses() {
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
+  const masque = getMasqueMontants()
   const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
@@ -82,7 +83,7 @@ export default function Depenses() {
           <BarChart data={dataStack}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [fmtEur(v), DEPENSES.find(d => d.id === name)?.nom || name]} />
             {DEPENSES.map((dep, i) => (
               <Bar
@@ -181,7 +182,7 @@ export default function Depenses() {
           <BarChart data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Bar dataKey={year1} fill={selected.couleur} radius={[3,3,0,0]} />
             <Bar dataKey={year2} fill="#D3D1C7" radius={[3,3,0,0]} />
@@ -207,7 +208,7 @@ export default function Depenses() {
           <LineChart data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Line type="monotone" dataKey={year1} stroke={selected.couleur} strokeWidth={2} dot={{ r: 3 }} />
             <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
