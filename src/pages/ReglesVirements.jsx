@@ -1,25 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { fmtEur } from '../data/mockData'
-
-const TAXONOMIE = [
-  { groupe: 'Associés',    sous: ['Rétrocession fixe', 'Rétrocession variable', 'Remboursement de frais associé'] },
-  { groupe: 'Remplaçants', sous: ['Remplaçant IADE', 'Remplaçant MAR'] },
-  { groupe: 'Salariés',    sous: ['Salarié CDI', 'Salarié CDD'] },
-  { groupe: 'Dépenses',    sous: ["Dépense d'exploitation", 'Énergie', 'Loyer', 'Assurances', 'Matériel médical'] },
-  { groupe: 'Autre',       sous: ['Autre'] },
-]
-
-const TOUTES_SOUS = TAXONOMIE.flatMap(g => g.sous)
-const CATEGORIES_ASSOCIE = ['Rétrocession fixe', 'Rétrocession variable', 'Remboursement de frais associé']
-
-// Mappe une catégorie (libellé libre) vers son groupe
-const groupeDe = (cat) => {
-  if (cat.includes('IADE') || cat.includes('MAR') || cat.includes('Remplaçant')) return 'Remplaçants'
-  if (cat.includes('Associé') || cat.includes('Rétrocession')) return 'Associés'
-  if (cat.includes('CDI') || cat.includes('CDD') || cat.includes('Salarié')) return 'Salariés'
-  if (cat.includes('Dépense') || cat.includes('Énergie') || cat.includes('Loyer') || cat.includes('Assurance') || cat.includes('Matériel')) return 'Dépenses'
-  return 'Autre'
-}
+import { TAXONOMIE, TOUTES_SOUS, CATEGORIES_ASSOCIE, groupeDe, catColor } from '../data/categories'
+import { charger, sauver } from '../utils/stockage'
+import SelecteurCategorie from '../components/SelecteurCategorie'
 
 const initQueue = [
   { id: 1, nom: 'MARTIN SOPHIE', date: '15/03/2024', montant: 1347, detail: 'Compte associé connu · Somme non ronde — vérification requise', alert: true, categoriesDisponibles: CATEGORIES_ASSOCIE },
@@ -35,47 +18,52 @@ const initRegles = [
   { id: 5, nom: 'EDF ENTREPRISES', iban: 'FR76 3000 4000 0300 0000 7890', depuis: 'jan. 2022', categorie: 'Énergie' },
 ]
 
-const catColor = (cat) => {
-  if (cat.includes('IADE')) return { background: '#FAEEDA', color: '#633806' }
-  if (cat.includes('MAR')) return { background: '#FAECE7', color: '#712B13' }
-  if (cat.includes('Associé') || cat.includes('Rétrocession')) return { background: '#EEEDFE', color: '#3C3489' }
-  if (cat.includes('CDI') || cat.includes('CDD') || cat.includes('Salarié')) return { background: '#E1F5EE', color: '#085041' }
-  return { background: '#F1EFE8', color: '#444441' }
-}
-
 export default function ReglesVirements() {
-  const [queue, setQueue] = useState(initQueue)
-  const [regles, setRegles] = useState(initRegles)
+  const [queue, setQueue] = useState(() => charger('sarm:queue', initQueue))
+  const [regles, setRegles] = useState(() => charger('sarm:regles', initRegles))
   const [selections, setSelections] = useState({})
   const [openCats, setOpenCats] = useState({})
-  const [menuId, setMenuId] = useState(null)
-  const [menuGroupe, setMenuGroupe] = useState(null)
+  const [dragItem, setDragItem] = useState(null)
+  const [dropCat, setDropCat] = useState(null)
+  const [ajoutOuvert, setAjoutOuvert] = useState(false)
+  const [nom, setNom] = useState('')
+  const [iban, setIban] = useState('')
+  const [cat, setCat] = useState('')
 
-  const handleSelect = (id, val) => {
-    setSelections(prev => ({ ...prev, [id]: val }))
-    setMenuId(null)
-    setMenuGroupe(null)
-  }
+  useEffect(() => sauver('sarm:queue', queue), [queue])
+  useEffect(() => sauver('sarm:regles', regles), [regles])
 
-  const handleValider = (item) => {
-    if (!selections[item.id]) return
+  const handleSelect = (id, val) => setSelections(prev => ({ ...prev, [id]: val }))
+
+  // Classe un virement (file → dictionnaire) : utilisé par Valider ET par le glisser-déposer
+  const classer = (item, categorie) => {
+    if (!item || !categorie) return
     setQueue(prev => prev.filter(q => q.id !== item.id))
     setRegles(prev => [...prev, {
       id: Date.now(),
       nom: item.nom,
       iban: 'FR76 **** **** **** **** ****',
       depuis: 'maintenant',
-      categorie: selections[item.id]
+      categorie,
     }])
+    setDragItem(null)
+    setDropCat(null)
   }
 
   const handleSupprimer = (id) => setRegles(prev => prev.filter(r => r.id !== id))
 
-  const toggleCat = (cat) => setOpenCats(prev => ({ ...prev, [cat]: !prev[cat] }))
+  const toggleCat = (c) => setOpenCats(prev => ({ ...prev, [c]: !prev[c] }))
 
-  const openMenu = (id) => {
-    setMenuId(prev => prev === id ? null : id)
-    setMenuGroupe(null)
+  const ajouterRegle = () => {
+    if (!nom.trim() || !cat) return
+    setRegles(prev => [...prev, {
+      id: Date.now(),
+      nom: nom.trim().toUpperCase(),
+      iban: iban.trim() || 'FR76 **** **** **** **** ****',
+      depuis: 'maintenant',
+      categorie: cat,
+    }])
+    setNom(''); setIban(''); setCat(''); setAjoutOuvert(false)
   }
 
   // Dictionnaire groupé : groupe -> { sousCategorie -> règles[] }
@@ -97,15 +85,13 @@ export default function ReglesVirements() {
     overflow: 'hidden',
   }
 
-  const triggerStyle = (active) => ({
-    fontSize: 11, padding: '5px 10px',
+  const champStyle = {
+    fontSize: 12, padding: '6px 8px',
     borderRadius: 'var(--radius-md)',
     border: '0.5px solid var(--color-border)',
     background: 'var(--color-bg)',
-    color: active ? 'var(--color-text)' : 'var(--color-text-tertiary)',
-    cursor: 'pointer', minWidth: 200, textAlign: 'left',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-  })
+    color: 'var(--color-text)',
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1100 }}>
@@ -123,6 +109,9 @@ export default function ReglesVirements() {
             {queue.length} virement{queue.length > 1 ? 's' : ''} à classer
           </span>
         )}
+        <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>
+          Astuce : glissez un virement vers une catégorie ci-dessous ↓
+        </span>
       </div>
 
       {queue.length === 0 ? (
@@ -131,104 +120,51 @@ export default function ReglesVirements() {
         </div>
       ) : (
         <div style={cardStyle}>
-          {queue.map((item, idx) => {
-            const sel = selections[item.id]
-            const groupesDispo = TAXONOMIE
-              .map(g => ({ ...g, sous: g.sous.filter(s => item.categoriesDisponibles.includes(s)) }))
-              .filter(g => g.sous.length > 0)
-            return (
-              <div key={item.id} style={{
+          {queue.map((item, idx) => (
+            <div
+              key={item.id}
+              draggable
+              onDragStart={() => setDragItem(item)}
+              onDragEnd={() => { setDragItem(null); setDropCat(null) }}
+              style={{
                 padding: '12px 16px',
                 borderBottom: idx < queue.length - 1 ? '0.5px solid var(--color-border)' : 'none',
                 background: item.alert ? '#FAECE7' : 'var(--color-surface)',
-                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap'
-              }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: item.alert ? '#D85A30' : '#888780' }} />
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{item.nom}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 1 }}>{item.date} · {item.detail}</div>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: item.alert ? '#712B13' : 'var(--color-text)', marginRight: 8, whiteSpace: 'nowrap' }}>
-                  {fmtEur(item.montant)}
-                </div>
-
-                {/* Menu 2 niveaux */}
-                <div style={{ position: 'relative' }}>
-                  <button style={triggerStyle(!!sel)} onClick={() => openMenu(item.id)}>
-                    {sel
-                      ? <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, ...catColor(sel) }}>{sel}</span>
-                      : <span>— Choisir une catégorie —</span>}
-                    <span style={{ fontSize: 9 }}>▾</span>
-                  </button>
-
-                  {menuId === item.id && (
-                    <>
-                      <div
-                        onClick={() => { setMenuId(null); setMenuGroupe(null) }}
-                        style={{ position: 'fixed', inset: 0, zIndex: 10 }}
-                      />
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 11,
-                        minWidth: 220, maxHeight: 320, overflowY: 'auto',
-                        background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
-                        borderRadius: 'var(--radius-md)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', padding: 4,
-                      }}>
-                        {groupesDispo.map(g => {
-                          const ouvert = menuGroupe === g.groupe
-                          return (
-                            <div key={g.groupe}>
-                              <button
-                                onClick={() => setMenuGroupe(ouvert ? null : g.groupe)}
-                                style={{
-                                  width: '100%', textAlign: 'left', cursor: 'pointer',
-                                  fontSize: 12, fontWeight: 500, color: 'var(--color-text)',
-                                  padding: '7px 10px', border: 'none', borderRadius: 6,
-                                  background: ouvert ? 'var(--color-bg)' : 'transparent',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                }}
-                              >
-                                {g.groupe}
-                                <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)' }}>{ouvert ? '▾' : '▸'}</span>
-                              </button>
-                              {ouvert && g.sous.map(s => (
-                                <button
-                                  key={s}
-                                  onClick={() => handleSelect(item.id, s)}
-                                  style={{
-                                    width: '100%', textAlign: 'left', cursor: 'pointer',
-                                    fontSize: 12, color: 'var(--color-text-secondary)',
-                                    padding: '6px 10px 6px 24px', border: 'none', borderRadius: 6,
-                                    background: sel === s ? 'var(--color-primary-light)' : 'transparent',
-                                  }}
-                                >
-                                  {s}
-                                </button>
-                              ))}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => handleValider(item)}
-                  disabled={!sel}
-                  style={{
-                    fontSize: 11, padding: '5px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '0.5px solid #1D9E75',
-                    background: sel ? '#E1F5EE' : 'var(--color-bg)',
-                    color: sel ? '#085041' : 'var(--color-text-tertiary)',
-                    cursor: sel ? 'pointer' : 'default',
-                  }}
-                >
-                  ✓ Valider
-                </button>
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                cursor: 'grab',
+                opacity: dragItem && dragItem.id === item.id ? 0.5 : 1,
+              }}
+            >
+              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 14, cursor: 'grab' }} title="Glisser pour classer">⋮⋮</span>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: item.alert ? '#D85A30' : '#888780' }} />
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{item.nom}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 1 }}>{item.date} · {item.detail}</div>
               </div>
-            )
-          })}
+              <div style={{ fontSize: 14, fontWeight: 500, color: item.alert ? '#712B13' : 'var(--color-text)', marginRight: 8, whiteSpace: 'nowrap' }}>
+                {fmtEur(item.montant)}
+              </div>
+              <SelecteurCategorie
+                value={selections[item.id]}
+                onChange={v => handleSelect(item.id, v)}
+                categoriesDisponibles={item.categoriesDisponibles}
+              />
+              <button
+                onClick={() => classer(item, selections[item.id])}
+                disabled={!selections[item.id]}
+                style={{
+                  fontSize: 11, padding: '5px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '0.5px solid #1D9E75',
+                  background: selections[item.id] ? '#E1F5EE' : 'var(--color-bg)',
+                  color: selections[item.id] ? '#085041' : 'var(--color-text-tertiary)',
+                  cursor: selections[item.id] ? 'pointer' : 'default',
+                }}
+              >
+                ✓ Valider
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -239,7 +175,39 @@ export default function ReglesVirements() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', letterSpacing: '0.04em' }}>DICTIONNAIRE DE RÈGLES</span>
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>— {regles.length} règle{regles.length > 1 ? 's' : ''} active{regles.length > 1 ? 's' : ''}</span>
+        <button
+          onClick={() => setAjoutOuvert(o => !o)}
+          style={{
+            marginLeft: 'auto', fontSize: 11, padding: '4px 10px',
+            borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)',
+            background: ajoutOuvert ? 'var(--color-primary-light)' : 'var(--color-surface)',
+            color: ajoutOuvert ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)', cursor: 'pointer',
+          }}
+        >
+          + Ajouter une règle
+        </button>
       </div>
+
+      {ajoutOuvert && (
+        <div style={{ ...cardStyle, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <input style={{ ...champStyle, flex: 1, minWidth: 160 }} placeholder="Nom (ex. NOUVEL ASSOCIÉ)" value={nom} onChange={e => setNom(e.target.value)} />
+          <input style={{ ...champStyle, flex: 1, minWidth: 180 }} placeholder="IBAN (optionnel)" value={iban} onChange={e => setIban(e.target.value)} />
+          <SelecteurCategorie value={cat} onChange={setCat} />
+          <button
+            onClick={ajouterRegle}
+            disabled={!nom.trim() || !cat}
+            style={{
+              fontSize: 11, padding: '6px 14px', borderRadius: 'var(--radius-md)',
+              border: '0.5px solid #1D9E75',
+              background: (nom.trim() && cat) ? '#E1F5EE' : 'var(--color-bg)',
+              color: (nom.trim() && cat) ? '#085041' : 'var(--color-text-tertiary)',
+              cursor: (nom.trim() && cat) ? 'pointer' : 'default',
+            }}
+          >
+            Ajouter la règle
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {dictionnaire.map(({ groupe, total, sousCats }) => (
@@ -248,21 +216,30 @@ export default function ReglesVirements() {
               {groupe} · {total}
             </div>
             <div style={cardStyle}>
-              {Object.entries(sousCats).map(([cat, list], i, arr) => {
-                const ouvert = !!openCats[cat]
+              {Object.entries(sousCats).map(([c, list], i, arr) => {
+                const ouvert = !!openCats[c]
+                const estCible = dropCat === c
                 return (
-                  <div key={cat} style={{ borderBottom: i < arr.length - 1 ? '0.5px solid var(--color-border)' : 'none' }}>
+                  <div key={c} style={{ borderBottom: i < arr.length - 1 ? '0.5px solid var(--color-border)' : 'none' }}>
                     <button
-                      onClick={() => toggleCat(cat)}
+                      onClick={() => toggleCat(c)}
+                      onDragOver={(e) => { if (dragItem) { e.preventDefault(); setDropCat(c) } }}
+                      onDragLeave={() => setDropCat(prev => prev === c ? null : prev)}
+                      onDrop={(e) => { e.preventDefault(); classer(dragItem, c) }}
                       style={{
-                        width: '100%', textAlign: 'left', cursor: 'pointer',
-                        padding: '10px 16px', border: 'none', background: 'transparent',
+                        width: '100%', textAlign: 'left',
+                        cursor: 'pointer',
+                        padding: '10px 16px',
+                        border: estCible ? '1px dashed var(--color-primary)' : '1px solid transparent',
+                        background: estCible ? 'var(--color-primary-light)' : 'transparent',
                         display: 'flex', alignItems: 'center', gap: 10,
                       }}
                     >
                       <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', width: 8 }}>{ouvert ? '▾' : '▸'}</span>
-                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, ...catColor(cat) }}>{cat}</span>
-                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{list.length} règle{list.length > 1 ? 's' : ''}</span>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, ...catColor(c) }}>{c}</span>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                        {estCible ? 'Déposer ici…' : `${list.length} règle${list.length > 1 ? 's' : ''}`}
+                      </span>
                     </button>
                     {ouvert && list.map(r => (
                       <div key={r.id} style={{
