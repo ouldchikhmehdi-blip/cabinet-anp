@@ -181,11 +181,74 @@ export function appliquerImport(agrege) {
   return store
 }
 
+// ─── Gestion des praticiens ───────────────────────────────────────────────────
+
+/**
+ * Ajoute un praticien à une spécialité dans le store persisté.
+ *
+ * @param {string} specId — identifiant de la spécialité (ex. 'endoscopie')
+ * @param {string} nom    — nom affiché du praticien
+ * @returns {string|null} l'id généré, ou null si la spécialité n'a pas de praticiens
+ */
+export function ajouterPraticien(specId, nom) {
+  const store = getConsultData()
+  const spec = store.specialites.find(s => s.id === specId)
+  if (!spec || !spec.praticiens) return null
+
+  // Génération d'un id unique à partir du nom normalisé
+  const base = normaliserCle(nom).toLowerCase().replace(/\s+/g, '-') || 'praticien'
+  let id = base
+  let suffixe = 2
+  while (spec.praticiens.some(p => p.id === id)) {
+    id = `${base}-${suffixe}`
+    suffixe++
+  }
+
+  spec.praticiens.push({
+    id,
+    nom: nom.trim(),
+    valeurs: {
+      2022: Array(12).fill(0),
+      2023: Array(12).fill(0),
+      2024: Array(12).fill(0),
+    },
+    ajoutManuel: true,
+  })
+
+  sauverStore(store)
+  return id
+}
+
+/**
+ * Masque ou réaffiche un praticien (flag `masque`).
+ * Un praticien masqué disparaît du détail mais ses chiffres restent dans les totaux.
+ *
+ * @param {string}  specId  — identifiant de la spécialité
+ * @param {string}  pratId  — identifiant du praticien
+ * @param {boolean} masque  — true pour masquer, false pour réafficher
+ */
+export function definirMasquePraticien(specId, pratId, masque) {
+  const store = getConsultData()
+  const spec = store.specialites.find(s => s.id === specId)
+  if (!spec || !spec.praticiens) return
+  const prat = spec.praticiens.find(p => p.id === pratId)
+  if (!prat) return
+
+  if (masque) {
+    prat.masque = true
+  } else {
+    delete prat.masque
+  }
+
+  sauverStore(store)
+}
+
 // ─── Cibles ───────────────────────────────────────────────────────────────────
 
 /**
  * Renvoie la liste des cibles assignables lors du classement des clés inconnues.
  * Chaque cible = { id, label, type: 'praticien'|'specialite'|'global'|'ignorer', … }
+ * Les praticiens masqués sont exclus (opérateur parti → on ne leur attribue plus de consults).
  */
 export function cibles() {
   const store = getConsultData()
@@ -193,7 +256,7 @@ export function cibles() {
 
   for (const spec of store.specialites) {
     if (spec.praticiens) {
-      for (const prat of spec.praticiens) {
+      for (const prat of spec.praticiens.filter(p => !p.masque)) {
         liste.push({
           id: `prat:${spec.id}:${prat.id}`,
           label: `${prat.nom} (${spec.nom})`,

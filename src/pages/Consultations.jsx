@@ -3,6 +3,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import ImportConsultations from '../components/ImportConsultations'
+import GestionPraticiens from '../components/GestionPraticiens'
 import { getConsultData } from '../data/consultations'
 import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
 
@@ -58,10 +59,14 @@ export default function Consultations() {
   const specSerie2 = specMensuel(spec, year2).slice(de, a + 1)
   const specT1 = sum(specSerie1), specT2 = sum(specSerie2)
 
-  // Praticien sélectionné (ou « Tous » si pratId ne correspond pas / pas de praticiens)
+  // Praticiens visibles (non masqués) pour le détail — les masqués restent dans les totaux via specMensuel
   const hasPrat = !!spec.praticiens
-  const prat = hasPrat ? spec.praticiens.find(p => p.id === pratId) : null
-  const pratIndex = prat ? spec.praticiens.findIndex(p => p.id === pratId) : -1
+  const pratsVisibles = hasPrat ? spec.praticiens.filter(p => !p.masque) : []
+
+  // Garde-fou : si le praticien sélectionné est masqué, retomber sur "tous"
+  const pratEffectif = hasPrat && pratId !== 'all' && pratsVisibles.some(p => p.id === pratId) ? pratId : 'all'
+  const prat = hasPrat ? pratsVisibles.find(p => p.id === pratEffectif) : null
+  const pratIndex = prat ? pratsVisibles.findIndex(p => p.id === prat.id) : -1
   const isAllPrat = hasPrat && !prat
 
   // Série « année vs année » active (spécialité entière sans praticiens, OU un praticien isolé)
@@ -78,14 +83,15 @@ export default function Consultations() {
   }))
 
   // Données « Tous les praticiens » : empilé (mensuel y1) + multi-lignes (cumul y1)
+  // On n'itère que sur les praticiens visibles (non masqués) pour les graphiques de détail
   const pratBar = isAllPrat ? labels.map((m, i) => {
     const row = { mois: m }
-    spec.praticiens.forEach(p => { row[p.id] = (p.valeurs[year1] || [])[de + i] ?? 0 })
+    pratsVisibles.forEach(p => { row[p.id] = (p.valeurs[year1] || [])[de + i] ?? 0 })
     return row
   }) : []
   const pratCumul = isAllPrat ? labels.map((m, i) => {
     const row = { mois: m }
-    spec.praticiens.forEach(p => { row[p.id] = sum((p.valeurs[year1] || []).slice(de, de + i + 1)) })
+    pratsVisibles.forEach(p => { row[p.id] = sum((p.valeurs[year1] || []).slice(de, de + i + 1)) })
     return row
   }) : []
 
@@ -208,29 +214,32 @@ export default function Consultations() {
               </div>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text)' }}>{fmtNb(total)}</div>
               <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                consultations {year1} · {periode}{sp.praticiens ? ` · ${sp.praticiens.length} praticiens` : ''}
+                consultations {year1} · {periode}{sp.praticiens ? ` · ${sp.praticiens.filter(p => !p.masque).length} praticien${sp.praticiens.filter(p => !p.masque).length > 1 ? 's' : ''}` : ''}
               </div>
             </button>
           )
         })}
       </div>
 
-      {/* Pills praticiens (uniquement si la spécialité en a) */}
+      {/* Pills praticiens + gestion (uniquement si la spécialité en a) */}
       {hasPrat && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 2 }}>Praticien</span>
-          <button onClick={() => setPratId('all')} style={pratId === 'all' ? pillActive : pillBase}>Tous</button>
-          {spec.praticiens.map((p, i) => (
-            <button
-              key={p.id}
-              onClick={() => setPratId(p.id)}
-              style={pratId === p.id ? pillActive : pillBase}
-            >
-              <span style={{ display: 'inline-block', width: 8, height: 8, background: PALETTE[i % PALETTE.length], borderRadius: 2, marginRight: 6, verticalAlign: 'middle' }} />
-              {p.nom.replace(/^Dr\s+/, '')}
-            </button>
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 2 }}>Praticien</span>
+            <button onClick={() => setPratId('all')} style={pratId === 'all' ? pillActive : pillBase}>Tous</button>
+            {pratsVisibles.map((p, i) => (
+              <button
+                key={p.id}
+                onClick={() => setPratId(p.id)}
+                style={pratId === p.id ? pillActive : pillBase}
+              >
+                <span style={{ display: 'inline-block', width: 8, height: 8, background: PALETTE[i % PALETTE.length], borderRadius: 2, marginRight: 6, verticalAlign: 'middle' }} />
+                {p.nom.replace(/^Dr\s+/, '')}
+              </button>
+            ))}
+          </div>
+          <GestionPraticiens spec={spec} onChange={rafraichir} />
+        </>
       )}
 
       {/* Détail */}
@@ -258,7 +267,7 @@ export default function Consultations() {
                 {spec.nom} — répartition par praticien · {year1} · {periode}
               </span>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {spec.praticiens.map((p, i) => (
+                {pratsVisibles.map((p, i) => (
                   <span key={p.id} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
                     <span style={{ display: 'inline-block', width: 10, height: 10, background: PALETTE[i % PALETTE.length], borderRadius: 2 }} />
                     {p.nom.replace(/^Dr\s+/, '')}
@@ -271,14 +280,14 @@ export default function Consultations() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${fmtNb(v)} consult.`, spec.praticiens.find(p => p.id === name)?.nom || name]} />
-                {spec.praticiens.map((p, i) => (
+                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${fmtNb(v)} consult.`, pratsVisibles.find(p => p.id === name)?.nom || name]} />
+                {pratsVisibles.map((p, i) => (
                   <Bar
                     key={p.id}
                     dataKey={p.id}
                     stackId="prat"
                     fill={PALETTE[i % PALETTE.length]}
-                    radius={i === spec.praticiens.length - 1 ? [3,3,0,0] : [0,0,0,0]}
+                    radius={i === pratsVisibles.length - 1 ? [3,3,0,0] : [0,0,0,0]}
                   />
                 ))}
               </BarChart>
@@ -296,8 +305,8 @@ export default function Consultations() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${fmtNb(v)} consult.`, spec.praticiens.find(p => p.id === name)?.nom || name]} />
-                {spec.praticiens.map((p, i) => (
+                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${fmtNb(v)} consult.`, pratsVisibles.find(p => p.id === name)?.nom || name]} />
+                {pratsVisibles.map((p, i) => (
                   <Line key={p.id} type="monotone" dataKey={p.id} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={{ r: 2 }} />
                 ))}
               </LineChart>
