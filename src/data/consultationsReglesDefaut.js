@@ -184,13 +184,50 @@ const REGLES_GASTRO = [
   { cle: 'VERCAMBRE-AUFORT',        action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
 ]
 
-// ─── Pneumologie ──────────────────────────────────────────────────────────────
-// TODO — À compléter avec les noms des pneumologues fournis par l'utilisateur.
-// Tous convergent vers la spécialité « pneumologie » (total, sans détail praticien) :
-//   { cle: 'Dr Pneumo',  action: 'specialite', specId: 'pneumologie' },
+// ─── Pneumologie ─────────────────────────────────────────────────────────────
+// 6 pneumologues de la Clinique du Millénaire.
+// Tous convergent vers la spécialité « pneumologie » (total uniquement,
+// pas de détail par praticien).
+
+const PNEUMO = 'pneumologie'
 
 const REGLES_PNEUMO = [
-  // ← À REMPLIR
+  // Bughin François
+  { cle: 'BUGHIN François',         action: 'specialite', specId: PNEUMO },
+  { cle: 'BUGHIN Francois',         action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr BUGHIN',               action: 'specialite', specId: PNEUMO },
+  { cle: 'BUGHIN',                  action: 'specialite', specId: PNEUMO },
+
+  // Demazeau Clément
+  { cle: 'DEMAZEAU Clément',        action: 'specialite', specId: PNEUMO },
+  { cle: 'DEMAZEAU Clement',        action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr DEMAZEAU',             action: 'specialite', specId: PNEUMO },
+  { cle: 'DEMAZEAU',                action: 'specialite', specId: PNEUMO },
+
+  // Froment Catherine
+  { cle: 'FROMENT Catherine',       action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr FROMENT',              action: 'specialite', specId: PNEUMO },
+  { cle: 'FROMENT',                 action: 'specialite', specId: PNEUMO },
+
+  // Gautier Dechaud Véronique (nom composé)
+  { cle: 'GAUTIER DECHAUD Véronique', action: 'specialite', specId: PNEUMO },
+  { cle: 'GAUTIER DECHAUD Veronique', action: 'specialite', specId: PNEUMO },
+  { cle: 'GAUTIER-DECHAUD Véronique', action: 'specialite', specId: PNEUMO },
+  { cle: 'GAUTIER-DECHAUD Veronique', action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr GAUTIER DECHAUD',      action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr GAUTIER-DECHAUD',      action: 'specialite', specId: PNEUMO },
+  { cle: 'GAUTIER DECHAUD',         action: 'specialite', specId: PNEUMO },
+  { cle: 'GAUTIER-DECHAUD',         action: 'specialite', specId: PNEUMO },
+
+  // Maestre Corinne
+  { cle: 'MAESTRE Corinne',         action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr MAESTRE',              action: 'specialite', specId: PNEUMO },
+  { cle: 'MAESTRE',                 action: 'specialite', specId: PNEUMO },
+
+  // Marcano Xavier
+  { cle: 'MARCANO Xavier',          action: 'specialite', specId: PNEUMO },
+  { cle: 'Dr MARCANO',              action: 'specialite', specId: PNEUMO },
+  { cle: 'MARCANO',                 action: 'specialite', specId: PNEUMO },
 ]
 
 // ─── Règles globales (motifs à ignorer, etc.) ─────────────────────────────────
