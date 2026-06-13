@@ -21,6 +21,29 @@
  */
 import Papa from 'papaparse'
 
+// ─── Normalisation des clés ───────────────────────────────────────────────────
+
+/**
+ * Normalise une chaîne pour la comparer indépendamment de l'orthographe :
+ *   MAJUSCULES · sans accents · sans préfixes Dr/Pr/M./Mme · espaces compressés
+ *
+ * Exemples :
+ *   "Dr Nogues J."  → "NOGUES J"
+ *   "MEYER-BISCH"   → "MEYER-BISCH"
+ *   "dr meyer bisch"→ "MEYER BISCH"
+ */
+export function normaliserCle(str) {
+  if (!str) return ''
+  return str
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // supprime les diacritiques
+    .toUpperCase()
+    .replace(/^(DR|PR|DOCTEUR|PROFESSEUR|M\.|MME|MR)\s+/i, '') // retire les préfixes
+    .replace(/[.,;:!?'"]/g, ' ') // ponctuation → espace
+    .replace(/\s+/g, ' ')        // espaces multiples
+    .trim()
+}
+
 // ─── Détection de colonnes ────────────────────────────────────────────────────
 
 /**
@@ -129,9 +152,9 @@ export function analyserCSV(texteCSV, mappage, regles) {
 
   const lignes = parsed.data
 
-  // Index des règles par clé (O(1))
+  // Index des règles par clé normalisée (O(1), tolérant à l'orthographe)
   const regleParCle = {}
-  for (const r of (regles || [])) regleParCle[r.cle] = r
+  for (const r of (regles || [])) regleParCle[normaliserCle(r.cle)] = r
 
   // Accumulateurs
   const agrege = {
@@ -164,12 +187,13 @@ export function analyserCSV(texteCSV, mappage, regles) {
     const valPrat = mappage.praticien ? (ligne[mappage.praticien] || '').trim() : ''
     const valMotif = mappage.motif ? (ligne[mappage.motif] || '').trim() : ''
     const cle = valPrat || valMotif || '(inconnu)'
+    const cleNorm = normaliserCle(cle)
 
     // 4. Téléconsultation ?
     const isTele = estTeleconsult(ligne, mappage.typeTeleconsult)
 
-    // 5. Appliquer la règle mémorisée (si elle existe)
-    const regle = regleParCle[cle]
+    // 5. Appliquer la règle mémorisée (si elle existe) — comparaison par clé normalisée
+    const regle = regleParCle[cleNorm]
 
     if (regle) {
       if (regle.action === 'ignorer') continue
@@ -188,16 +212,16 @@ export function analyserCSV(texteCSV, mappage, regles) {
       }
       // action === 'global' : déjà compté ci-dessus
     } else {
-      // Clé inconnue — on note mais on ne compte pas encore
-      if (!inconnues[cle]) inconnues[cle] = { count: 0, exemples: [] }
-      inconnues[cle].count += 1
-      if (inconnues[cle].exemples.length < 3) inconnues[cle].exemples.push({ annee, mois, isTele })
+      // Clé inconnue — on regroupe par cleNorm, on conserve le libellé original d'origine
+      if (!inconnues[cleNorm]) inconnues[cleNorm] = { cle, count: 0, exemples: [] }
+      inconnues[cleNorm].count += 1
+      if (inconnues[cleNorm].exemples.length < 3) inconnues[cleNorm].exemples.push({ annee, mois, isTele })
     }
   }
 
-  // Construction de la file d'attente
-  const fileAttente = Object.entries(inconnues).map(([cle, info]) => ({
-    cle,
+  // Construction de la file d'attente (on expose le libellé original, pas la cleNorm)
+  const fileAttente = Object.entries(inconnues).map(([, info]) => ({
+    cle: info.cle,
     count: info.count,
     exemples: info.exemples,
     actionSelectionnee: null,

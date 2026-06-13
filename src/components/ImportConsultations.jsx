@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
 import { analyserCSV, detecterMappage, reanalyserAvecNouvellesRegles } from '../utils/importConsultations'
-import { appliquerImport, cibles } from '../data/consultations'
+import { appliquerImport, cibles, reglesInitiales } from '../data/consultations'
 import { charger, sauver } from '../utils/stockage'
 
-const CLE_REGLES  = 'sarm:consult-regles'
+const CLE_REGLES   = 'sarm:consult-regles'
 const CLE_COLONNES = 'sarm:consult-colonnes'
 
 const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
@@ -102,11 +102,17 @@ export default function ImportConsultations({ onImportValide }) {
   const [mappage, setMappage] = useState(() => charger(CLE_COLONNES, {}))
   const [resultats, setResultats] = useState(null)   // { agrege, fileAttente, apercu }
   const [selections, setSelections] = useState({})   // { cle: cibleId }
-  const [regles, setRegles] = useState(() => charger(CLE_REGLES, []))
+  // reglesInitiales() = REGLES_DEFAUT + règles utilisateur persistées (utilisateur prioritaire)
+  const [regles, setRegles] = useState(() => reglesInitiales())
   const [drag, setDrag] = useState(false)
   const fileRef = useRef()
 
-  const sauverRegles = (r) => { setRegles(r); sauver(CLE_REGLES, r) }
+  // sauverRegles : ne persiste QUE les règles utilisateur (pas les défauts),
+  // puis recharge l'ensemble (défauts + utilisateur) pour l'état local
+  const sauverRegles = (reglesUtilisateur) => {
+    sauver(CLE_REGLES, reglesUtilisateur)
+    setRegles(reglesInitiales()) // recharge la fusion complète
+  }
 
   // ── Lecture du fichier ──
   const lireCSV = (file) => {
@@ -148,8 +154,10 @@ export default function ImportConsultations({ onImportValide }) {
       const parts = cibleId.split(':')
       return { cle, action: 'praticien', specId: parts[1], pratId: parts[2] }
     })
-    const toutesRegles = [...regles, ...nouvellesRegles]
-    sauverRegles(toutesRegles)
+    // On ne persiste que les nouvelles règles utilisateur (sauverRegles recharge la fusion)
+    const reglesUtilisateur = [...charger(CLE_REGLES, []), ...nouvellesRegles]
+    sauverRegles(reglesUtilisateur)
+    const toutesRegles = reglesInitiales()
     const r = reanalyserAvecNouvellesRegles(texteCSV, mappage, toutesRegles, [])
     setResultats(r)
     setEtape('apercu')
@@ -165,7 +173,11 @@ export default function ImportConsultations({ onImportValide }) {
     onImportValide?.()
   }
 
-  const supprimerRegle = (cle) => sauverRegles(regles.filter(r => r.cle !== cle))
+  // Suppression : ne retire que des règles utilisateur persistées (jamais les défauts)
+  const supprimerRegle = (cle) => {
+    const reglesUtilisateur = charger(CLE_REGLES, []).filter(r => r.cle !== cle)
+    sauverRegles(reglesUtilisateur)
+  }
 
   // ── Styles partagés ──
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }
@@ -210,22 +222,26 @@ export default function ImportConsultations({ onImportValide }) {
       {reglesPanneauOuvert && (
         <div style={{ ...cardStyle, marginTop: 8 }}>
           <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--color-border)', fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', letterSpacing: '0.04em' }}>
-            RÈGLES DE CORRECTION MÉMORISÉES
+            RÈGLES DE CORRECTION ({regles.length} — dont {charger(CLE_REGLES, []).length} personnalisées)
           </div>
-          {regles.map((r, i) => (
-            <div key={r.cle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: i < regles.length - 1 ? '0.5px solid var(--color-border)' : 'none', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>{r.cle}</div>
-              <div style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: r.action === 'ignorer' ? '#F1EFE8' : 'var(--color-primary-light)', color: r.action === 'ignorer' ? 'var(--color-text-tertiary)' : 'var(--color-primary-dark)' }}>
-                {r.action === 'ignorer' ? 'Ignoré'
-                  : r.action === 'global' ? 'Global / autre'
-                  : r.action === 'praticien' ? `Praticien · ${r.pratId}`
-                  : `Spécialité · ${r.specId}`}
+          {regles.map((r, i) => {
+            const estUtilisateur = charger(CLE_REGLES, []).some(ru => ru.cle === r.cle)
+            return (
+              <div key={r.cle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: i < regles.length - 1 ? '0.5px solid var(--color-border)' : 'none', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>{r.cle}</div>
+                <div style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: r.action === 'ignorer' ? '#F1EFE8' : 'var(--color-primary-light)', color: r.action === 'ignorer' ? 'var(--color-text-tertiary)' : 'var(--color-primary-dark)' }}>
+                  {r.action === 'ignorer' ? 'Ignoré'
+                    : r.action === 'global' ? 'Global / autre'
+                    : r.action === 'praticien' ? `${r.pratId}`
+                    : `${r.specId}`}
+                </div>
+                {estUtilisateur
+                  ? <button onClick={() => supprimerRegle(r.cle)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-md)', border: '0.5px solid #F09595', background: 'transparent', color: '#A32D2D', cursor: 'pointer' }}>Supprimer</button>
+                  : <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', padding: '3px 6px' }}>par défaut</span>
+                }
               </div>
-              <button onClick={() => supprimerRegle(r.cle)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-md)', border: '0.5px solid #F09595', background: 'transparent', color: '#A32D2D', cursor: 'pointer' }}>
-                Supprimer
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

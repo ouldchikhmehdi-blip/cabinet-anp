@@ -107,11 +107,30 @@ export const CONSULT_SPECIALITES = [
     id: 'endoscopie',
     nom: 'Gastro / Coloscopies',
     couleur: '#534AB7',
-    valeurs: {
-      2022: [110,102,120,118,130,108,80,72,122,134,138,115],
-      2023: [120,110,130,128,140,118,88,78,132,145,148,125],
-      2024: [130,120,140,138,150,128,95,85,142,155,158,135],
-    },
+    // TODO — À remplacer par les praticiens réels fournis par l'utilisateur.
+    // Le total de la spécialité (ancienne clé "valeurs") est ventilé ici en 2 praticiens
+    // fictifs pour que les graphes restent cohérents avant le 1er import.
+    // Quand les noms seront connus, ajouter les praticiens réels et ajuster les valeurs.
+    praticiens: [
+      {
+        id: 'gastro1',
+        nom: 'Dr Gastro A',  // ← À REMPLACER
+        valeurs: {
+          2022: [55,51,60,59,65,54,40,36,61,67,69,58],
+          2023: [60,55,65,64,70,59,44,39,66,73,74,63],
+          2024: [65,60,70,69,75,64,48,43,71,78,79,68],
+        },
+      },
+      {
+        id: 'gastro2',
+        nom: 'Dr Gastro B',  // ← À REMPLACER
+        valeurs: {
+          2022: [55,51,60,59,65,54,40,36,61,67,69,57],
+          2023: [60,55,65,64,70,59,44,39,66,72,74,62],
+          2024: [65,60,70,69,75,64,47,42,71,77,79,67],
+        },
+      },
+    ],
   },
   {
     id: 'neurochirurgie',
@@ -189,6 +208,18 @@ export const CONSULT_SPECIALITES = [
         },
       },
     ],
+  },
+  {
+    id: 'pneumologie',
+    nom: 'Pneumologie',
+    couleur: '#1D9E75',
+    // Spécialité suivie au total uniquement (pas de détail par praticien).
+    // Valeurs initiales fictives — seront écrasées mois par mois à chaque import CSV.
+    valeurs: {
+      2022: [28,26,30,29,32,27,20,18,30,33,34,29],
+      2023: [32,30,34,33,37,31,24,21,34,38,39,33],
+      2024: [36,33,38,37,41,35,27,24,38,42,44,37],
+    },
   },
 ]
 

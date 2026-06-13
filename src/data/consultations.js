@@ -10,14 +10,18 @@ import {
   TELECONSULTATIONS,
   CONSULT_SPECIALITES,
 } from './mockData'
+import { REGLES_DEFAUT } from './consultationsReglesDefaut'
+import { normaliserCle } from '../utils/importConsultations'
 import { charger, sauver } from '../utils/stockage'
 
-const CLE = 'sarm:consult'
+const CLE       = 'sarm:consult'
+const CLE_REGLES = 'sarm:consult-regles'
 
 // Clone profond simple (pas de Date ni de RegExp dans ces structures)
 const clone = v => JSON.parse(JSON.stringify(v))
 
-// Initialisation du store : on utilise les données mock si rien n'est persisté
+// ─── Initialisation & réconciliation du store ────────────────────────────────
+
 function initStore() {
   return {
     global: clone(CONSULTATIONS),
@@ -26,9 +30,54 @@ function initStore() {
   }
 }
 
-/** Lecture du store (initialise à partir du mock si absent). */
+/**
+ * Réconcilie le store persisté avec le mock baseline courant.
+ *
+ * Garantit que les spécialités / praticiens ajoutés après la première
+ * initialisation (ex. Pneumologie, gastro-entérologues) apparaissent dans le
+ * store sans écraser les valeurs déjà importées.
+ *
+ * Migration endoscopie : si la spécialité est encore au format { valeurs }
+ * (ancienne structure), elle est convertie vers { praticiens } pour rester
+ * cohérente avec le mock actuel.
+ */
+function reconcilier(store) {
+  for (const specMock of CONSULT_SPECIALITES) {
+    let specStore = store.specialites.find(s => s.id === specMock.id)
+
+    if (!specStore) {
+      // Nouvelle spécialité absente du store → on l'ajoute avec les valeurs du mock
+      store.specialites.push(clone(specMock))
+      continue
+    }
+
+    // Migration endoscopie : ancienne structure valeurs → praticiens
+    if (specMock.praticiens && !specStore.praticiens) {
+      specStore.praticiens = clone(specMock.praticiens)
+      delete specStore.valeurs
+    }
+
+    // Praticiens manquants dans le store (ajouts ultérieurs)
+    if (specMock.praticiens && specStore.praticiens) {
+      for (const pratMock of specMock.praticiens) {
+        const existe = specStore.praticiens.some(p => p.id === pratMock.id)
+        if (!existe) specStore.praticiens.push(clone(pratMock))
+      }
+    }
+
+    // Spécialité sans praticiens : s'assurer que valeurs existe
+    if (!specMock.praticiens && !specStore.valeurs) {
+      specStore.valeurs = clone(specMock.valeurs)
+    }
+  }
+
+  return store
+}
+
+/** Lecture du store (initialise à partir du mock si absent, puis réconcilie). */
 export function getConsultData() {
-  return charger(CLE, initStore())
+  const store = charger(CLE, initStore())
+  return reconcilier(store)
 }
 
 /** Persistance complète du store. */
@@ -36,22 +85,48 @@ function sauverStore(store) {
   sauver(CLE, store)
 }
 
-/**
- * Réinitialise le store aux données du mock (utile pour les tests ou un reset).
- */
+/** Réinitialise le store aux données du mock (utile pour un reset total). */
 export function resetConsultData() {
   sauverStore(initStore())
 }
 
+// ─── Règles d'import ─────────────────────────────────────────────────────────
+
+/**
+ * Renvoie la liste complète des règles actives :
+ *   REGLES_DEFAUT fusionnées avec les règles persistées par l'utilisateur.
+ *   Les règles utilisateur ont la priorité (même cleNorm → on garde la sienne).
+ *
+ * C'est cette liste qui doit être passée à analyserCSV().
+ */
+export function reglesInitiales() {
+  const reglesUtilisateur = charger(CLE_REGLES, [])
+
+  // Index des règles utilisateur par clé normalisée (priorité sur les défauts)
+  const indexUtilisateur = {}
+  for (const r of reglesUtilisateur) {
+    indexUtilisateur[normaliserCle(r.cle)] = true
+  }
+
+  // Filtrer les règles par défaut masquées par l'utilisateur
+  const defautsActifs = REGLES_DEFAUT.filter(
+    r => !indexUtilisateur[normaliserCle(r.cle)]
+  )
+
+  return [...defautsActifs, ...reglesUtilisateur]
+}
+
+// ─── Import ───────────────────────────────────────────────────────────────────
+
 /**
  * Fusionne les données issues d'un import CSV dans le store, mois par mois.
  *
- * @param {Object} agrege — sortie de importConsultations.agréger()
+ * @param {Object} agrege — sortie de importConsultations.analyserCSV()
  *   {
- *     global:          { [annee]: { [mois]: number } },   // total RDV honorés (0-indexé)
+ *     global:            { [annee]: { [mois]: number } },
  *     teleconsultations: { [annee]: { [mois]: number } },
- *     praticiens:      { [specId]: { [pratId]: { [annee]: { [mois]: number } } } },
- *     specialites:     { [specId]: { [annee]: { [mois]: number } } },  // pour spéc. sans praticiens
+ *     praticiens:        { [specId]: { [pratId]: { [annee]: { [mois]: number } } } },
+ *     specialites:       { [specId]: { [annee]: { [mois]: number } } },
  *   }
  */
 export function appliquerImport(agrege) {
@@ -89,7 +164,7 @@ export function appliquerImport(agrege) {
     }
   }
 
-  // Fusion spécialités sans praticiens
+  // Fusion spécialités sans praticiens (ex. Pneumologie)
   for (const [specId, anneeMap] of Object.entries(agrege.specialites || {})) {
     const spec = store.specialites.find(s => s.id === specId)
     if (!spec || spec.praticiens) continue
@@ -106,9 +181,11 @@ export function appliquerImport(agrege) {
   return store
 }
 
+// ─── Cibles ───────────────────────────────────────────────────────────────────
+
 /**
  * Renvoie la liste des cibles assignables lors du classement des clés inconnues.
- * Chaque cible = { id, label, type: 'praticien'|'specialite'|'global'|'ignorer', specId?, pratId? }
+ * Chaque cible = { id, label, type: 'praticien'|'specialite'|'global'|'ignorer', … }
  */
 export function cibles() {
   const store = getConsultData()
