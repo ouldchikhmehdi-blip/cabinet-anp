@@ -79,13 +79,109 @@ const REGLES_VISC = [
 ]
 
 // ─── Gastro / Coloscopies ─────────────────────────────────────────────────────
-// TODO — À compléter avec les noms des gastro-entérologues fournis par l'utilisateur.
-// Format attendu (un bloc par praticien, avec l'id correspondant à celui de mockData.js) :
-//   { cle: 'Dr Untel',   action: 'praticien', specId: 'endoscopie', pratId: 'untel' },
-//   { cle: 'UNTEL',      action: 'praticien', specId: 'endoscopie', pratId: 'untel' },
+// 18 gastro-entérologues de la Clinique du Millénaire.
+// La normaliserCle() gère déjà les accents et la casse — une entrée par
+// graphie distincte (prénom inclus, prénom seul, avec/sans Dr) suffit.
+
+const GASTRO = 'endoscopie'
 
 const REGLES_GASTRO = [
-  // ← À REMPLIR
+  // Ayral Jean
+  { cle: 'AYRAL Jean',         action: 'praticien', specId: GASTRO, pratId: 'ayral' },
+  { cle: 'Dr AYRAL',           action: 'praticien', specId: GASTRO, pratId: 'ayral' },
+  { cle: 'AYRAL',              action: 'praticien', specId: GASTRO, pratId: 'ayral' },
+
+  // Blanc Christophe
+  { cle: 'BLANC Christophe',   action: 'praticien', specId: GASTRO, pratId: 'blanc' },
+  { cle: 'Dr BLANC',           action: 'praticien', specId: GASTRO, pratId: 'blanc' },
+  { cle: 'BLANC',              action: 'praticien', specId: GASTRO, pratId: 'blanc' },
+
+  // Charpy Flora
+  { cle: 'CHARPY Flora',       action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+  { cle: 'Dr CHARPY',          action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+  { cle: 'CHARPY',             action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+
+  // Espérance Claire (Mme, sans Dr)
+  { cle: 'ESPERANCE Claire',   action: 'praticien', specId: GASTRO, pratId: 'esperance' },
+  { cle: 'Mme ESPERANCE',      action: 'praticien', specId: GASTRO, pratId: 'esperance' },
+  { cle: 'ESPERANCE',          action: 'praticien', specId: GASTRO, pratId: 'esperance' },
+
+  // Fedkovic Yvan
+  { cle: 'FEDKOVIC Yvan',      action: 'praticien', specId: GASTRO, pratId: 'fedkovic' },
+  { cle: 'Dr FEDKOVIC',        action: 'praticien', specId: GASTRO, pratId: 'fedkovic' },
+  { cle: 'FEDKOVIC',           action: 'praticien', specId: GASTRO, pratId: 'fedkovic' },
+
+  // Garcia Valérie
+  { cle: 'GARCIA Valérie',     action: 'praticien', specId: GASTRO, pratId: 'garcia' },
+  { cle: 'GARCIA Valerie',     action: 'praticien', specId: GASTRO, pratId: 'garcia' },
+  { cle: 'Dr GARCIA',          action: 'praticien', specId: GASTRO, pratId: 'garcia' },
+  { cle: 'GARCIA',             action: 'praticien', specId: GASTRO, pratId: 'garcia' },
+
+  // Guillet Robert
+  { cle: 'GUILLET Robert',     action: 'praticien', specId: GASTRO, pratId: 'guillet' },
+  { cle: 'Dr GUILLET',         action: 'praticien', specId: GASTRO, pratId: 'guillet' },
+  { cle: 'GUILLET',            action: 'praticien', specId: GASTRO, pratId: 'guillet' },
+
+  // Hanslik Bertrand
+  { cle: 'HANSLIK Bertrand',   action: 'praticien', specId: GASTRO, pratId: 'hanslik' },
+  { cle: 'Dr HANSLIK',         action: 'praticien', specId: GASTRO, pratId: 'hanslik' },
+  { cle: 'HANSLIK',            action: 'praticien', specId: GASTRO, pratId: 'hanslik' },
+
+  // Lhote Camille (également Chirurgie viscérale — classé Gastro par défaut)
+  { cle: 'LHOTE Camille',      action: 'praticien', specId: GASTRO, pratId: 'lhote' },
+  { cle: 'Dr LHOTE',           action: 'praticien', specId: GASTRO, pratId: 'lhote' },
+  { cle: 'LHOTE',              action: 'praticien', specId: GASTRO, pratId: 'lhote' },
+
+  // Liautard Jacques
+  { cle: 'LIAUTARD Jacques',   action: 'praticien', specId: GASTRO, pratId: 'liautard' },
+  { cle: 'Dr LIAUTARD',        action: 'praticien', specId: GASTRO, pratId: 'liautard' },
+  { cle: 'LIAUTARD',           action: 'praticien', specId: GASTRO, pratId: 'liautard' },
+
+  // Louvety Stéphane
+  { cle: 'LOUVETY Stéphane',   action: 'praticien', specId: GASTRO, pratId: 'louvety' },
+  { cle: 'LOUVETY Stephane',   action: 'praticien', specId: GASTRO, pratId: 'louvety' },
+  { cle: 'Dr LOUVETY',         action: 'praticien', specId: GASTRO, pratId: 'louvety' },
+  { cle: 'LOUVETY',            action: 'praticien', specId: GASTRO, pratId: 'louvety' },
+
+  // Monnin Jean-Luc
+  { cle: 'MONNIN Jean-Luc',    action: 'praticien', specId: GASTRO, pratId: 'monnin' },
+  { cle: 'MONNIN Jean Luc',    action: 'praticien', specId: GASTRO, pratId: 'monnin' },
+  { cle: 'Dr MONNIN',          action: 'praticien', specId: GASTRO, pratId: 'monnin' },
+  { cle: 'MONNIN',             action: 'praticien', specId: GASTRO, pratId: 'monnin' },
+
+  // Rollin Nicolas
+  { cle: 'ROLLIN Nicolas',     action: 'praticien', specId: GASTRO, pratId: 'rollin' },
+  { cle: 'Dr ROLLIN',          action: 'praticien', specId: GASTRO, pratId: 'rollin' },
+  { cle: 'ROLLIN',             action: 'praticien', specId: GASTRO, pratId: 'rollin' },
+
+  // Rudler Franz
+  { cle: 'RUDLER Franz',       action: 'praticien', specId: GASTRO, pratId: 'rudler' },
+  { cle: 'Dr RUDLER',          action: 'praticien', specId: GASTRO, pratId: 'rudler' },
+  { cle: 'RUDLER',             action: 'praticien', specId: GASTRO, pratId: 'rudler' },
+
+  // Saloum Thierry
+  { cle: 'SALOUM Thierry',     action: 'praticien', specId: GASTRO, pratId: 'saloum' },
+  { cle: 'Dr SALOUM',          action: 'praticien', specId: GASTRO, pratId: 'saloum' },
+  { cle: 'SALOUM',             action: 'praticien', specId: GASTRO, pratId: 'saloum' },
+
+  // Suma Constance
+  { cle: 'SUMA Constance',     action: 'praticien', specId: GASTRO, pratId: 'suma' },
+  { cle: 'Dr SUMA',            action: 'praticien', specId: GASTRO, pratId: 'suma' },
+  { cle: 'SUMA',               action: 'praticien', specId: GASTRO, pratId: 'suma' },
+
+  // Valats Jean-Christophe
+  { cle: 'VALATS Jean-Christophe', action: 'praticien', specId: GASTRO, pratId: 'valats' },
+  { cle: 'VALATS Jean Christophe', action: 'praticien', specId: GASTRO, pratId: 'valats' },
+  { cle: 'Dr VALATS',          action: 'praticien', specId: GASTRO, pratId: 'valats' },
+  { cle: 'VALATS',             action: 'praticien', specId: GASTRO, pratId: 'valats' },
+
+  // Vercambre Aufort Lucile
+  { cle: 'VERCAMBRE AUFORT Lucile', action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+  { cle: 'VERCAMBRE-AUFORT Lucile', action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+  { cle: 'Dr VERCAMBRE AUFORT',     action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+  { cle: 'Dr VERCAMBRE-AUFORT',     action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+  { cle: 'VERCAMBRE AUFORT',        action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+  { cle: 'VERCAMBRE-AUFORT',        action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
 ]
 
 // ─── Pneumologie ──────────────────────────────────────────────────────────────
