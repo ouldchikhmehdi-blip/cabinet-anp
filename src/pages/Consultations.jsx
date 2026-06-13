@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CONSULTATIONS, TELECONSULTATIONS, CONSULT_SPECIALITES, MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
+import ImportConsultations from '../components/ImportConsultations'
+import { getConsultData } from '../data/consultations'
+import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -13,6 +15,11 @@ const specMensuel = (sp, year) => sp.praticiens
   : (sp.valeurs[year] || [])
 
 export default function Consultations() {
+  const [consultData, setConsultData] = useState(() => getConsultData())
+  const { global: CONSULTATIONS, teleconsultations: TELECONSULTATIONS, specialites: CONSULT_SPECIALITES } = consultData
+
+  const rafraichir = useCallback(() => setConsultData(getConsultData()), [])
+
   const [moisDe, setMoisDe] = useState(0)
   const [moisA, setMoisA] = useState(11)
   const [year1, setYear1] = useState(2024)
@@ -101,6 +108,8 @@ export default function Consultations() {
           borderRadius: 20, fontWeight: 500
         }}>Activité · nombre</span>
       </div>
+
+      <ImportConsultations onImportValide={rafraichir} />
 
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}

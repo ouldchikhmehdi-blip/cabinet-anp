@@ -5,6 +5,21 @@ import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
 import { CA, MOIS_COURT, MOIS_LONG, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
 
+function LegendCA({ y1, y2 }) {
+  return (
+    <div style={{ display: 'flex', gap: 12 }}>
+      <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ display: 'inline-block', width: 18, height: 2, background: '#534AB7', borderRadius: 1 }} />
+        {y1}
+      </span>
+      <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #B4B2A9' }} />
+        {y2}
+      </span>
+    </div>
+  )
+}
+
 export default function ChiffreAffaires() {
   const [moisDe, setMoisDe] = useState(0)
   const [moisA, setMoisA] = useState(11)
@@ -59,18 +74,6 @@ export default function ChiffreAffaires() {
     padding: '14px 16px',
   }
 
-  const Legend = ({ y1, y2 }) => (
-    <div style={{ display: 'flex', gap: 12 }}>
-      <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ display: 'inline-block', width: 18, height: 2, background: '#534AB7', borderRadius: 1 }} />
-        {y1}
-      </span>
-      <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #B4B2A9' }} />
-        {y2}
-      </span>
-    </div>
-  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
@@ -121,7 +124,7 @@ export default function ChiffreAffaires() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             CA mensuel — {periode}
           </span>
-          <Legend y1={year1} y2={year2} />
+          <LegendCA y1={year1} y2={year2} />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={dataMensuel}>
@@ -140,7 +143,7 @@ export default function ChiffreAffaires() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             CA cumulé — {periode}
           </span>
-          <Legend y1={year1} y2={year2} />
+          <LegendCA y1={year1} y2={year2} />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={dataCumul}>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import { CA, CHARGES, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, RETRO_FIXE, RETRO_VARIABLE, MOIS_ACTUEL, getMasqueMontants } from '../data/mockData'
