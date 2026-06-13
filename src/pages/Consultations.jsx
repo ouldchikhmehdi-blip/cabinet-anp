@@ -10,10 +10,15 @@ import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../d
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
 
-// Tableau mensuel d'une spécialité : somme des praticiens si elle en a, sinon ses valeurs propres
-const specMensuel = (sp, year) => sp.praticiens
-  ? Array.from({ length: 12 }, (_, m) => sum(sp.praticiens.map(p => (p.valeurs[year] || [])[m] ?? 0)))
-  : (sp.valeurs[year] || [])
+// Tableau mensuel d'une spécialité : somme des praticiens + bucket valeurs (consultations non attribuées)
+const specMensuel = (sp, year) => {
+  if (!sp.praticiens) return (sp.valeurs || {})[year] || Array(12).fill(0)
+  const pratPart = Array.from({ length: 12 }, (_, m) =>
+    sum(sp.praticiens.map(p => (p.valeurs[year] || [])[m] ?? 0))
+  )
+  const valPart = (sp.valeurs || {})[year] || Array(12).fill(0)
+  return Array.from({ length: 12 }, (_, m) => pratPart[m] + (valPart[m] || 0))
+}
 
 export default function Consultations() {
   const [consultData, setConsultData] = useState(() => getConsultData())
@@ -28,6 +33,9 @@ export default function Consultations() {
   const [shortcut, setShortcut] = useState('annee')
   const [specId, setSpecId] = useState(CONSULT_SPECIALITES[0].id)
   const [pratId, setPratId] = useState('all')
+
+  // Années disponibles : union de ANNEES (mock) et des années présentes dans le store
+  const anneesDispos = [...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])].sort((a, b) => b - a)
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
@@ -82,16 +90,22 @@ export default function Consultations() {
     [year2]: sum(aSerie2.slice(0, i + 1)),
   }))
 
+  // Bucket « non attribué » : consultations au niveau spécialité (ex. fibro gastro, pneumo)
+  const autreValues = hasPrat && spec.valeurs ? (spec.valeurs[year1] || Array(12).fill(0)) : null
+  const hasAutre = !!autreValues && autreValues.some(v => v > 0)
+
   // Données « Tous les praticiens » : empilé (mensuel y1) + multi-lignes (cumul y1)
   // On n'itère que sur les praticiens visibles (non masqués) pour les graphiques de détail
   const pratBar = isAllPrat ? labels.map((m, i) => {
     const row = { mois: m }
     pratsVisibles.forEach(p => { row[p.id] = (p.valeurs[year1] || [])[de + i] ?? 0 })
+    if (hasAutre) row['__autre'] = autreValues[de + i] ?? 0
     return row
   }) : []
   const pratCumul = isAllPrat ? labels.map((m, i) => {
     const row = { mois: m }
     pratsVisibles.forEach(p => { row[p.id] = sum((p.valeurs[year1] || []).slice(de, de + i + 1)) })
+    if (hasAutre) row['__autre'] = sum(autreValues.slice(de, de + i + 1))
     return row
   }) : []
 
@@ -123,7 +137,7 @@ export default function Consultations() {
         year1={year1} setYear1={setYear1}
         year2={year2} setYear2={setYear2}
         shortcut={shortcut} setShortcut={setShortcut}
-        availableYears={ANNEES}
+        availableYears={anneesDispos}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
@@ -273,6 +287,12 @@ export default function Consultations() {
                     {p.nom.replace(/^Dr\s+/, '')}
                   </span>
                 ))}
+                {hasAutre && (
+                  <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, background: '#B4B2A9', borderRadius: 2 }} />
+                    Autre / non attribué
+                  </span>
+                )}
               </div>
             </div>
             <ResponsiveContainer width="100%" height={180}>
@@ -280,16 +300,22 @@ export default function Consultations() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${fmtNb(v)} consult.`, pratsVisibles.find(p => p.id === name)?.nom || name]} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [
+                  `${fmtNb(v)} consult.`,
+                  name === '__autre' ? 'Autre / non attribué' : (pratsVisibles.find(p => p.id === name)?.nom || name),
+                ]} />
                 {pratsVisibles.map((p, i) => (
                   <Bar
                     key={p.id}
                     dataKey={p.id}
                     stackId="prat"
                     fill={PALETTE[i % PALETTE.length]}
-                    radius={i === pratsVisibles.length - 1 ? [3,3,0,0] : [0,0,0,0]}
+                    radius={i === pratsVisibles.length - 1 && !hasAutre ? [3,3,0,0] : [0,0,0,0]}
                   />
                 ))}
+                {hasAutre && (
+                  <Bar dataKey="__autre" stackId="prat" fill="#B4B2A9" radius={[3,3,0,0]} />
+                )}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -305,10 +331,16 @@ export default function Consultations() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${fmtNb(v)} consult.`, pratsVisibles.find(p => p.id === name)?.nom || name]} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [
+                  `${fmtNb(v)} consult.`,
+                  name === '__autre' ? 'Autre / non attribué' : (pratsVisibles.find(p => p.id === name)?.nom || name),
+                ]} />
                 {pratsVisibles.map((p, i) => (
                   <Line key={p.id} type="monotone" dataKey={p.id} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={{ r: 2 }} />
                 ))}
+                {hasAutre && (
+                  <Line type="monotone" dataKey="__autre" stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="4 3" dot={{ r: 2 }} />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>

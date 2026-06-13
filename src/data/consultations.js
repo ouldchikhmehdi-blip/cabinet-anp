@@ -164,10 +164,12 @@ export function appliquerImport(agrege) {
     }
   }
 
-  // Fusion spécialités sans praticiens (ex. Pneumologie)
+  // Fusion spécialités (par ex. Pneumologie, ou bucket « non attribué » pour Gastro/Neuro/Viscéral)
+  // On écrit dans spec.valeurs même si la spécialité a des praticiens —
+  // cela permet d'y stocker les consultations non attribuées à un praticien précis.
   for (const [specId, anneeMap] of Object.entries(agrege.specialites || {})) {
     const spec = store.specialites.find(s => s.id === specId)
-    if (!spec || spec.praticiens) continue
+    if (!spec) continue
     for (const [annee, moisMap] of Object.entries(anneeMap)) {
       if (!spec.valeurs) spec.valeurs = {}
       if (!spec.valeurs[annee]) spec.valeurs[annee] = Array(12).fill(0)
@@ -267,6 +269,14 @@ export function cibles() {
           pratNom: prat.nom,
         })
       }
+      // Cible « non attribué » : compte dans le total de la spécialité sans praticien précis
+      liste.push({
+        id: `spec:${spec.id}`,
+        label: `${spec.nom} — non attribué`,
+        type: 'specialite-autre',
+        specId: spec.id,
+        specNom: spec.nom,
+      })
     } else {
       liste.push({
         id: `spec:${spec.id}`,
@@ -278,6 +288,7 @@ export function cibles() {
     }
   }
 
+  liste.push({ id: 'teleconsult', label: 'Téléconsultation', type: 'teleconsult' })
   liste.push({ id: 'global', label: 'Global / autre', type: 'global' })
   liste.push({ id: 'ignorer', label: 'Ignorer', type: 'ignorer' })
 

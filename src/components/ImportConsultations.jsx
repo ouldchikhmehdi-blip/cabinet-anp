@@ -1,28 +1,49 @@
 import { useState, useRef } from 'react'
-import { analyserCSV, detecterMappage, reanalyserAvecNouvellesRegles } from '../utils/importConsultations'
+import Papa from 'papaparse'
+import {
+  analyserCSV, detecterMappage, detecterFormat, reanalyserAvecNouvellesRegles,
+  analyserStats, reanalyserStats,
+} from '../utils/importConsultations'
 import { appliquerImport, cibles, reglesInitiales } from '../data/consultations'
 import { charger, sauver } from '../utils/stockage'
 
-const CLE_REGLES   = 'sarm:consult-regles'
-const CLE_COLONNES = 'sarm:consult-colonnes'
+const CLE_REGLES        = 'sarm:consult-regles'
+const CLE_COLONNES      = 'sarm:consult-colonnes'
+const CLE_COLONNES_STATS = 'sarm:consult-colonnes-stats'
 
 const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 
 // ─── Sélecteur de cible (spécialité / praticien / global / ignorer) ───────────
 function SelecteurCible({ value, onChange }) {
   const [ouvert, setOuvert] = useState(false)
+  const [filtre, setFiltre] = useState('')
   const liste = cibles()
 
-  // Regrouper par spécialité
+  // Normalisation simple pour le filtre (sans accents, minuscules)
+  const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const filtreNorm = norm(filtre)
+
+  // Regrouper par spécialité en tenant compte du filtre
   const groupes = []
   const vus = new Set()
   for (const c of liste) {
-    if (c.type === 'praticien' && !vus.has(c.specId)) {
+    if ((c.type === 'praticien' || c.type === 'specialite-autre') && !vus.has(c.specId)) {
       vus.add(c.specId)
-      groupes.push({ specId: c.specId, specNom: c.specNom, praticiens: liste.filter(x => x.specId === c.specId && x.type === 'praticien') })
+      const praticiens = liste.filter(x => x.specId === c.specId && x.type === 'praticien')
+      const nonAttribue = liste.find(x => x.specId === c.specId && x.type === 'specialite-autre')
+      groupes.push({ specId: c.specId, specNom: c.specNom, praticiens, nonAttribue })
     }
-    if (c.type === 'specialite') groupes.push({ specId: c.specId, specNom: c.specNom, praticiens: [] })
+    if (c.type === 'specialite') groupes.push({ specId: c.specId, specNom: c.specNom, praticiens: [], nonAttribue: null })
   }
+
+  // Filtrage par saisie (filtre sur nom praticien ou nom spécialité)
+  const groupesFiltres = filtre
+    ? groupes.map(g => ({
+        ...g,
+        praticiens: g.praticiens.filter(p => norm(p.pratNom).includes(filtreNorm) || norm(g.specNom).includes(filtreNorm)),
+        nonAttribue: norm(g.specNom).includes(filtreNorm) ? g.nonAttribue : null,
+      })).filter(g => g.praticiens.length > 0 || g.nonAttribue || norm(g.specNom).includes(filtreNorm))
+    : groupes
 
   const label = value
     ? (liste.find(c => c.id === value)?.label || value)
@@ -38,9 +59,16 @@ function SelecteurCible({ value, onChange }) {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
   }
 
+  const itemStyle = (sel) => ({
+    width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: 12,
+    color: 'var(--color-text)', padding: '5px 10px 5px 20px',
+    border: 'none', borderRadius: 6,
+    background: sel ? 'var(--color-primary-light)' : 'transparent',
+  })
+
   return (
     <div style={{ position: 'relative' }}>
-      <button style={boutonStyle} onClick={() => setOuvert(o => !o)}>
+      <button style={boutonStyle} onClick={() => { setOuvert(o => !o); setFiltre('') }}>
         <span>{label}</span>
         <span style={{ fontSize: 9 }}>▾</span>
       </button>
@@ -49,41 +77,74 @@ function SelecteurCible({ value, onChange }) {
           <div onClick={() => setOuvert(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
           <div style={{
             position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 11,
-            minWidth: 240, maxHeight: 300, overflowY: 'auto',
+            minWidth: 260,
             background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
-            borderRadius: 'var(--radius-md)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', padding: 4,
+            borderRadius: 'var(--radius-md)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+            display: 'flex', flexDirection: 'column',
           }}>
-            {/* Praticiens regroupés par spécialité */}
-            {groupes.map(g => (
-              <div key={g.specId}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-tertiary)', padding: '6px 10px 2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                  {g.specNom}
+            {/* Champ filtre */}
+            <div style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--color-border)' }}>
+              <input
+                autoFocus
+                value={filtre}
+                onChange={e => setFiltre(e.target.value)}
+                placeholder="Filtrer…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  fontSize: 11, padding: '4px 8px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '0.5px solid var(--color-border)',
+                  background: 'var(--color-bg)', color: 'var(--color-text)',
+                }}
+              />
+            </div>
+
+            {/* Liste avec scroll interne */}
+            <div style={{ maxHeight: 280, overflowY: 'auto', padding: 4 }}>
+              {groupesFiltres.map(g => (
+                <div key={g.specId}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-tertiary)', padding: '6px 10px 2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                    {g.specNom}
+                  </div>
+                  {g.praticiens.length > 0
+                    ? g.praticiens.map(p => (
+                        <button key={p.id} onClick={() => { onChange(p.id); setOuvert(false) }} style={itemStyle(value === p.id)}>
+                          {p.pratNom}
+                        </button>
+                      ))
+                    : null
+                  }
+                  {/* Spécialité sans praticiens → toute la spécialité */}
+                  {g.praticiens.length === 0 && !g.nonAttribue && (
+                    <button onClick={() => { onChange(`spec:${g.specId}`); setOuvert(false) }} style={itemStyle(value === `spec:${g.specId}`)}>
+                      {g.specNom} (spécialité entière)
+                    </button>
+                  )}
+                  {/* Bouton « Non attribué » pour les spécialités à praticiens */}
+                  {g.nonAttribue && (
+                    <button onClick={() => { onChange(`spec:${g.specId}`); setOuvert(false) }}
+                      style={{ ...itemStyle(value === `spec:${g.specId}`), color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+                      Non attribué
+                    </button>
+                  )}
                 </div>
-                {g.praticiens.length > 0
-                  ? g.praticiens.map(p => (
-                      <button key={p.id} onClick={() => { onChange(p.id); setOuvert(false) }}
-                        style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: 'var(--color-text)', padding: '5px 10px 5px 20px', border: 'none', borderRadius: 6, background: value === p.id ? 'var(--color-primary-light)' : 'transparent' }}>
-                        {p.pratNom}
-                      </button>
-                    ))
-                  : (
-                      <button onClick={() => { onChange(`spec:${g.specId}`); setOuvert(false) }}
-                        style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: 'var(--color-text)', padding: '5px 10px 5px 20px', border: 'none', borderRadius: 6, background: value === `spec:${g.specId}` ? 'var(--color-primary-light)' : 'transparent' }}>
-                        {g.specNom} (spécialité entière)
-                      </button>
-                    )
-                }
+              ))}
+
+              {/* Section bas : téléconsultation / global / ignorer */}
+              <div style={{ borderTop: '0.5px solid var(--color-border)', marginTop: 4, paddingTop: 4 }}>
+                <button onClick={() => { onChange('teleconsult'); setOuvert(false) }}
+                  style={{ ...itemStyle(value === 'teleconsult'), paddingLeft: 10, color: '#534AB7' }}>
+                  📹 Téléconsultation
+                </button>
+                <button onClick={() => { onChange('global'); setOuvert(false) }}
+                  style={{ ...itemStyle(value === 'global'), paddingLeft: 10 }}>
+                  Global / autre
+                </button>
+                <button onClick={() => { onChange('ignorer'); setOuvert(false) }}
+                  style={{ ...itemStyle(false), paddingLeft: 10, color: '#A32D2D' }}>
+                  Ignorer ces lignes
+                </button>
               </div>
-            ))}
-            <div style={{ borderTop: '0.5px solid var(--color-border)', marginTop: 4, paddingTop: 4 }}>
-              <button onClick={() => { onChange('global'); setOuvert(false) }}
-                style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: 'var(--color-text)', padding: '5px 10px', border: 'none', borderRadius: 6, background: value === 'global' ? 'var(--color-primary-light)' : 'transparent' }}>
-                Global / autre
-              </button>
-              <button onClick={() => { onChange('ignorer'); setOuvert(false) }}
-                style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: '#A32D2D', padding: '5px 10px', border: 'none', borderRadius: 6, background: 'transparent' }}>
-                Ignorer ces lignes
-              </button>
             </div>
           </div>
         </>
@@ -92,11 +153,14 @@ function SelecteurCible({ value, onChange }) {
   )
 }
 
+const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+const ANNEES_IMPORT = [2022, 2023, 2024, 2025, 2026]
+
 // ─── Composant principal ──────────────────────────────────────────────────────
 export default function ImportConsultations({ onImportValide }) {
   const [ouvert, setOuvert] = useState(false)
   const [reglesPanneauOuvert, setReglesPanneauOuvert] = useState(false)
-  const [etape, setEtape] = useState('depot')   // 'depot' | 'mappage' | 'classement' | 'apercu'
+  const [etape, setEtape] = useState('depot')   // 'depot' | 'mappage' | 'stats' | 'classement' | 'apercu'
   const [texteCSV, setTexteCSV] = useState(null)
   const [headers, setHeaders] = useState([])
   const [mappage, setMappage] = useState(() => charger(CLE_COLONNES, {}))
@@ -106,6 +170,14 @@ export default function ImportConsultations({ onImportValide }) {
   const [regles, setRegles] = useState(() => reglesInitiales())
   const [drag, setDrag] = useState(false)
   const fileRef = useRef()
+
+  // ── États mode statistiques ──
+  const [format, setFormat] = useState(null)           // 'rdv' | 'stats'
+  const [colonnesAgenda, setColonnesAgenda] = useState([])    // toutes les colonnes agenda du CSV
+  const [colonnesSelectionnees, setColonnesSelectionnees] = useState(() => charger(CLE_COLONNES_STATS, null))
+  const [moisStats, setMoisStats] = useState(new Date().getMonth())
+  const [anneeStats, setAnneeStats] = useState(new Date().getFullYear())
+  const [configStats, setConfigStats] = useState(null) // sauvegardée pour la réanalyse
 
   // sauverRegles : ne persiste QUE les règles utilisateur (pas les défauts),
   // puis recharge l'ensemble (défauts + utilisateur) pour l'état local
@@ -118,24 +190,51 @@ export default function ImportConsultations({ onImportValide }) {
   const lireCSV = (file) => {
     const reader = new FileReader()
     reader.onload = (e) => {
-      const texte = e.target.result
+      // Décodage avec repli Windows-1252 (export Doctolib) si UTF-8 produit des caractères de remplacement
+      const buf = e.target.result
+      let texte = new TextDecoder('utf-8', { fatal: false }).decode(buf)
+      if (texte.includes('�')) texte = new TextDecoder('windows-1252').decode(buf)
+
       setTexteCSV(texte)
+
       // Détection rapide des en-têtes (1ère ligne)
       const premiereSep = texte.includes(';') ? ';' : ','
       const premiereLigne = texte.split('\n')[0]
       const hdrs = premiereLigne.split(premiereSep).map(h => h.trim().replace(/^"|"$/g, ''))
       setHeaders(hdrs)
-      const detected = detecterMappage(hdrs)
-      // Conserver le mappage mémorisé si les colonnes correspondent, sinon détection fraîche
-      const memoMappage = charger(CLE_COLONNES, {})
-      const memoValide = Object.values(memoMappage).every(v => !v || hdrs.includes(v))
-      setMappage(memoValide && Object.keys(memoMappage).length > 0 ? memoMappage : detected)
-      setEtape('mappage')
+
+      // Preview des premières lignes pour la détection de format
+      const lignesPreview = Papa.parse(texte, {
+        header: true, preview: 5, delimiter: premiereSep, skipEmptyLines: true,
+      }).data
+      const fmt = detecterFormat(hdrs, lignesPreview)
+      setFormat(fmt)
+
+      if (fmt === 'stats') {
+        // Mode statistiques : colonnes agenda = toutes sauf la première (libellé)
+        const cols = hdrs.slice(1).filter(h => h.trim())
+        setColonnesAgenda(cols)
+        // Colonnes sélectionnées : mémorisées (si valides) ou par défaut = celles contenant « SARM »
+        const memo = charger(CLE_COLONNES_STATS, null)
+        if (memo && Array.isArray(memo) && memo.every(c => cols.includes(c))) {
+          setColonnesSelectionnees(memo)
+        } else {
+          setColonnesSelectionnees(cols.filter(c => c.toUpperCase().includes('SARM')))
+        }
+        setEtape('stats')
+      } else {
+        // Mode RDV : mappage des colonnes
+        const detected = detecterMappage(hdrs)
+        const memoMappage = charger(CLE_COLONNES, {})
+        const memoValide = Object.values(memoMappage).every(v => !v || hdrs.includes(v))
+        setMappage(memoValide && Object.keys(memoMappage).length > 0 ? memoMappage : detected)
+        setEtape('mappage')
+      }
     }
-    reader.readAsText(file, 'UTF-8')
+    reader.readAsArrayBuffer(file)
   }
 
-  // ── Lancement de l'analyse ──
+  // ── Lancement de l'analyse (mode RDV) ──
   const lancer = () => {
     sauver(CLE_COLONNES, mappage)
     const r = analyserCSV(texteCSV, mappage, regles)
@@ -144,11 +243,23 @@ export default function ImportConsultations({ onImportValide }) {
     setEtape(r.fileAttente.length > 0 ? 'classement' : 'apercu')
   }
 
+  // ── Lancement de l'analyse (mode statistiques) ──
+  const lancerStats = () => {
+    sauver(CLE_COLONNES_STATS, colonnesSelectionnees)
+    const cfg = { colonnesGardees: colonnesSelectionnees, mois: moisStats, annee: anneeStats }
+    setConfigStats(cfg)
+    const r = analyserStats(texteCSV, cfg, regles)
+    setResultats(r)
+    setSelections({})
+    setEtape(r.fileAttente.length > 0 ? 'classement' : 'apercu')
+  }
+
   // ── Classement d'une clé inconnue ──
   const validerClassements = () => {
     const nouvellesRegles = Object.entries(selections).map(([cle, cibleId]) => {
-      if (cibleId === 'ignorer') return { cle, action: 'ignorer' }
-      if (cibleId === 'global') return { cle, action: 'global' }
+      if (cibleId === 'ignorer')    return { cle, action: 'ignorer' }
+      if (cibleId === 'global')     return { cle, action: 'global' }
+      if (cibleId === 'teleconsult') return { cle, action: 'teleconsult' }
       if (cibleId.startsWith('spec:')) return { cle, action: 'specialite', specId: cibleId.replace('spec:', '') }
       // praticien : id = `prat:specId:pratId`
       const parts = cibleId.split(':')
@@ -158,7 +269,10 @@ export default function ImportConsultations({ onImportValide }) {
     const reglesUtilisateur = [...charger(CLE_REGLES, []), ...nouvellesRegles]
     sauverRegles(reglesUtilisateur)
     const toutesRegles = reglesInitiales()
-    const r = reanalyserAvecNouvellesRegles(texteCSV, mappage, toutesRegles, [])
+    // Réanalyse selon le format détecté
+    const r = format === 'stats'
+      ? reanalyserStats(texteCSV, configStats, toutesRegles, [])
+      : reanalyserAvecNouvellesRegles(texteCSV, mappage, toutesRegles, [])
     setResultats(r)
     setEtape('apercu')
   }
@@ -247,7 +361,7 @@ export default function ImportConsultations({ onImportValide }) {
 
       {/* ── Panneau d'import ── */}
       {ouvert && (
-        <div style={{ ...cardStyle, marginTop: 8 }}>
+        <div style={{ ...cardStyle, marginTop: 8, overflow: 'visible' }}>
 
           {/* ÉTAPE 1 : dépôt du fichier */}
           {etape === 'depot' && (
@@ -271,7 +385,105 @@ export default function ImportConsultations({ onImportValide }) {
             </div>
           )}
 
-          {/* ÉTAPE 2 : mappage des colonnes */}
+          {/* ÉTAPE 2-stats : configuration de l'import statistiques */}
+          {etape === 'stats' && (
+            <div style={{ padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)' }}>
+                  Format statistiques Doctolib détecté
+                </span>
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' }}>
+                  tableau croisé
+                </span>
+              </div>
+
+              {/* Sélection des colonnes (agendas) */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 6, fontWeight: 500, letterSpacing: '0.04em' }}>
+                  AGENDAS À INCLURE
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {colonnesAgenda.map(col => {
+                    const cochee = colonnesSelectionnees?.includes(col)
+                    return (
+                      <label
+                        key={col}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          fontSize: 12, cursor: 'pointer',
+                          padding: '5px 10px', borderRadius: 'var(--radius-md)',
+                          border: `0.5px solid ${cochee ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                          background: cochee ? 'var(--color-primary-light)' : 'var(--color-surface)',
+                          color: cochee ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={cochee}
+                          style={{ accentColor: 'var(--color-primary)' }}
+                          onChange={e => {
+                            setColonnesSelectionnees(prev => {
+                              const base = prev || []
+                              return e.target.checked ? [...base, col] : base.filter(c => c !== col)
+                            })
+                          }}
+                        />
+                        {col}
+                      </label>
+                    )
+                  })}
+                </div>
+                {(!colonnesSelectionnees || colonnesSelectionnees.length === 0) && (
+                  <div style={{ fontSize: 11, color: '#D85A30', marginTop: 6 }}>
+                    ⚠ Sélectionnez au moins un agenda.
+                  </div>
+                )}
+              </div>
+
+              {/* Sélection du mois + année */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 6, fontWeight: 500, letterSpacing: '0.04em' }}>
+                  PÉRIODE DU FICHIER (mois unique)
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <select
+                    style={selectStyle}
+                    value={moisStats}
+                    onChange={e => setMoisStats(Number(e.target.value))}
+                  >
+                    {MOIS_NOMS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                  </select>
+                  <select
+                    style={selectStyle}
+                    value={anneeStats}
+                    onChange={e => setAnneeStats(Number(e.target.value))}
+                  >
+                    {ANNEES_IMPORT.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  Les totaux seront enregistrés pour {MOIS_NOMS[moisStats]} {anneeStats}.
+                </div>
+              </div>
+
+              <button
+                onClick={lancerStats}
+                disabled={!colonnesSelectionnees || colonnesSelectionnees.length === 0}
+                style={{
+                  fontSize: 12, padding: '7px 18px', borderRadius: 'var(--radius-md)',
+                  border: '0.5px solid #1D9E75',
+                  background: (colonnesSelectionnees?.length > 0) ? '#E1F5EE' : 'var(--color-bg)',
+                  color: (colonnesSelectionnees?.length > 0) ? '#085041' : 'var(--color-text-tertiary)',
+                  cursor: (colonnesSelectionnees?.length > 0) ? 'pointer' : 'default',
+                }}
+              >
+                Analyser le fichier →
+              </button>
+            </div>
+          )}
+
+          {/* ÉTAPE 2-rdv : mappage des colonnes */}
           {etape === 'mappage' && (
             <div style={{ padding: '16px' }}>
               <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 12, color: 'var(--color-text)' }}>
@@ -335,7 +547,7 @@ export default function ImportConsultations({ onImportValide }) {
                   <div style={{ flex: 1, minWidth: 180 }}>
                     <div style={{ fontSize: 12, fontWeight: 500 }}>{item.cle}</div>
                     <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                      {item.count} RDV · ex. {MOIS_COURT[item.exemples[0]?.mois]} {item.exemples[0]?.annee}
+                      {item.count} consult. · {MOIS_COURT[item.exemples[0]?.mois]} {item.exemples[0]?.annee}
                     </div>
                   </div>
                   <SelecteurCible
@@ -409,7 +621,7 @@ export default function ImportConsultations({ onImportValide }) {
                     fontWeight: 500,
                   }}
                 >
-                  ✓ Valider l'import ({resultats.apercu.reduce((a, r) => a + r.total, 0)} RDV)
+                  ✓ Valider l'import ({resultats.apercu.reduce((a, r) => a + r.total, 0)} consult.)
                 </button>
               </div>
             </div>

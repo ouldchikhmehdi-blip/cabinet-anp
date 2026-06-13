@@ -44,6 +44,39 @@ export function normaliserCle(str) {
     .trim()
 }
 
+// ─── Matching tolérant (préfixe-nom) ─────────────────────────────────────────
+
+/**
+ * Recherche la règle correspondant à un nom normalisé.
+ *
+ * Algorithme :
+ *   1. Correspondance exacte sur la clé normalisée (priorité absolue).
+ *   2. Sinon, correspondance par préfixe de nom de famille :
+ *      la clé de règle la plus longue qui est un préfixe de nomNorm
+ *      (ex. "MEYER BISCH" matche "MEYER BISCH Vincent" ; "MEYER" ne gagne pas).
+ *
+ * @param {string} nomNorm      — clé du nom extrait, déjà normalisée
+ * @param {Object} regleParCle  — index des règles { cleNorm → règle }
+ */
+function trouverRegle(nomNorm, regleParCle) {
+  // 1. Correspondance exacte
+  if (regleParCle[nomNorm]) return regleParCle[nomNorm]
+
+  // 2. Préfixe-nom : la clé la plus longue qui est un préfixe de nomNorm
+  let meilleure = null
+  let longueurMax = 0
+  for (const [cle, regle] of Object.entries(regleParCle)) {
+    if (
+      cle.length > longueurMax &&
+      (nomNorm === cle || nomNorm.startsWith(cle + ' '))
+    ) {
+      meilleure = regle
+      longueurMax = cle.length
+    }
+  }
+  return meilleure
+}
+
 // ─── Détection de colonnes ────────────────────────────────────────────────────
 
 /**
@@ -56,6 +89,36 @@ const CANDIDATS = {
   motif:           ['Motif', 'motif', 'Motif du rendez-vous', 'Raison'],
   statut:          ['Statut', 'statut', 'État', 'etat', 'Status'],
   typeTeleconsult: ['Type', 'type', 'Mode', 'mode', 'Téléconsultation', 'teleconsultation', 'Type de rendez-vous'],
+}
+
+/**
+ * Détecte le format du CSV : liste de RDV ligne-par-ligne ou tableau statistiques Doctolib.
+ *
+ * 'rdv'   — une ligne = un rendez-vous, colonnes Date / Praticien présentes.
+ * 'stats' — tableau croisé pivot : première colonne = libellé motif,
+ *           colonnes suivantes = comptages par agenda (ex. SARM-1, SARM-2…).
+ *
+ * @param {string[]} headers — en-têtes CSV
+ * @param {Object[]} lignes  — premières lignes parsées (pour inspecter les valeurs)
+ */
+export function detecterFormat(headers, lignes) {
+  // Si une colonne Date ou Praticien est détectable → format RDV
+  const mappage = detecterMappage(headers)
+  if (mappage.date || mappage.praticien) return 'rdv'
+
+  // Si premier en-tête vide (export Doctolib statistiques) et colonnes numériques → stats
+  const premierVide = !headers[0] || headers[0].trim() === ''
+  if (premierVide && headers.length > 1) {
+    if (lignes && lignes.length > 0) {
+      const hasNumerique = headers.slice(1).some(h =>
+        lignes.slice(0, 5).some(l => /^\d+$/.test((l[h] || '').trim()))
+      )
+      if (hasNumerique) return 'stats'
+    }
+    return 'stats' // structure cohérente même sans lignes inspectables
+  }
+
+  return 'rdv' // par défaut
 }
 
 /**
@@ -192,8 +255,8 @@ export function analyserCSV(texteCSV, mappage, regles) {
     // 4. Téléconsultation ?
     const isTele = estTeleconsult(ligne, mappage.typeTeleconsult)
 
-    // 5. Appliquer la règle mémorisée (si elle existe) — comparaison par clé normalisée
-    const regle = regleParCle[cleNorm]
+    // 5. Appliquer la règle mémorisée — matching exact ou préfixe-nom
+    const regle = trouverRegle(cleNorm, regleParCle)
 
     if (regle) {
       if (regle.action === 'ignorer') continue
@@ -232,6 +295,134 @@ export function analyserCSV(texteCSV, mappage, regles) {
 
   return { agrege, fileAttente, apercu, erreursParsing: parsed.errors }
 }
+
+// ─── Analyse statistiques (format tableau croisé Doctolib) ───────────────────
+
+/**
+ * Analyse un export Doctolib « statistiques » (tableau croisé pivot).
+ *
+ * Format d'entrée :
+ *   En-têtes : (vide) ; SARM-1 ; SARM-2 ; Cardiologie - CPA ; AKOME
+ *   Lignes   : une ligne = un motif, cellules = comptages par agenda.
+ *   Aucune colonne Date — la période est choisie par l'utilisateur.
+ *
+ * @param {string} texteCSV — contenu brut du fichier CSV
+ * @param {Object} config   — { colonnesGardees: string[], mois: number (0-11), annee: number }
+ * @param {Array}  regles   — règles mémorisées [{ cle, action, specId?, pratId? }]
+ */
+export function analyserStats(texteCSV, config, regles) {
+  const { colonnesGardees, mois, annee } = config
+
+  const parsed = Papa.parse(texteCSV, {
+    header: true,
+    skipEmptyLines: true,
+    delimiter: ';',
+  })
+
+  const headers = parsed.meta.fields || []
+  const colLibelle = headers[0] // première colonne = libellé du motif (peut être '' si vide)
+
+  // Index des règles par clé normalisée
+  const regleParCle = {}
+  for (const r of (regles || [])) regleParCle[normaliserCle(r.cle)] = r
+
+  const agrege = {
+    global:            {},
+    teleconsultations: {},
+    praticiens:        {},
+    specialites:       {},
+  }
+  const inconnues = {}
+
+  // Ajoute `valeur` au mois/année sélectionné dans un sous-objet
+  function ajouterA(obj, valeur) {
+    if (!obj[annee]) obj[annee] = {}
+    obj[annee][mois] = (obj[annee][mois] || 0) + valeur
+  }
+
+  // Regex d'extraction du nom du praticien depuis le libellé Doctolib
+  // ex. « Consultation avec le Dr FEDKOVIC Yvan » → « FEDKOVIC Yvan »
+  const RE_NOM  = /avec\s+(?:le\s+|l[''’]\s*|un\s+|la\s+)?(?:Dr|Pr|Docteur|Professeur)\.?\s+(.+)$/i
+  const RE_NOM2 = /[-–]\s*(?:DR|PR|DOCTEUR|PROFESSEUR)\.?\s+(.+)$/i
+
+  for (const ligne of parsed.data) {
+    const libelle = (ligne[colLibelle] || '').trim()
+    if (!libelle) continue
+
+    // Somme des colonnes sélectionnées (ex. SARM-1 + SARM-2)
+    let valeur = 0
+    for (const col of colonnesGardees) {
+      const raw = (ligne[col] || '0').trim().replace(/\s/g, '').replace(',', '.')
+      const v = Number(raw)
+      if (!isNaN(v)) valeur += v
+    }
+    if (valeur === 0) continue
+
+    // Téléconsultation : détection par libellé → global + télé, pas de spécialité
+    if (/vid[ée]o|t[ée]l[ée]consult/i.test(libelle)) {
+      ajouterA(agrege.global, valeur)
+      ajouterA(agrege.teleconsultations, valeur)
+      continue
+    }
+
+    // Extraction du nom du praticien depuis le libellé
+    let nomExtrait = null
+    let mt = libelle.match(RE_NOM)
+    if (!mt) mt = libelle.match(RE_NOM2)
+    if (mt) {
+      // Retrait des parenthèses de fin (ex. « (Créneau réservé…) », « (a été supprimé) »)
+      nomExtrait = mt[1].replace(/\s*\(.*\)\s*$/, '').trim()
+    }
+
+    const cleRecherche = nomExtrait || libelle
+    const cleNorm = normaliserCle(cleRecherche)
+
+    const regle = trouverRegle(cleNorm, regleParCle)
+
+    if (regle) {
+      if (regle.action === 'ignorer') continue
+
+      ajouterA(agrege.global, valeur)
+
+      if (regle.action === 'teleconsult') {
+        ajouterA(agrege.teleconsultations, valeur)
+      } else if (regle.action === 'praticien' && regle.specId && regle.pratId) {
+        if (!agrege.praticiens[regle.specId]) agrege.praticiens[regle.specId] = {}
+        if (!agrege.praticiens[regle.specId][regle.pratId]) agrege.praticiens[regle.specId][regle.pratId] = {}
+        ajouterA(agrege.praticiens[regle.specId][regle.pratId], valeur)
+      } else if (regle.action === 'specialite' && regle.specId) {
+        if (!agrege.specialites[regle.specId]) agrege.specialites[regle.specId] = {}
+        ajouterA(agrege.specialites[regle.specId], valeur)
+      }
+      // action === 'global' : déjà compté ci-dessus
+    } else {
+      // Clé inconnue → file d'attente (count = nombre de consultations, pas de lignes)
+      if (!inconnues[cleNorm]) inconnues[cleNorm] = { cle: cleRecherche, count: 0, exemples: [] }
+      inconnues[cleNorm].count += valeur
+      if (inconnues[cleNorm].exemples.length < 3) inconnues[cleNorm].exemples.push({ mois, annee })
+    }
+  }
+
+  const fileAttente = Object.entries(inconnues).map(([, info]) => ({
+    cle: info.cle,
+    count: info.count,
+    exemples: info.exemples,
+    actionSelectionnee: null,
+  }))
+
+  const apercu = construireApercu(agrege)
+  return { agrege, fileAttente, apercu, erreursParsing: parsed.errors }
+}
+
+/**
+ * Relance analyserStats avec des règles supplémentaires (après classement manuel en mode stats).
+ */
+export function reanalyserStats(texteCSV, config, reglesExistantes, reglesNouvelles) {
+  const toutesRegles = [...(reglesExistantes || []), ...(reglesNouvelles || [])]
+  return analyserStats(texteCSV, config, toutesRegles)
+}
+
+// ─── Réanalyse (mode RDV) ─────────────────────────────────────────────────────
 
 /**
  * Fusionne des résultats de classement (fileAttente avec actions choisies)

@@ -182,6 +182,14 @@ const REGLES_GASTRO = [
   { cle: 'Dr VERCAMBRE-AUFORT',     action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
   { cle: 'VERCAMBRE AUFORT',        action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
   { cle: 'VERCAMBRE-AUFORT',        action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+  // Alias VERCAMBRE seul (variante dans l'export statistiques Doctolib)
+  { cle: 'VERCAMBRE',               action: 'praticien', specId: GASTRO, pratId: 'vercambre-aufort' },
+
+  // Charpy-Debourdeau Flora (alias pour Charpy Flora — variante dans l'export statistiques)
+  { cle: 'CHARPY-DEBOURDEAU Flora',  action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+  { cle: 'CHARPY-DEBOURDEAU',        action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+  { cle: 'CHARPY DEBOURDEAU Flora',  action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+  { cle: 'CHARPY DEBOURDEAU',        action: 'praticien', specId: GASTRO, pratId: 'charpy' },
 ]
 
 // ─── Pneumologie ─────────────────────────────────────────────────────────────
@@ -237,7 +245,8 @@ const REGLES_PNEUMO = [
 //   { cle: 'Visite',     action: 'ignorer' },
 
 const REGLES_GLOBALES = [
-  // ← À REMPLIR
+  // Consultation vidéo d'anesthésie → catégorie téléconsultation
+  { cle: "Consultation vidéo d'anesthésie", action: 'teleconsult' },
 ]
 
 // ─── Export ───────────────────────────────────────────────────────────────────
