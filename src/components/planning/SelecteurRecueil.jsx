@@ -7,7 +7,7 @@ import { ANNEES } from '../../utils/calendrier'
  *   initiales              — initiales de l'associé connecté
  *   annee, onChangeAnnee   — année courante
  *   recueilId, onChangeRecueil — recueil sélectionné (id)
- *   recueils               — recueils OUVERTS de l'année [{ id, nom, semaine_debut, semaine_fin }]
+ *   recueils               — recueils de l'année [{ id, nom, semaine_debut, semaine_fin, statut }]
  */
 export default function SelecteurRecueil({
   initiales, annee, onChangeAnnee, recueilId, onChangeRecueil, recueils = [],
@@ -54,10 +54,10 @@ export default function SelecteurRecueil({
           disabled={recueils.length === 0}
         >
           {recueils.length === 0
-            ? <option value="">Aucun recueil ouvert</option>
+            ? <option value="">Aucun recueil</option>
             : recueils.map(r => (
               <option key={r.id} value={r.id}>
-                {r.nom} (S{r.semaine_debut}→S{r.semaine_fin})
+                {r.nom} (S{r.semaine_debut}→S{r.semaine_fin}){r.statut === 'ferme' ? ' — fermé' : ''}
               </option>
             ))}
         </select>

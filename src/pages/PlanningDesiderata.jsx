@@ -7,8 +7,9 @@ import SelecteurRecueil from '../components/planning/SelecteurRecueil'
 import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
 import WeekendsIndispo from '../components/planning/WeekendsIndispo'
+import RecapDesiderata from '../components/planning/RecapDesiderata'
 
-// Sélecteur de sous-semaine de vacances (1ʳᵉ / 2ᵉ / les deux).
+// Sélecteur de sous-semaine de vacances (1ʳᵉ / 2ᵉ / peu importe).
 function SousSemaine({ nom, valeur, onChange }) {
   const st = {
     bloc: { marginTop: 10, paddingLeft: 14, borderLeft: '2px solid var(--color-primary-light)' },
@@ -42,30 +43,29 @@ export default function PlanningDesiderata() {
   const initiales = profile?.initiales ?? null
 
   const [annee, setAnnee] = useState(ANNEE_DEFAUT)
-  const [recueils, setRecueils] = useState([])     // recueils ouverts de l'année
+  const [recueils, setRecueils] = useState([])
   const [recueilId, setRecueilId] = useState(null)
   const [data, setData] = useState(desiderataVide())
   const [soumis, setSoumis] = useState(false)
   const [majLe, setMajLe] = useState(null)
+  const [edition, setEdition] = useState(false)
   const [chargement, setChargement] = useState(false)
   const [flash, setFlash] = useState(null)
   const [erreur, setErreur] = useState(null)
 
-  // Charge les recueils ouverts de l'année
+  const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
+  const ferme = recueil?.statut === 'ferme'
+
+  // Charge les recueils de l'année (ouverts ET fermés ; les fermés sont en lecture seule)
   useEffect(() => {
     let annule = false
-    async function charger() {
-      try {
-        const rs = await listerRecueils(annee)
+    listerRecueils(annee)
+      .then(rs => {
         if (annule) return
-        const ouverts = rs.filter(r => r.statut === 'ouvert')
-        setRecueils(ouverts)
-        setRecueilId(prev => (ouverts.some(r => r.id === prev) ? prev : (ouverts[0]?.id ?? null)))
-      } catch {
-        if (!annule) setErreur('Impossible de charger les recueils ouverts.')
-      }
-    }
-    charger()
+        setRecueils(rs)
+        setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : (rs[0]?.id ?? null)))
+      })
+      .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
     return () => { annule = true }
   }, [annee])
 
@@ -79,6 +79,9 @@ export default function PlanningDesiderata() {
         const r = await chargerMesDesiderata(session.user.id, recueilId)
         if (annule) return
         setData(r.data); setSoumis(r.soumis); setMajLe(r.updatedAt)
+        // Verrouillé si déjà transmis ; édition si jamais soumis et recueil ouvert.
+        const rec = recueils.find(x => x.id === recueilId)
+        setEdition(!r.soumis && rec?.statut !== 'ferme')
       } catch {
         if (!annule) setErreur('Impossible de charger vos desiderata.')
       } finally {
@@ -87,9 +90,8 @@ export default function PlanningDesiderata() {
     }
     charger()
     return () => { annule = true }
-  }, [recueilId, session])
+  }, [recueilId, session, recueils])
 
-  const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const semaines = useMemo(
     () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
     [annee, recueil]
@@ -113,6 +115,7 @@ export default function PlanningDesiderata() {
       await sauverMesDesiderata(session.user.id, recueilId, data, true)
       setSoumis(true)
       setMajLe(new Date().toISOString())
+      setEdition(false)
       setFlash('Desiderata enregistrés.')
       setTimeout(() => setFlash(null), 3000)
     } catch {
@@ -139,7 +142,7 @@ export default function PlanningDesiderata() {
       position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 14,
       padding: '12px 0', background: 'var(--color-bg)',
     },
-    boutonEnreg: {
+    bouton: {
       padding: '10px 20px', background: 'var(--color-primary)', color: '#fff', border: 'none',
       borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500,
     },
@@ -147,6 +150,10 @@ export default function PlanningDesiderata() {
       background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)', padding: '24px', fontSize: 14, color: 'var(--color-text-secondary)',
     },
+    banniere: (couleur, fond) => ({
+      fontSize: 13, color: couleur, background: fond,
+      borderRadius: 'var(--radius-md)', padding: '10px 14px', marginBottom: 16,
+    }),
   }
 
   // ── Cas particuliers ──
@@ -194,12 +201,37 @@ export default function PlanningDesiderata() {
 
       {!recueilId ? (
         <div style={s.info}>
-          Aucun recueil de desiderata n'est ouvert pour {annee}. Le faiseur de planning
-          ouvrira une période quand il sera prêt à recueillir vos souhaits.
+          Aucun recueil de desiderata pour {annee}. Le faiseur de planning ouvrira
+          une période quand il sera prêt à recueillir vos souhaits.
         </div>
       ) : chargement ? (
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
+      ) : !edition ? (
+        // ── Vue verrouillée (lecture seule) ──
+        <>
+          {ferme ? (
+            <div style={s.banniere('var(--color-text-secondary)', 'var(--color-bg)')}>
+              Ce recueil est <strong>fermé</strong> par le faiseur de planning — modification impossible.
+            </div>
+          ) : soumis ? (
+            <div style={s.banniere('var(--color-success)', 'var(--color-success-light)')}>
+              Desiderata transmis{majLe ? ` le ${new Date(majLe).toLocaleString('fr-FR')}` : ''}.
+            </div>
+          ) : null}
+
+          <div style={{ ...s.carte }}>
+            <RecapDesiderata initiales={initiales} d={data} annee={annee} />
+          </div>
+
+          {!ferme && (
+            <div style={s.barreBas}>
+              <button type="button" onClick={() => setEdition(true)} style={s.bouton}>Modifier</button>
+              {flash && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>{flash}</span>}
+            </div>
+          )}
+        </>
       ) : (
+        // ── Mode édition ──
         <>
           {/* Rien à signaler */}
           <div style={s.carte}>
@@ -362,15 +394,8 @@ export default function PlanningDesiderata() {
 
           {/* Barre d'enregistrement */}
           <div style={s.barreBas}>
-            <button type="button" onClick={enregistrer} style={s.boutonEnreg}>
-              Enregistrer
-            </button>
+            <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
             {flash && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>{flash}</span>}
-            {soumis && majLe && !flash && (
-              <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-                Dernier enregistrement : {new Date(majLe).toLocaleString('fr-FR')}
-              </span>
-            )}
           </div>
         </>
       )}

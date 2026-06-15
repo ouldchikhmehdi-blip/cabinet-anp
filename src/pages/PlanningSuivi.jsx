@@ -220,6 +220,10 @@ export default function PlanningSuivi() {
           </div>
         </div>
 
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
+          « Fermer » un recueil bloque les modifications des associés (ils ne peuvent plus que consulter).
+        </div>
+
         {/* Liste des recueils de l'année */}
         {recueils.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -268,7 +272,9 @@ export default function PlanningSuivi() {
       {recueil && (
         <>
           <div style={{ marginBottom: 16 }} className="no-print">
-            <button type="button" onClick={() => window.print()} style={s.bouton}>Imprimer / PDF</button>
+            <button type="button" onClick={() => window.print()} style={s.bouton}>
+              Imprimer les desiderata des associés
+            </button>
           </div>
 
           {/* Board des associés */}
@@ -301,7 +307,7 @@ export default function PlanningSuivi() {
             <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>
               Desiderata — {recueil.nom} ({annee}, S{recueil.semaine_debut}→S{recueil.semaine_fin})
             </h2>
-            {lignes.filter(l => l.relie).map(l => (
+            {lignes.map(l => (
               <div key={l.ini} style={{ marginBottom: 24 }}>
                 <RecapDesiderata initiales={l.ini} d={l.data} annee={annee} />
               </div>

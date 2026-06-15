@@ -6,11 +6,12 @@
 
 export const ANNEE_DEFAUT = 2026
 
-// Sous-semaine d'une période de vacances scolaires (qui dure ~2 semaines).
+// Sous-semaine d'une période de vacances scolaires (qui dure 2 semaines).
+// On ne prend jamais les deux : soit la 1ʳᵉ, soit la 2ᵉ, soit peu importe.
 export const SOUS_SEMAINES = [
   { val: 's1', lib: '1ʳᵉ semaine' },
   { val: 's2', lib: '2ᵉ semaine' },
-  { val: 'les-deux', lib: 'Les deux semaines' },
+  { val: 'indifferent', lib: 'Peu importe (1ʳᵉ ou 2ᵉ)' },
 ]
 export function labelSousSemaine(v) {
   return SOUS_SEMAINES.find(s => s.val === v)?.lib ?? null
