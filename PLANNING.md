@@ -147,6 +147,8 @@ Tous ces champs sont **facultatifs** : certains associés n'auront rien à rempl
 - les semaines de vacances scolaires (la suite en dépend : remplaçants, version « avec remplaçant », couverture vacances) ;
 - les jours fériés, avec leur statut garde ou astreinte selon le jour où ils tombent.
 
+> **Cadence — l'Étape 0 est annuelle, posée une seule fois.** Elle se fait en **début d'année**, au moment d'initier le planning. Elle couvre toute l'année civile, donc les deux phases de planning suivantes (**été** et **sept-déc**, cf. §1) **réutilisent la même base** : on n'a **pas besoin** de refaire l'Étape 0 en y revenant (sauf ajustement ponctuel). Le découpage par phases concerne la **construction** du planning, pas la base de calendrier.
+
 Puis, sur cette base :
 
 1. **Caler les week-ends** de tout le monde (placement des A/G entre nos associés, selon desiderata) → affiché dans l'Excel → validation → étape suivante.
@@ -221,6 +223,8 @@ Il sait ainsi qui relancer. Il n'a pas à attendre que tout le monde ait répond
 **Consultation des desiderata en direct.** Pendant la construction, le faiseur de planning peut cliquer sur un associé pour afficher clairement ses desiderata (panneau qui s'ouvre), recliquer pour les masquer, et passer ainsi rapidement de l'un à l'autre — utile quand il hésite ou doit faire un ajustement.
 
 **Export / impression.** Un bouton permet d'exporter en PDF l'ensemble des desiderata (un récapitulatif clair, une section par personne) — et, plus largement, le planning — afin de tout imprimer d'un clic. La mise en page doit être visuelle, lisible et bien organisée, pour retrouver facilement les informations de chaque associé.
+
+> **Convention export Excel** : dans tout fichier Excel généré (Base calendrier, objectifs, planning…), le **texte de chaque cellule est centré** (horizontalement et verticalement) — libellés compris, pas seulement les valeurs. Police **Calibri 11**.
 
 ### 18. Points encore en suspens
 

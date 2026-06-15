@@ -169,11 +169,9 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null) {
         return v == null ? '' : v
       })
       const row = ws.addRow([ligne.label, ...valeurs, ligne.label])
-      row.eachCell({ includeEmpty: true }, (cell, col) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = bordures()
-        cell.alignment = (col === 1 || col === 1 + ASSOCIES.length + 1)
-          ? { vertical: 'middle', horizontal: 'left' }
-          : centre
+        cell.alignment = centre
         cell.font = { name: 'Calibri', size: 11 }
       })
     }
