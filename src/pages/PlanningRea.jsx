@@ -1,0 +1,366 @@
+import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useAuth } from '../auth/AuthContext'
+import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO } from '../utils/calendrier'
+import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
+import { ASSOCIES } from '../data/associes'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { chargerCalendrier } from '../utils/calendrierApi'
+import { chargerObjectifs } from '../utils/objectifsApi'
+import { chargerWeekends } from '../utils/weekendsApi'
+import { chargerVacances } from '../utils/vacancesApi'
+import { chargerRea, sauverRea } from '../utils/reaApi'
+import { proposerRea, analyserRea } from '../utils/rea'
+import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+
+const JOUR_MS = 24 * 60 * 60 * 1000
+
+export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+  const { session, profile } = useAuth()
+  const estFaiseur = profile?.is_faiseur === true
+
+  const [anneeInterne, setAnneeInterne] = useState(ANNEE_DEFAUT)
+  const annee = anneeProp ?? anneeInterne
+  const setAnnee = onChangeAnnee ?? setAnneeInterne
+
+  const [recueils, setRecueils] = useState([])
+  const [recueilId, setRecueilId] = useState(null)
+  const [profils, setProfils] = useState([])
+  const [desideratas, setDesideratas] = useState([])
+  const [calendrier, setCalendrier] = useState(null)
+  const [objectifs, setObjectifs] = useState(null)
+  const [weekends, setWeekends] = useState(null)
+  const [vacancesData, setVacancesData] = useState(null)
+  const [data, setData] = useState(null)        // { v, rea: { num: ini } } (toute l'année)
+  const [erreur, setErreur] = useState(null)
+  const [enregistre, setEnregistre] = useState(false)
+  const [exportEnCours, setExportEnCours] = useState(false)
+
+  // Recueils « normaux » + profils.
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    Promise.all([listerRecueils(annee), chargerProfilsAvecInitiales()])
+      .then(([rs, ps]) => {
+        if (annule) return
+        const normaux = rs.filter(r => r.type !== 'ete')
+        setRecueils(normaux)
+        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : (normaux[0]?.id ?? null)))
+        setProfils(ps)
+      })
+      .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
+  // Calendrier + objectifs + week-ends + vacances (export) + réa.
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee)])
+      .then(([cal, obj, we, vac, rea]) => {
+        if (annule) return
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setData(rea); onStatut?.('vierge')
+      })
+      .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
+    return () => { annule = true }
+  }, [annee, estFaiseur, onStatut])
+
+  // Desiderata du recueil sélectionné.
+  useEffect(() => {
+    if (!estFaiseur || !recueilId) return
+    let annule = false
+    chargerTousDesiderata(recueilId)
+      .then(rows => { if (!annule) setDesideratas(rows) })
+      .catch(() => { if (!annule) setErreur('Impossible de charger les desiderata du recueil.') })
+    return () => { annule = true }
+  }, [recueilId, estFaiseur])
+
+  const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
+
+  // Jours off demandés par associé → semaines ISO concernées : { ini: Set(nums) }.
+  const joursOffParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const map = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      const set = new Set()
+      for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+        try { set.add(numeroSemaineISO(parseISO(iso))) } catch { /* date invalide ignorée */ }
+      }
+      map[ini] = set
+    }
+    return map
+  }, [desideratas, profils])
+
+  const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
+  const rea = useMemo(() => data?.rea ?? {}, [data])
+
+  const objectifRea = useMemo(() => {
+    const m = {}
+    for (const ini of ASSOCIES) { const v = objectifs?.valeurs?.[ini]?.rea; if (v != null) m[ini] = v }
+    return m
+  }, [objectifs])
+
+  const semaines = useMemo(
+    () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
+    [annee, recueil]
+  )
+
+  const analyses = useMemo(() => {
+    const m = {}
+    for (const s of semaines) m[s.num] = analyserRea(s.num, rea[s.num], joursOffParAssocie, weekendAff)
+    return m
+  }, [semaines, rea, joursOffParAssocie, weekendAff])
+
+  const recap = useMemo(() => {
+    let attribuees = 0, off = 0, garde = 0
+    for (const s of semaines) {
+      if (rea[s.num]) attribuees++
+      const a = analyses[s.num]
+      if (a?.jourOff) off++
+      if (a?.gardeApres) garde++
+    }
+    return { total: semaines.length, attribuees, off, garde }
+  }, [semaines, rea, analyses])
+
+  const compteParAssocie = useMemo(() => {
+    const m = {}
+    for (const ini of ASSOCIES) m[ini] = 0
+    for (const s of semaines) { const ini = rea[s.num]; if (ini && m[ini] != null) m[ini]++ }
+    return m
+  }, [semaines, rea])
+
+  function majRea(num, ini) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const r = { ...prev.rea }
+      if (ini) r[num] = ini
+      else delete r[num]
+      return { ...prev, rea: r }
+    })
+  }
+
+  function proposer() {
+    if (!recueil) return
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const debut = recueil.semaine_debut, fin = recueil.semaine_fin
+      const horsPlage = {}
+      for (const [num, ini] of Object.entries(prev.rea)) {
+        const n = Number(num)
+        if (n < debut || n > fin) horsPlage[n] = ini
+      }
+      const proposees = proposerRea(semaines, joursOffParAssocie, weekendAff, objectifRea, horsPlage)
+      return { ...prev, rea: { ...horsPlage, ...proposees } }
+    })
+  }
+
+  async function enregistrer() {
+    setErreur(null)
+    try {
+      await sauverRea(annee, data, session.user.id)
+      setEnregistre(true); onStatut?.('enregistre')
+      setTimeout(() => setEnregistre(false), 3000)
+    } catch {
+      setErreur('Enregistrement impossible (réservé au faiseur).')
+    }
+  }
+
+  async function exporter() {
+    setErreur(null); setExportEnCours(true)
+    try {
+      // Étape 5 : base calendrier + objectifs + week-ends + vacances + réa (incrémental).
+      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, data.rea)
+    } catch {
+      setErreur('Export Excel impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
+  // ── Styles ──
+  const s = {
+    select: {
+      padding: '8px 12px', fontSize: 14, border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
+    },
+    bouton: {
+      padding: '10px 20px', background: 'var(--color-primary)', color: '#fff', border: 'none',
+      borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500,
+    },
+    carte: {
+      background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)', padding: '8px 14px', marginBottom: 24,
+    },
+    ligne: {
+      display: 'grid', gridTemplateColumns: '200px 110px 150px 160px',
+      gap: 8, alignItems: 'center', padding: '5px 0',
+    },
+    entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
+    selPetit: {
+      padding: '5px 6px', fontSize: 12, borderRadius: 'var(--radius-md)',
+      border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', width: '100%',
+    },
+    selRea: (alerte) => ({
+      padding: '6px 8px', fontSize: 13, borderRadius: 'var(--radius-md)',
+      border: `0.5px solid ${alerte === 'rouge' ? 'var(--color-danger)' : alerte === 'orange' ? 'var(--color-amber)' : 'var(--color-border)'}`,
+      background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', width: '100%',
+    }),
+    moisSep: {
+      fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)',
+      padding: '12px 0 4px', marginTop: 4, borderTop: '0.5px solid var(--color-border)',
+    },
+    etat: (couleur) => ({ fontSize: 12, color: couleur, display: 'inline-flex', alignItems: 'center', gap: 4 }),
+    compteurs: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 },
+    chip: { fontSize: 12, padding: '6px 10px', borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-surface)' },
+  }
+
+  if (!estFaiseur) {
+    return (
+      <div style={{ maxWidth: 640 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>Réanimation</h1>
+        <div style={{ ...s.carte, color: 'var(--color-text-secondary)', fontSize: 14, padding: 24 }}>
+          Cette page est réservée au faiseur de planning.
+        </div>
+      </div>
+    )
+  }
+
+  const pret = data !== null && calendrier !== null
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Réanimation {annee}</h1>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+        Un associé en réa par semaine, réparti pour équilibrer le total entre tous. Choisissez une
+        période, laissez l'outil <strong>proposer</strong> puis ajustez : il vous alerte si la réa
+        tombe sur un jour off demandé, ou si elle précède un week-end de garde du même associé
+        (à éviter sauf exception). Vous gardez le dernier mot.
+      </p>
+
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Année</label>
+          <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
+            {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Période (recueil)</label>
+          <select value={recueilId ?? ''} onChange={e => setRecueilId(e.target.value || null)} style={s.select} disabled={recueils.length === 0}>
+            {recueils.length === 0 && <option value="">Aucun recueil</option>}
+            {recueils.map(r => <option key={r.id} value={r.id}>{r.nom} · S{r.semaine_debut}→S{r.semaine_fin}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
+          Proposer automatiquement
+        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
+            Enregistrer
+          </button>
+          <button
+            type="button"
+            onClick={exporter}
+            disabled={!pret || exportEnCours}
+            style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || exportEnCours) ? 0.6 : 1 }}
+            title="Génère un fichier Excel : base calendrier + objectifs + week-ends + vacances + réa"
+          >
+            {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
+          </button>
+          {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
+        </div>
+      </div>
+
+      {erreur && (
+        <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+          {erreur}
+        </div>
+      )}
+
+      {!recueil ? (
+        <div style={{ ...s.carte, color: 'var(--color-text-secondary)', fontSize: 14, padding: 20 }}>
+          Aucune période disponible. Créez un recueil « normal » dans <strong>Suivi desiderata</strong>.
+        </div>
+      ) : !pret ? (
+        <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
+      ) : (
+        <>
+          {/* Récap */}
+          <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--color-text-secondary)' }}>{recap.attribuees}/{recap.total} semaines attribuées</span>
+            <span style={{ color: recap.off ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.off} jour off</span>
+            <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} avant WE de garde</span>
+          </div>
+
+          {/* Compteurs par associé */}
+          <div style={s.compteurs}>
+            {ASSOCIES.map(ini => (
+              <span key={ini} style={s.chip}>
+                <strong>{ini}</strong> : {compteParAssocie[ini]}
+                {objectifRea[ini] != null && <span style={{ color: 'var(--color-text-tertiary)' }}> / {objectifRea[ini]}</span>}
+              </span>
+            ))}
+          </div>
+
+          {/* Tableau des semaines */}
+          <div style={s.carte}>
+            <div style={{ ...s.ligne, borderBottom: '0.5px solid var(--color-border)', paddingBottom: 6, marginBottom: 4 }}>
+              <span style={s.entete}>Semaine</span>
+              <span style={s.entete}>État</span>
+              <span style={s.entete}>Dispo</span>
+              <span style={s.entete}>Réa</span>
+            </div>
+            {semaines.map((sem, idx) => {
+              const jeudi = new Date(sem.lundi.getTime() + 3 * JOUR_MS)
+              const moisPrec = idx > 0 ? new Date(semaines[idx - 1].lundi.getTime() + 3 * JOUR_MS).getUTCMonth() : null
+              const sep = idx === 0 || jeudi.getUTCMonth() !== moisPrec
+              const ini = rea[sem.num] ?? ''
+              const a = analyses[sem.num]
+              const alerte = a?.jourOff ? 'rouge' : (a?.gardeApres ? 'orange' : null)
+              const dispo = ASSOCIES.filter(x => !joursOffParAssocie[x]?.has(sem.num) && weekendAff[sem.num] !== x)
+              return (
+                <Fragment key={sem.num}>
+                  {sep && <div style={s.moisSep}>{moisAnneeFR(jeudi)}</div>}
+                  <div style={s.ligne}>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                      S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
+                    </span>
+                    <span>
+                      {!ini ? (
+                        <span style={s.etat('var(--color-text-tertiary)')}>—</span>
+                      ) : a.jourOff ? (
+                        <span style={s.etat('var(--color-danger)')} title="La réa tombe sur un jour off demandé par cet associé">🔴 jour off</span>
+                      ) : a.gardeApres ? (
+                        <span style={s.etat('var(--color-amber)')} title="Réa juste avant un week-end de garde du même associé (éviter sauf exception)">🟠 WE garde</span>
+                      ) : (
+                        <span style={s.etat('var(--color-success)')}>✓</span>
+                      )}
+                    </span>
+                    <select value="" onChange={() => {}} style={s.selPetit} title="Associés sans jour off cette semaine et non de garde le week-end">
+                      <option value="">{dispo.length}/{ASSOCIES.length} dispo</option>
+                      {dispo.map(x => <option key={x} value={x}>{x}</option>)}
+                    </select>
+                    <select value={ini} onChange={e => majRea(sem.num, e.target.value)} style={s.selRea(alerte)}>
+                      <option value="">—</option>
+                      {ASSOCIES.map(x => {
+                        const off = joursOffParAssocie[x]?.has(sem.num)
+                        const garde = weekendAff[sem.num] === x
+                        return (
+                          <option key={x} value={x}>
+                            {x}{off ? ' ⚠ jour off' : garde ? ' ⚠ WE garde' : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                </Fragment>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
