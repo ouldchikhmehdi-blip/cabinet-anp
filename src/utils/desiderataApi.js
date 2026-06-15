@@ -40,6 +40,14 @@ export async function definirStatutRecueil(id, statut) {
   if (error) throw error
 }
 
+export async function definirTypeRecueil(id, type) {
+  const { error } = await supabase
+    .from('planning_recueils')
+    .update({ type })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function supprimerRecueil(id) {
   const { error } = await supabase.from('planning_recueils').delete().eq('id', id)
   if (error) throw error

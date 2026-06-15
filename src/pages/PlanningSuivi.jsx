@@ -5,7 +5,7 @@ import { ANNEES, listerSemaines } from '../utils/calendrier'
 import { desiderataVide, normaliser, estRempli, ANNEE_DEFAUT } from '../utils/desiderata'
 import {
   chargerTousDesiderata, chargerProfilsAvecInitiales,
-  listerRecueils, creerRecueil, definirStatutRecueil, supprimerRecueil,
+  listerRecueils, creerRecueil, definirStatutRecueil, definirTypeRecueil, supprimerRecueil,
 } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
@@ -108,6 +108,16 @@ export default function PlanningSuivi() {
     setErreur(null)
     try {
       await definirStatutRecueil(r.id, r.statut === 'ouvert' ? 'ferme' : 'ouvert')
+      await rechargerRecueils(r.id)
+    } catch {
+      setErreur('Action impossible.')
+    }
+  }
+
+  async function basculerType(r) {
+    setErreur(null)
+    try {
+      await definirTypeRecueil(r.id, r.type === 'ete' ? 'normal' : 'ete')
       await rechargerRecueils(r.id)
     } catch {
       setErreur('Action impossible.')
@@ -275,6 +285,9 @@ export default function PlanningSuivi() {
                     <span style={s.point(ouvertR ? 'var(--color-success)' : 'var(--color-text-tertiary)')} />
                     {ouvertR ? 'Ouvert' : 'Fermé'}
                   </span>
+                  <button type="button" onClick={() => basculerType(r)} style={s.boutonSec} title="Un recueil « été » masque les week-ends et jours off dans la saisie des associés">
+                    {r.type === 'ete' ? 'Repasser « normal »' : 'Marquer « été »'}
+                  </button>
                   <button type="button" onClick={() => basculer(r)} style={s.boutonSec}>{ouvertR ? 'Fermer' : 'Ouvrir'}</button>
                   <button type="button" onClick={() => supprimer(r)} style={s.boutonDanger}>Supprimer</button>
                 </div>
