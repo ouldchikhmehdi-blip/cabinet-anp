@@ -194,7 +194,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       borderRadius: 'var(--radius-lg)', padding: '8px 14px', marginBottom: 24,
     },
     ligne: {
-      display: 'grid', gridTemplateColumns: '200px 46px 46px 120px 150px 150px',
+      display: 'grid', gridTemplateColumns: '200px 46px 46px 84px 150px 150px',
       gap: 8, alignItems: 'center', padding: '4px 0',
     },
     entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
@@ -254,22 +254,24 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
             {recueils.map(r => <option key={r.id} value={r.id}>{r.nom} · S{r.semaine_debut}→S{r.semaine_fin}</option>)}
           </select>
         </div>
-        <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
+        <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
           Proposer automatiquement
         </button>
-        <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, opacity: !pret ? 0.5 : 1 }}>
-          Enregistrer
-        </button>
-        <button
-          type="button"
-          onClick={exporter}
-          disabled={!pret || exportEnCours}
-          style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || exportEnCours) ? 0.6 : 1 }}
-          title="Génère un fichier Excel : base calendrier + objectifs + week-ends"
-        >
-          {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
-        </button>
-        {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
+            Enregistrer
+          </button>
+          <button
+            type="button"
+            onClick={exporter}
+            disabled={!pret || exportEnCours}
+            style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || exportEnCours) ? 0.6 : 1 }}
+            title="Génère un fichier Excel : base calendrier + objectifs + week-ends"
+          >
+            {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
+          </button>
+          {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
+        </div>
       </div>
 
       {erreur && (
@@ -336,9 +338,9 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                       {!ini ? (
                         <span style={s.etat('var(--color-text-tertiary)')}>—</span>
                       ) : a.indispo ? (
-                        <span style={s.etat('var(--color-danger)')}>🔴 indisponible (desiderata)</span>
+                        <span style={s.etat('var(--color-danger)')} title="Indisponible (desiderata)">🔴 indispo</span>
                       ) : a.tropProche != null ? (
-                        <span style={s.etat('var(--color-amber)')}>🟠 &lt; {ESPACEMENT_MIN} sem. (WE S{a.tropProche})</span>
+                        <span style={s.etat('var(--color-amber)')} title={`Moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}`}>🟠 &lt;{ESPACEMENT_MIN} sem</span>
                       ) : (
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
