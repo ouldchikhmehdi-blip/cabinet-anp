@@ -94,6 +94,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
   }, [desideratas, profils])
 
   const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
+  const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
   const rea = useMemo(() => data?.rea ?? {}, [data])
 
   const objectifRea = useMemo(() => {
@@ -109,19 +110,20 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
 
   const analyses = useMemo(() => {
     const m = {}
-    for (const s of semaines) m[s.num] = analyserRea(s.num, rea[s.num], joursOffParAssocie, weekendAff)
+    for (const s of semaines) m[s.num] = analyserRea(s.num, rea[s.num], joursOffParAssocie, weekendAff, vacancesParSemaine)
     return m
-  }, [semaines, rea, joursOffParAssocie, weekendAff])
+  }, [semaines, rea, joursOffParAssocie, weekendAff, vacancesParSemaine])
 
   const recap = useMemo(() => {
-    let attribuees = 0, off = 0, garde = 0
+    let attribuees = 0, vac = 0, off = 0, garde = 0
     for (const s of semaines) {
       if (rea[s.num]) attribuees++
       const a = analyses[s.num]
+      if (a?.vacances) vac++
       if (a?.jourOff) off++
-      if (a?.gardeApres) garde++
+      if (a?.garde) garde++
     }
-    return { total: semaines.length, attribuees, off, garde }
+    return { total: semaines.length, attribuees, vac, off, garde }
   }, [semaines, rea, analyses])
 
   const compteParAssocie = useMemo(() => {
@@ -151,7 +153,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = ini
       }
-      const proposees = proposerRea(semaines, joursOffParAssocie, weekendAff, objectifRea, horsPlage)
+      const proposees = proposerRea(semaines, joursOffParAssocie, weekendAff, objectifRea, horsPlage, vacancesParSemaine)
       return { ...prev, rea: { ...horsPlage, ...proposees } }
     })
   }
@@ -290,8 +292,9 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
           {/* Récap */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.attribuees}/{recap.total} semaines attribuées</span>
+            <span style={{ color: recap.vac ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.vac} en vacances</span>
             <span style={{ color: recap.off ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.off} jour off</span>
-            <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} avant WE de garde</span>
+            <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} week-end de garde collé</span>
           </div>
 
           {/* Compteurs par associé */}
@@ -318,8 +321,12 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
               const sep = idx === 0 || jeudi.getUTCMonth() !== moisPrec
               const ini = rea[sem.num] ?? ''
               const a = analyses[sem.num]
-              const alerte = a?.jourOff ? 'rouge' : (a?.gardeApres ? 'orange' : null)
-              const dispo = ASSOCIES.filter(x => !joursOffParAssocie[x]?.has(sem.num) && weekendAff[sem.num] !== x)
+              const alerte = (a?.vacances || a?.jourOff) ? 'rouge' : (a?.garde ? 'orange' : null)
+              const dispo = ASSOCIES.filter(x =>
+                !vacancesParSemaine[sem.num]?.includes(x) &&
+                !joursOffParAssocie[x]?.has(sem.num) &&
+                weekendAff[sem.num] !== x && weekendAff[sem.num - 1] !== x
+              )
               return (
                 <Fragment key={sem.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(jeudi)}</div>}
@@ -330,10 +337,12 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                     <span>
                       {!ini ? (
                         <span style={s.etat('var(--color-text-tertiary)')}>—</span>
+                      ) : a.vacances ? (
+                        <span style={s.etat('var(--color-danger)')} title="Cet associé est en vacances cette semaine (poste exclusif)">🔴 vacances</span>
                       ) : a.jourOff ? (
                         <span style={s.etat('var(--color-danger)')} title="La réa tombe sur un jour off demandé par cet associé">🔴 jour off</span>
-                      ) : a.gardeApres ? (
-                        <span style={s.etat('var(--color-amber)')} title="Réa juste avant un week-end de garde du même associé (éviter sauf exception)">🟠 WE garde</span>
+                      ) : a.garde ? (
+                        <span style={s.etat('var(--color-amber)')} title="Réa accolée à un week-end de garde du même associé (repos du lendemain, §5 — éviter sauf exception)">🟠 WE garde</span>
                       ) : (
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
@@ -345,13 +354,11 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                     <select value={ini} onChange={e => majRea(sem.num, e.target.value)} style={s.selRea(alerte)}>
                       <option value="">—</option>
                       {ASSOCIES.map(x => {
+                        const vac = vacancesParSemaine[sem.num]?.includes(x)
                         const off = joursOffParAssocie[x]?.has(sem.num)
-                        const garde = weekendAff[sem.num] === x
-                        return (
-                          <option key={x} value={x}>
-                            {x}{off ? ' ⚠ jour off' : garde ? ' ⚠ WE garde' : ''}
-                          </option>
-                        )
+                        const garde = weekendAff[sem.num] === x || weekendAff[sem.num - 1] === x
+                        const marque = vac ? ' ⚠ vacances' : off ? ' ⚠ jour off' : garde ? ' ⚠ WE garde' : ''
+                        return <option key={x} value={x}>{x}{marque}</option>
                       })}
                     </select>
                   </div>

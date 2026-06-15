@@ -73,11 +73,13 @@ Chaîne logique :
 ### 5. Règles dures (à respecter absolument)
 
 - Lundi = astreinte, mardi = garde, mercredi = astreinte (cf. §3).
+- **Un seul poste à la fois** : un associé n'occupe qu'un poste à un instant donné. **Les vacances comptent comme un poste** → on ne peut pas être en réa (ni à un autre poste) une semaine de congé.
 - **Repos du lendemain** :
   - après une garde → lendemain off (toujours) ;
   - après une astreinte → lendemain off (toujours) ;
   - après un viscéral le mardi → mercredi off ;
   - après un viscéral le jeudi → vendredi off.
+- **Réa et week-end de garde non accolés** : une semaine de réa ne doit être ni **juste avant** un week-end de garde du même associé (réa S + garde le WE S), ni **juste après** (garde le WE S-1 → lundi de repos, donc pas de réa la semaine S). À éviter, sauf exception validée par le faiseur.
 
 ### 6. Règles molles (à viser, ajustables)
 

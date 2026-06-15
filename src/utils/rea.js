@@ -23,14 +23,17 @@ export function normaliserRea(data) {
 }
 
 // Analyse l'affectation réa (ini sur la semaine num) → conflits.
-//   jourOff    : ini a demandé un jour off pendant cette semaine (desiderata)
-//   gardeApres : ini est de garde le week-end de cette semaine (réa juste avant un
-//                week-end de garde → interdit sauf exception validée par le faiseur)
-export function analyserRea(num, ini, joursOffParAssocie, weekendAff = {}) {
-  if (!ini) return { jourOff: false, gardeApres: false }
+//   vacances : ini est en congé cette semaine (poste exclusif : jamais réa + vacances)
+//   jourOff  : ini a demandé un jour off pendant cette semaine (desiderata)
+//   garde    : ini est de garde le week-end de la semaine (S, réa juste avant) OU du
+//              week-end précédent (S-1, réa juste après → repos du lendemain, §5).
+//              À éviter, sauf exception validée par le faiseur.
+export function analyserRea(num, ini, joursOffParAssocie, weekendAff = {}, vacancesParSemaine = {}) {
+  if (!ini) return { vacances: false, jourOff: false, garde: false }
   return {
+    vacances: !!vacancesParSemaine?.[num]?.includes(ini),
     jourOff: !!joursOffParAssocie?.[ini]?.has(num),
-    gardeApres: weekendAff?.[num] === ini,
+    garde: weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini,
   }
 }
 
@@ -40,8 +43,9 @@ export function analyserRea(num, ini, joursOffParAssocie, weekendAff = {}) {
 // - weekendAff : { num: ini } affectations week-end (réa interdite avant un WE de garde)
 // - objectifRea : { ini: number } objectif « Réa » (étape 2), si renseigné
 // - reaHorsPlage : { num: ini } des autres périodes (pour l'équilibrage global)
+// - vacancesParSemaine : { num: [inis] } — un associé en vacances n'est jamais mis en réa
 // Renvoie { num: ini } pour la plage.
-export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, objectifRea = {}, reaHorsPlage = {}) {
+export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, objectifRea = {}, reaHorsPlage = {}, vacancesParSemaine = {}) {
   const resultat = {}
   const compte = {}
   for (const ini of ASSOCIES) compte[ini] = 0
@@ -50,11 +54,14 @@ export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, 
   const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
   for (const num of nums) {
     const sansJourOff = (ini) => !joursOffParAssocie?.[ini]?.has(num)
-    const sansGarde = (ini) => weekendAff?.[num] !== ini
+    const sansGarde = (ini) => weekendAff?.[num] !== ini && weekendAff?.[num - 1] !== ini
 
-    let candidats = ASSOCIES.filter(ini => sansJourOff(ini) && sansGarde(ini))
-    if (candidats.length === 0) candidats = ASSOCIES.filter(sansJourOff) // relâche la garde collée
-    if (candidats.length === 0) candidats = [...ASSOCIES]                 // relâche tout
+    // Vacances = poste exclusif → on n'attribue JAMAIS la réa à un associé en congé.
+    const base = ASSOCIES.filter(ini => !vacancesParSemaine?.[num]?.includes(ini))
+    let candidats = base.filter(ini => sansJourOff(ini) && sansGarde(ini))
+    if (candidats.length === 0) candidats = base.filter(sansGarde)   // relâche le jour off (garde le repos)
+    if (candidats.length === 0) candidats = base                     // relâche aussi le repos (exception)
+    if (candidats.length === 0) continue                             // tout le monde en vacances → vide
     // Équilibrage : moins de réa d'abord ; départage par déficit vs objectif ; puis ordre figé.
     candidats.sort((a, b) => {
       if (compte[a] !== compte[b]) return compte[a] - compte[b]
