@@ -19,12 +19,15 @@ export default function SelecteurSemaines({ semaines, selection, onChange, accen
   const couleurFond = accent === 'danger' ? 'var(--color-danger-light)' : 'var(--color-primary-light)'
 
   function toggle(num) {
-    if (desactivees.includes(num) || semainesScolaires.includes(num)) return // bloqué
+    // Toujours autoriser le décochage (répare un éventuel conflit ancien : une
+    // semaine présente à tort dans les deux listes peut ainsi être retirée).
     if (selection.includes(num)) {
       onChange(selection.filter(n => n !== num))
-    } else {
-      onChange([...selection, num].sort((a, b) => a - b))
+      return
     }
+    // Le blocage ne concerne que l'ajout d'une nouvelle semaine.
+    if (desactivees.includes(num) || semainesScolaires.includes(num)) return
+    onChange([...selection, num].sort((a, b) => a - b))
   }
 
   const s = {
