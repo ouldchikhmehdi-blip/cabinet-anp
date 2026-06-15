@@ -55,21 +55,19 @@ pas). Chaque colonne encode à elle seule « ce qui doit se suivre / ce qui ne p
 **la succession à l'intérieur d'une colonne ne change jamais**, mais **on peut intervertir les
 colonnes entre associés**.
 
-Affecter le planning d'une semaine = donner une colonne à chaque associé. Certaines colonnes sont
-**déjà posées** par les étapes précédentes, ou reconnues automatiquement (détection par contenu) :
+Affecter le planning d'une semaine = donner une colonne à chaque associé. **Quatre colonnes
+spéciales sont DÉSIGNÉES par le faiseur sur chaque trame** (plutôt que devinées par contenu, plus
+fiable) ; elles se remplissent automatiquement à l'affectation, d'après les étapes précédentes :
 
-- colonne **après le week-end** → **désignée par le faiseur sur la trame** (`apresWE`) : donnée à
-  l'associé qui **revient de week-end** ;
-- colonne **avant le week-end** → **désignée par le faiseur sur la trame** (`avantWE`) : donnée à
-  celui qui **s'apprête à faire le week-end suivant** (lien avec l'étape Week-ends : ce week-end →
-  cette colonne, qui porte tel jour off) ;
-- colonne **tout en Réa** → l'associé de réa (étape Réa) — détection auto ;
-- colonne **entièrement vide** → semaine de **vacances** (étape Vacances) — détection auto ;
-- les **autres colonnes** se répartissent pour **coller aux jours off demandés** (jour off demandé
-  = on choisit la colonne dont ce jour est vide) — détection auto.
+- colonne **Réa** (`rea`) → l'associé de réa (étape Réa) ;
+- colonne **Vacances** (`vacances`) → la semaine de **vacances** (étape Vacances) ;
+- colonne **avant le week-end** (`avantWE`) → celui qui **s'apprête à faire le week-end suivant**
+  (lien avec l'étape Week-ends : ce week-end → cette colonne, qui porte tel jour off) ;
+- colonne **après le week-end** (`apresWE`) → l'associé qui **revient de week-end**.
 
-Les colonnes après/avant week-end se remplissent **automatiquement** une fois les week-ends posés,
-d'après la désignation faite sur la trame.
+À la création d'une trame, **Réa et Vacances sont pré-suggérées** (colonne tout en « réa » / colonne
+entièrement vide) mais restent modifiables. Les **autres colonnes** se répartissent ensuite pour
+**coller aux jours off demandés** (jour off demandé = on choisit la colonne dont ce jour est vide).
 
 Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même colonne peut
 revenir rapprochée pour un même associé.

@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerTrames, sauverTrames } from '../utils/tramesApi'
-import { JOURS, JOURS_LABEL, parserCollage, prochainIdTrame, colonneVide } from '../utils/trames'
+import { JOURS, JOURS_LABEL, parserCollage, prochainIdTrame, colonneVide, suggererRoles } from '../utils/trames'
 
 export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
   const { session, profile } = useAuth()
@@ -42,7 +42,8 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     setData(prev => {
       const id = prochainIdTrame(prev.trames)
       const nom = candidatNom.trim() || `Trame ${id}`
-      const trame = { id, nom, colonnes: candidatColonnes.map(c => ({ ...c })), apresWE: null, avantWE: null }
+      const colonnes = candidatColonnes.map(c => ({ ...c }))
+      const trame = { id, nom, colonnes, ...suggererRoles(colonnes) }
       return { ...prev, trames: [...prev.trames, trame] }
     })
     setTexteCollage('')
@@ -134,8 +135,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       borderBottom: '0.5px solid var(--color-border)', borderLeft: '0.5px solid var(--color-border)',
     },
     repos: { color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
-    badgeApres: { fontSize: 10, fontWeight: 600, color: 'var(--color-primary-dark)', marginTop: 2, whiteSpace: 'nowrap' },
-    badgeAvant: { fontSize: 10, fontWeight: 600, color: 'var(--color-primary-dark)', marginTop: 2, whiteSpace: 'nowrap' },
+    badge: { fontSize: 10, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap' },
     croix: {
       border: 'none', background: 'transparent', color: 'var(--color-text-tertiary)',
       cursor: 'pointer', fontSize: 14, padding: '0 4px', lineHeight: 1,
@@ -159,8 +159,16 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
 
   const cellule = (v) => (v && v.trim() ? v : <span style={s.repos}>repos</span>)
 
+  // Les 4 colonnes spéciales désignables, avec libellé + repère + couleur.
+  const ROLES = [
+    { cle: 'rea', label: 'Colonne réa :', court: 'Réa', couleur: '#0E7C66' },
+    { cle: 'vacances', label: 'Colonne vacances :', court: 'Vacances', couleur: '#2D6CB5' },
+    { cle: 'avantWE', label: 'Colonne avant le week-end :', court: '→ avant WE', couleur: 'var(--color-primary-dark)' },
+    { cle: 'apresWE', label: 'Colonne après le week-end :', court: '↩ après WE', couleur: 'var(--color-primary-dark)' },
+  ]
+
   // Rendu d'une grille (jours en lignes × colonnes), pour l'aperçu et le catalogue.
-  // roles (optionnel) = { apresWE, avantWE } : ajoute un repère sur les colonnes désignées.
+  // roles (optionnel) = { rea, vacances, avantWE, apresWE } : repères sur les colonnes désignées.
   const grille = (colonnes, roles = null) => (
     <table style={s.table}>
       <thead>
@@ -169,8 +177,9 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
           {colonnes.map((_, i) => (
             <th key={i} style={s.thCol}>
               <div>C{i + 1}</div>
-              {roles?.apresWE === i && <div style={s.badgeApres}>↩ après WE</div>}
-              {roles?.avantWE === i && <div style={s.badgeAvant}>→ avant WE</div>}
+              {roles && ROLES.filter(r => roles[r.cle] === i).map(r => (
+                <div key={r.cle} style={{ ...s.badge, color: r.couleur }}>{r.court}</div>
+              ))}
             </th>
           ))}
         </tr>
@@ -180,7 +189,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
           <tr key={j}>
             <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
             {colonnes.map((col, i) => {
-              const estRole = roles && (roles.apresWE === i || roles.avantWE === i)
+              const estRole = roles && ROLES.some(r => roles[r.cle] === i)
               return (
                 <td key={i} style={{ ...s.tdCell, background: estRole ? 'var(--color-primary-light)' : (colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent') }}>
                   {cellule(col[j])}
@@ -193,7 +202,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     </table>
   )
 
-  // Sélecteur de colonne pour un rôle (après / avant week-end).
+  // Sélecteur de colonne pour un rôle.
   const selecteurRole = (trame, role, label) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
       {label}
@@ -214,11 +223,12 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
         Une <strong>trame</strong> est une <strong>semaine type entière</strong> : une grille de plusieurs
         colonnes, chaque colonne étant une séquence figée de postes du lundi au vendredi (case vide = repos).
-        Les colonnes s'intervertissent entre associés selon les jours off. Sur chaque trame, vous désignez la
-        colonne <strong>après le week-end</strong> et la colonne <strong>avant le week-end</strong> (elles se
-        rempliront automatiquement selon les week-ends attribués) ; les autres rôles (Réa, vacances, jour off)
-        sont reconnus automatiquement. Le catalogue se remplit par collage depuis Excel, autant de trames que
-        vous voulez (« Normale », « Avec remplaçant », « Vendredi de garde »…).
+        Les colonnes s'intervertissent entre associés selon les jours off. Sur chaque trame, vous désignez les
+        4 colonnes spéciales — <strong>Réa</strong>, <strong>Vacances</strong>, <strong>avant le week-end</strong>,
+        <strong>après le week-end</strong> (Réa et Vacances sont pré-suggérées, à vérifier). Elles se rempliront
+        automatiquement à l'affectation ; les autres colonnes collent aux jours off demandés. Le catalogue se
+        remplit par collage depuis Excel, autant de trames que vous voulez (« Normale », « Avec remplaçant »,
+        « Vendredi de garde »…).
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -311,10 +321,9 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                       <button type="button" onClick={() => supprimerTrame(t.id)} style={{ ...s.croix, marginLeft: 'auto' }} title="Supprimer cette trame">✕</button>
                     </div>
                     <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
-                      {selecteurRole(t, 'apresWE', 'Colonne après le week-end :')}
-                      {selecteurRole(t, 'avantWE', 'Colonne avant le week-end :')}
+                      {ROLES.map(r => <span key={r.cle}>{selecteurRole(t, r.cle, r.label)}</span>)}
                     </div>
-                    {grille(t.colonnes, { apresWE: t.apresWE, avantWE: t.avantWE })}
+                    {grille(t.colonnes, { rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE })}
                   </div>
                 ))}
               </div>

@@ -4,15 +4,17 @@
 // séquence figée lun→ven de postes ("" = repos). Les colonnes sont interchangeables entre
 // associés, mais la succession à l'intérieur d'une colonne ne change jamais.
 //
-// Deux colonnes sont DÉSIGNÉES par le faiseur sur chaque trame (apresWE / avantWE) :
-//   - apresWE : colonne du retour de week-end (à donner à celui qui sort d'un week-end) ;
-//   - avantWE : colonne d'avant week-end (à donner à celui qui s'apprête à faire le week-end).
-// Au moment de l'affectation, ces colonnes se remplissent automatiquement selon les week-ends.
-// Les autres rôles restent détectés par contenu (Réa, vacances = colonne vide, jour off).
+// Quatre colonnes spéciales sont DÉSIGNÉES par le faiseur sur chaque trame (index, ou null) :
+//   - rea      : colonne de réanimation (à donner à l'associé de réa) ;
+//   - vacances : colonne de vacances (semaine de congé) ;
+//   - avantWE  : colonne d'avant week-end (celui qui s'apprête à faire le week-end) ;
+//   - apresWE  : colonne du retour de week-end (celui qui sort d'un week-end).
+// Au moment de l'affectation, ces colonnes se remplissent automatiquement selon les étapes
+// précédentes (Réa, Vacances, Week-ends). Le reste des colonnes colle aux jours off demandés.
 //
 // Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
-// data = { v, trames: [ { id, nom, colonnes: [ { lun..ven } ], apresWE, avantWE } ] }
-// apresWE / avantWE = index (0-based) d'une colonne, ou null si non défini.
+// data = { v, trames: [ { id, nom, colonnes: [ { lun..ven } ], rea, vacances, avantWE, apresWE } ] }
+// rea / vacances / avantWE / apresWE = index (0-based) d'une colonne, ou null si non défini.
 // ============================================================
 export const VERSION_TRAMES = 1
 
@@ -48,8 +50,10 @@ export function normaliserTrames(data) {
       id: Number.isInteger(t?.id) ? t.id : null,
       nom: typeof t?.nom === 'string' ? t.nom.trim() : '',
       colonnes,
-      apresWE: idxCol(t?.apresWE),
+      rea: idxCol(t?.rea),
+      vacances: idxCol(t?.vacances),
       avantWE: idxCol(t?.avantWE),
+      apresWE: idxCol(t?.apresWE),
     }
   })
   // Garantit des id entiers uniques et stables (déterministe, sans Date.now/Math.random).
@@ -76,6 +80,21 @@ export function prochainIdTrame(trames) {
 // Une colonne est-elle entièrement vide (que du repos) ? (sert à la détection « vacances »).
 export function colonneVide(jours) {
   return JOURS.every(j => !(jours?.[j] ?? '').trim())
+}
+
+function normaliserPoste(v) {
+  return (v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+}
+
+// Suggestions de désignation à la création (le faiseur reste libre de corriger) :
+//   - vacances : 1ʳᵉ colonne entièrement vide ;
+//   - rea      : 1ʳᵉ colonne dont les 5 jours contiennent « rea ».
+export function suggererRoles(colonnes) {
+  let vacances = colonnes.findIndex(colonneVide)
+  if (vacances === -1) vacances = null
+  let rea = colonnes.findIndex(col => JOURS.every(j => normaliserPoste(col[j]).includes('rea')))
+  if (rea === -1) rea = null
+  return { rea, vacances, avantWE: null, apresWE: null }
 }
 
 // Parse un bloc collé depuis Excel (tabulations entre colonnes, retours-ligne entre jours).
