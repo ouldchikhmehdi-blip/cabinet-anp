@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react'
 import { setMasqueMontants } from './data/mockData'
+import { useAuth } from './auth/AuthContext'
+import { supabase } from './lib/supabase'
+import Login from './auth/Login'
+import EnrollMFA from './auth/EnrollMFA'
+import AcceptInvitation from './auth/AcceptInvitation'
 import Sidebar from './components/Sidebar'
 import VueGlobale from './pages/VueGlobale'
 import ChiffreAffaires from './pages/ChiffreAffaires'
@@ -11,12 +16,17 @@ import Consultations from './pages/Consultations'
 import Retrocessions from './pages/Retrocessions'
 import Tresorerie from './pages/Tresorerie'
 import ReglesVirements from './pages/ReglesVirements'
+import AdminUsers from './pages/AdminUsers'
 import './index.css'
 
 export default function App() {
+  const { session, profile, aal, nextAal, loading } = useAuth()
   const [page, setPage] = useState('vue-globale')
   const [masque, setMasque] = useState(() => localStorage.getItem('masque') === '1')
   const [sombre, setSombre] = useState(() => localStorage.getItem('theme') === 'sombre')
+
+  // Détecte un token d'invitation dans l'URL
+  const inviteToken = new URLSearchParams(window.location.search).get('invite')
 
   // Synchronise le drapeau monétaire avant le rendu des pages (idempotent, pas de flicker)
   setMasqueMontants(masque)
@@ -36,19 +46,96 @@ export default function App() {
 
   const toggleSombre = () => setSombre(prev => !prev)
 
+  // ── Gating d'authentification ─────────────────────────────────────────────
+  //
+  // Priorité des états :
+  //   1. Chargement initial → écran neutre
+  //   2. Lien d'invitation → AcceptInvitation (avant vérif session)
+  //   3. Pas de session → Login
+  //   4. Session AAL1 sans facteur TOTP (nextAal='aal1') → EnrollMFA obligatoire
+  //   5. Session AAL1 avec facteur enrôlé (nextAal='aal2') → Login (étape code)
+  //   6. Session AAL2 → dashboard (ci-dessous)
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--color-bg)',
+        color: 'var(--color-text-secondary)',
+        fontSize: 14,
+      }}>
+        Chargement…
+      </div>
+    )
+  }
+
+  // Invitation dans l'URL — afficher même si déjà connecté (lien partagé)
+  if (inviteToken && !session) {
+    return <AcceptInvitation token={inviteToken} />
+  }
+
+  if (!session) {
+    return <Login />
+  }
+
+  // Session présente mais pas encore AAL2
+  if (aal !== 'aal2') {
+    // Aucun facteur TOTP enrôlé → forcer l'enrôlement
+    if (nextAal === 'aal1' || nextAal === null) {
+      return <EnrollMFA />
+    }
+    // Facteur enrôlé mais pas encore challengé cette session → retour au Login (étape code)
+    return <Login />
+  }
+
+  // Compte désactivé (vérif supplémentaire côté client)
+  if (profile?.status === 'disabled') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--color-bg)',
+        gap: 16,
+      }}>
+        <div style={{ fontSize: 15, color: 'var(--color-text)' }}>Votre accès a été révoqué.</div>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          style={{
+            padding: '8px 20px',
+            background: 'var(--color-primary)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            cursor: 'pointer',
+          }}
+        >
+          Se déconnecter
+        </button>
+      </div>
+    )
+  }
+
+  // ── Dashboard (AAL2 confirmé) ─────────────────────────────────────────────
   const renderPage = () => {
     switch(page) {
-      case 'vue-globale': return <VueGlobale />
+      case 'vue-globale':      return <VueGlobale />
       case 'chiffre-affaires': return <ChiffreAffaires />
-      case 'salaries-cdi': return <SalariesCDI />
+      case 'salaries-cdi':     return <SalariesCDI />
       case 'remplacants-iade': return <RemplacantsIADE />
-      case 'remplacants-mar': return <RemplacantsMAR />
-      case 'depenses': return <Depenses />
-      case 'consultations': return <Consultations />
-      case 'retrocessions': return <Retrocessions />
-      case 'tresorerie': return <Tresorerie />
+      case 'remplacants-mar':  return <RemplacantsMAR />
+      case 'depenses':         return <Depenses />
+      case 'consultations':    return <Consultations />
+      case 'retrocessions':    return <Retrocessions />
+      case 'tresorerie':       return <Tresorerie />
       case 'regles-virements': return <ReglesVirements />
-      default: return <VueGlobale />
+      case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
+      default:                 return <VueGlobale />
     }
   }
 
@@ -61,6 +148,7 @@ export default function App() {
         onToggleMasque={toggleMasque}
         sombre={sombre}
         onToggleSombre={toggleSombre}
+        isAdmin={profile?.role === 'admin'}
       />
       <main style={{
         flex: 1,

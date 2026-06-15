@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase'
+
 const navItems = [
   { id: 'vue-globale', label: 'Vue globale', icon: '⊞' },
   { id: 'chiffre-affaires', label: "Chiffre d'affaires", icon: '↗' },
@@ -11,7 +13,10 @@ const navItems = [
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
 ]
 
-export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre }) {
+// Entrée de navigation admin (ajoutée dynamiquement si admin)
+const adminItem = { id: 'admin-users', label: 'Comptes', icon: '🔑' }
+
+export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin }) {
   const toggleBtn = (active) => ({
     flex: 1,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -24,6 +29,13 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
     cursor: 'pointer',
     transition: 'all 0.15s',
   })
+
+  const items = isAdmin ? [...navItems, adminItem] : navItems
+
+  async function deconnecter() {
+    await supabase.auth.signOut()
+    // AuthContext détecte la déconnexion → App affiche Login
+  }
 
   return (
     <aside style={{
@@ -54,7 +66,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
       </div>
 
       <nav style={{ padding: '8px 0', flex: 1 }}>
-        {navItems.map(item => (
+        {items.map(item => (
           <button
             key={item.id}
             onClick={() => !item.disabled && onNavigate(item.id)}
@@ -122,6 +134,27 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
             <span>{sombre ? '☀️' : '🌙'}</span> Thème
           </button>
         </div>
+        <button
+          onClick={deconnecter}
+          title="Se déconnecter"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '6px 8px',
+            fontSize: 11,
+            borderRadius: 'var(--radius-md)',
+            border: '0.5px solid var(--color-border)',
+            background: 'var(--color-bg)',
+            color: 'var(--color-text-tertiary)',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+            width: '100%',
+          }}
+        >
+          ⎋ Déconnexion
+        </button>
         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
           8 associés · parts égales
         </div>
