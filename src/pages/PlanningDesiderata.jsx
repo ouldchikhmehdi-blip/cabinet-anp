@@ -8,6 +8,7 @@ import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
 import WeekendsIndispo from '../components/planning/WeekendsIndispo'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
+import InfoPlanning from '../components/planning/InfoPlanning'
 
 // Sélecteur de sous-semaine de vacances (1ʳᵉ / 2ᵉ / peu importe).
 function SousSemaine({ nom, valeur, onChange }) {
@@ -183,6 +184,8 @@ export default function PlanningDesiderata() {
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
         Tous les champs sont facultatifs. Vos desiderata sont privés : seul le faiseur de planning peut les consulter.
       </p>
+
+      <InfoPlanning />
 
       <SelecteurRecueil
         initiales={initiales}
