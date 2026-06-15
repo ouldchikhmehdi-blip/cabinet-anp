@@ -26,7 +26,10 @@ export default function EnrollMFA() {
     async function enroler() {
       setCharge(true)
       try {
-        const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+        const { data, error } = await supabase.auth.mfa.enroll({
+          factorType: 'totp',
+          issuer: 'SARM',  // nom affiché dans l'application authenticator
+        })
         if (error) throw error
         setFactorId(data.id)
         setQrCode(data.totp.qr_code)
