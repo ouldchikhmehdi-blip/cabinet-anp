@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { listerSemaines, joursFeriesFR, formatISO, ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
+import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -35,6 +36,7 @@ export default function PlanningCalendrier() {
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [recup, setRecup] = useState(false)
+  const [exportEnCours, setExportEnCours] = useState(false)
 
   const semaines = useMemo(() => listerSemaines(annee), [annee])
 
@@ -123,6 +125,17 @@ export default function PlanningCalendrier() {
       setErreur('Impossible de récupérer les vacances scolaires (API indisponible). Vous pouvez les cocher manuellement.')
     } finally {
       setRecup(false)
+    }
+  }
+
+  async function exporter() {
+    setErreur(null); setExportEnCours(true)
+    try {
+      await exporterCalendrierExcel(annee, data)
+    } catch {
+      setErreur('Export Excel impossible.')
+    } finally {
+      setExportEnCours(false)
     }
   }
 
@@ -305,9 +318,18 @@ export default function PlanningCalendrier() {
             })}
           </div>
 
-          {/* Enregistrer */}
+          {/* Enregistrer / Exporter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 24 }}>
             <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
+            <button
+              type="button"
+              onClick={exporter}
+              disabled={exportEnCours}
+              style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: exportEnCours ? 0.6 : 1 }}
+              title="Génère un fichier Excel de la base (jours en lignes, G jaune / A orange)"
+            >
+              {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
+            </button>
             {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>Enregistré ✓</span>}
           </div>
         </>
