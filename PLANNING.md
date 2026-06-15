@@ -47,29 +47,39 @@ Le jeudi, le vendredi et les week-ends sont régis par une rotation avec l'autre
 
 ### 4. Les semaines type / trames (cœur du système)
 
-**Une trame = la semaine d'UN associé** : une suite ordonnée de postes du **lundi au vendredi**
-(ex. lundi repos → mardi SARM 1 → mercredi Endoscopie → jeudi Bloc A → vendredi repos). Une
-**cellule vide = repos** (les repos « post-week-end », post-garde, post-viscéral sont déjà
-intégrés dans la trame fournie ; l'outil ne les recalcule pas). La trame encode à elle seule
-« ce qui doit se suivre / ce qui ne peut pas se suivre ».
+**Une trame = une semaine type ENTIÈRE** : une grille de plusieurs **colonnes**, chaque colonne
+étant une **séquence figée** de postes du **lundi au vendredi** (ex. SARM 1 → Endoscopie →
+Viscérale → repos → Endoscopie). Une **cellule vide = repos** (les repos « post-week-end »,
+post-garde, post-viscéral sont déjà intégrés dans les colonnes fournies ; l'outil ne les recalcule
+pas). Chaque colonne encode à elle seule « ce qui doit se suivre / ce qui ne peut pas se suivre » ;
+**la succession à l'intérieur d'une colonne ne change jamais**, mais **on peut intervertir les
+colonnes entre associés**.
 
-Dans le planning, **un associé = une colonne** : une *semaine type* est l'assemblage des colonnes
-des associés, chaque colonne étant remplie par une trame. Le travail du planning consiste à
-affecter à chaque associé une trame pour la semaine donnée (selon desiderata + quotas + espacement).
-Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même trame peut
+Affecter le planning d'une semaine = donner une colonne à chaque associé. Certaines colonnes sont
+**déjà posées** par les étapes précédentes, ou reconnues automatiquement (détection par contenu) :
+
+- colonne **tout en Réa** → l'associé de réa (étape Réa) ;
+- colonne **entièrement vide** → semaine de **vacances** (étape Vacances) ;
+- colonne **lundi off + vendredi off** → associé qui **revient de week-end** ;
+- une colonne **systématiquement donnée à celui qui se prépare à faire le week-end suivant** (lien
+  avec l'étape Week-ends : ce week-end → cette colonne pré-WE, qui porte tel jour off) ;
+- les **autres colonnes** se répartissent pour **coller aux jours off demandés** (jour off demandé
+  = on choisit la colonne dont ce jour est vide).
+
+Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même colonne peut
 revenir rapprochée pour un même associé.
 
-**Catalogue annuel de trames (Étape « Trames », en place).** Le faiseur apporte ses trames par
-**collage depuis Excel** (bloc de 5 lignes lun→ven × N colonnes ; chaque colonne devient une trame),
-puis les nomme librement et les enregistre. Catalogue libre, propre à chaque année (les structures
-changent selon les chirurgiens/opérateurs). Persistance : table `planning_trames`
-(`{annee, data:{ v, trames:[{id,nom,jours:{lun..ven}}] }}`), RLS lecture-tous / écriture-faiseur.
+**Catalogue annuel de trames (Étape « Trames », en place).** Le faiseur apporte ses semaines type
+par **collage depuis Excel** : un bloc de 5 lignes lun→ven × N colonnes = **une trame**, nommée une
+seule fois et enregistrée. Catalogue libre, propre à chaque année (les structures changent selon les
+chirurgiens/opérateurs). Persistance : table `planning_trames`
+(`{annee, data:{ v, trames:[{id,nom,colonnes:[{lun..ven}]}] }}`), RLS lecture-tous / écriture-faiseur.
 Modèle : `src/utils/trames.js` ; API : `src/utils/tramesApi.js` ; écran : `src/pages/PlanningTrames.jsx`.
 
 Plusieurs variantes coexistent dans le catalogue (fournies chaque année) :
 
 - sans remplaçant ;
-- avec remplaçant — plusieurs structures « avec remplaçant » (la trame change selon le remplaçant et ce qu'il couvre ; la colonne remplaçant est ajoutée à droite du planning) ;
+- avec remplaçant — plusieurs structures « avec remplaçant » (la trame change selon le remplaçant et ce qu'il couvre ; la colonne remplaçant est ajoutée à droite de la grille) ;
 - la semaine particulière qui suit un week-end de garde ;
 - variante « vendredi de garde » vs « vendredi d'astreinte ».
 

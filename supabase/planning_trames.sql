@@ -5,8 +5,9 @@
 -- Idempotent (réexécutable sans erreur).
 --
 -- Une ligne = le catalogue de trames d'UNE année. `data` (jsonb) :
---   { v, trames: [ { id, nom, jours: { lun, mar, mer, jeu, ven } } ] }
--- Une trame = la semaine (lun→ven) d'UN associé : suite de postes, "" = repos (§4, §11).
+--   { v, trames: [ { id, nom, colonnes: [ { lun, mar, mer, jeu, ven } ] } ] }
+-- Une trame = une semaine type ENTIÈRE (grille) : N colonnes, chaque colonne = une séquence
+-- figée lun→ven de postes, "" = repos (§4, §11). Colonnes interchangeables entre associés.
 -- Apporté par le faiseur (collage depuis Excel). Donnée de structure annuelle.
 -- ============================================================
 

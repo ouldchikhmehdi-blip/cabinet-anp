@@ -1,13 +1,18 @@
 // ============================================================
 // trames.js — modèle + parsing du catalogue de « semaines type » (PLANNING.md §4, §11).
-// Une trame = la semaine (lun→ven) d'UN associé : suite ordonnée de postes, "" = repos.
-// Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
+// Une trame = une SEMAINE TYPE entière (grille) : N colonnes, chaque colonne étant une
+// séquence figée lun→ven de postes ("" = repos). Les colonnes sont interchangeables entre
+// associés, mais la succession à l'intérieur d'une colonne ne change jamais. Au moment de
+// l'affectation (étape ultérieure), certaines colonnes sont reconnues automatiquement :
+// colonne tout en Réa, colonne entièrement vide (vacances), colonne lundi+vendredi off
+// (retour de week-end), et la colonne dont un jour est off pour coller à un jour off demandé.
 //
-// data = { v, trames: [ { id, nom, jours: { lun, mar, mer, jeu, ven } } ] }
+// Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
+// data = { v, trames: [ { id, nom, colonnes: [ { lun, mar, mer, jeu, ven } ] } ] }
 // ============================================================
 export const VERSION_TRAMES = 1
 
-// Jours couverts par une trame (lun→ven). Le week-end est géré dans l'étape Week-ends.
+// Jours couverts par une colonne (lun→ven). Le week-end est géré dans l'étape Week-ends.
 export const JOURS = ['lun', 'mar', 'mer', 'jeu', 'ven']
 export const JOURS_LABEL = { lun: 'Lundi', mar: 'Mardi', mer: 'Mercredi', jeu: 'Jeudi', ven: 'Vendredi' }
 
@@ -27,23 +32,26 @@ function normaliserJours(src) {
 
 export function normaliserTrames(data) {
   const liste = Array.isArray(data?.trames) ? data.trames : []
-  let prochainId = 1
   const trames = liste.map(t => {
-    const id = Number.isInteger(t?.id) ? t.id : null
+    // Tolère un ancien format { jours } (1 colonne) → on l'enveloppe en colonnes:[…].
+    const colsSrc = Array.isArray(t?.colonnes)
+      ? t.colonnes
+      : (t?.jours ? [t.jours] : [])
     return {
-      id, // réassigné juste après pour garantir l'unicité/numérotation
+      id: Number.isInteger(t?.id) ? t.id : null,
       nom: typeof t?.nom === 'string' ? t.nom.trim() : '',
-      jours: normaliserJours(t?.jours),
+      colonnes: colsSrc.map(normaliserJours),
     }
   })
-  // Garantit des id entiers uniques et stables (max+1, déterministe).
+  // Garantit des id entiers uniques et stables (déterministe, sans Date.now/Math.random).
   const dejaPris = new Set(trames.map(t => t.id).filter(Number.isInteger))
+  let prochain = 1
   for (const t of trames) {
     if (!Number.isInteger(t.id) || t.id < 1) {
-      while (dejaPris.has(prochainId)) prochainId++
-      t.id = prochainId
-      dejaPris.add(prochainId)
-      prochainId++
+      while (dejaPris.has(prochain)) prochain++
+      t.id = prochain
+      dejaPris.add(prochain)
+      prochain++
     }
   }
   return { v: VERSION_TRAMES, trames }
@@ -56,15 +64,19 @@ export function prochainIdTrame(trames) {
   return max + 1
 }
 
+// Une colonne est-elle entièrement vide (que du repos) ? (sert à la détection « vacances »).
+export function colonneVide(jours) {
+  return JOURS.every(j => !(jours?.[j] ?? '').trim())
+}
+
 // Parse un bloc collé depuis Excel (tabulations entre colonnes, retours-ligne entre jours).
-// Disposition attendue : 5 lignes (lun→ven) × N colonnes (un associé = une colonne = une trame).
-// Renvoie [{ jours: { lun..ven } }, …] : une entrée par colonne non entièrement vide.
-// Cellule vide → repos (""). Les lignes au-delà de la 5ᵉ sont ignorées ; les manquantes = repos.
+// Disposition attendue : 5 lignes (lun→ven) × N colonnes (les colonnes de la semaine type).
+// Renvoie les colonnes d'UNE trame : [{ lun..ven }, …]. Cellule vide → repos ("").
+// On rogne les colonnes entièrement vides en début/fin (sélection Excel trop large), mais on
+// CONSERVE une colonne vide intérieure (c'est la colonne « vacances » de la trame).
 export function parserCollage(texte) {
   if (typeof texte !== 'string' || texte.trim() === '') return []
-  // On garde les cellules vides intermédiaires (split sans filtrage), on retire le \r de Windows.
   const lignes = texte.replace(/\r/g, '').split('\n')
-  // On retire uniquement les lignes vides en fin de bloc (collage Excel ajoute souvent un \n final).
   while (lignes.length > 0 && lignes[lignes.length - 1].trim() === '') lignes.pop()
   if (lignes.length === 0) return []
 
@@ -74,18 +86,14 @@ export function parserCollage(texte) {
   const colonnes = []
   for (let c = 0; c < nbColonnes; c++) {
     const jours = {}
-    let aDuContenu = false
-    JOURS.forEach((j, i) => {
-      const val = matrice[i]?.[c] ?? ''
-      jours[j] = val
-      if (val !== '') aDuContenu = true
-    })
-    if (aDuContenu) colonnes.push({ jours })
+    JOURS.forEach((j, i) => { jours[j] = matrice[i]?.[c] ?? '' })
+    colonnes.push(jours)
   }
-  return colonnes
-}
 
-// Une trame est-elle vide (que du repos) ? Utile pour filtrer/avertir.
-export function trameVide(trame) {
-  return JOURS.every(j => !(trame?.jours?.[j] ?? '').trim())
+  // Rogne uniquement les colonnes vides aux extrémités (garde les vides intérieures).
+  let debut = colonnes.findIndex(j => !colonneVide(j))
+  if (debut === -1) return []
+  let fin = colonnes.length - 1
+  while (fin > debut && colonneVide(colonnes[fin])) fin--
+  return colonnes.slice(debut, fin + 1)
 }

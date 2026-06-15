@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerTrames, sauverTrames } from '../utils/tramesApi'
-import { JOURS, JOURS_LABEL, parserCollage, prochainIdTrame } from '../utils/trames'
+import { JOURS, JOURS_LABEL, parserCollage, prochainIdTrame, colonneVide } from '../utils/trames'
 
 export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
   const { session, profile } = useAuth()
@@ -16,9 +16,10 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
 
-  // Zone de collage + colonnes candidates (avant ajout au catalogue).
+  // Zone de collage : colonnes de la trame candidate (avant ajout au catalogue) + son nom.
   const [texteCollage, setTexteCollage] = useState('')
-  const [candidats, setCandidats] = useState([]) // [{ jours, nom, inclure }]
+  const [candidatColonnes, setCandidatColonnes] = useState([]) // [{ lun..ven }]
+  const [candidatNom, setCandidatNom] = useState('')
 
   useEffect(() => {
     if (!estFaiseur) return
@@ -29,37 +30,24 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     return () => { annule = true }
   }, [annee, estFaiseur, onStatut])
 
-  // ── Collage : on (re)parse le bloc et on prépare les colonnes candidates ──
+  // ── Collage : on (re)parse le bloc → colonnes de la trame candidate ──
   function majTexteCollage(valeur) {
     setTexteCollage(valeur)
-    const cols = parserCollage(valeur)
-    setCandidats(cols.map(c => ({ jours: c.jours, nom: '', inclure: true })))
-  }
-
-  function majCandidatNom(i, nom) {
-    setCandidats(prev => prev.map((c, idx) => (idx === i ? { ...c, nom } : c)))
-  }
-
-  function toggleCandidat(i) {
-    setCandidats(prev => prev.map((c, idx) => (idx === i ? { ...c, inclure: !c.inclure } : c)))
+    setCandidatColonnes(parserCollage(valeur))
   }
 
   function ajouterAuCatalogue() {
-    const aAjouter = candidats.filter(c => c.inclure)
-    if (aAjouter.length === 0) return
+    if (candidatColonnes.length === 0) return
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
-      const trames = [...prev.trames]
-      let id = prochainIdTrame(trames)
-      for (const c of aAjouter) {
-        const nom = c.nom.trim() || `Trame ${id}`
-        trames.push({ id, nom, jours: { ...c.jours } })
-        id += 1
-      }
-      return { ...prev, trames }
+      const id = prochainIdTrame(prev.trames)
+      const nom = candidatNom.trim() || `Trame ${id}`
+      const trame = { id, nom, colonnes: candidatColonnes.map(c => ({ ...c })) }
+      return { ...prev, trames: [...prev.trames, trame] }
     })
     setTexteCollage('')
-    setCandidats([])
+    setCandidatColonnes([])
+    setCandidatNom('')
   }
 
   function majNomTrame(idTrame, nom) {
@@ -113,14 +101,20 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', resize: 'vertical',
       boxSizing: 'border-box',
     },
-    table: { borderCollapse: 'collapse', fontSize: 13, marginTop: 12 },
+    inputNom: {
+      width: '100%', padding: '7px 10px', fontSize: 13, boxSizing: 'border-box',
+      border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+      background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
+    },
+    table: { borderCollapse: 'collapse', fontSize: 13 },
     thJour: {
       padding: '6px 10px', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)',
       textAlign: 'left', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap',
     },
     thCol: {
-      padding: '6px 8px', borderBottom: '0.5px solid var(--color-border)',
-      borderLeft: '0.5px solid var(--color-border)', minWidth: 120, verticalAlign: 'top',
+      padding: '6px 10px', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)',
+      textAlign: 'center', borderBottom: '0.5px solid var(--color-border)',
+      borderLeft: '0.5px solid var(--color-border)', minWidth: 96,
     },
     tdJour: {
       padding: '5px 10px', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)',
@@ -131,18 +125,13 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       borderBottom: '0.5px solid var(--color-border)', borderLeft: '0.5px solid var(--color-border)',
     },
     repos: { color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
-    inputNom: {
-      width: '100%', padding: '5px 7px', fontSize: 12.5, boxSizing: 'border-box',
-      border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-      background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
-    },
     croix: {
       border: 'none', background: 'transparent', color: 'var(--color-text-tertiary)',
       cursor: 'pointer', fontSize: 14, padding: '0 4px', lineHeight: 1,
     },
     trameCarte: {
       border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-      padding: '10px 12px', minWidth: 200,
+      padding: '10px 12px', marginBottom: 14, overflowX: 'auto',
     },
   }
 
@@ -157,17 +146,42 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     )
   }
 
-  const reposOuPoste = (v) => (v && v.trim() ? v : <span style={s.repos}>repos</span>)
-  const aInclure = candidats.filter(c => c.inclure).length
+  const cellule = (v) => (v && v.trim() ? v : <span style={s.repos}>repos</span>)
+
+  // Rendu d'une grille (jours en lignes × colonnes), pour l'aperçu et le catalogue.
+  const grille = (colonnes) => (
+    <table style={s.table}>
+      <thead>
+        <tr>
+          <th style={s.thJour}>Jour</th>
+          {colonnes.map((_, i) => <th key={i} style={s.thCol}>C{i + 1}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {JOURS.map(j => (
+          <tr key={j}>
+            <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
+            {colonnes.map((col, i) => (
+              <td key={i} style={{ ...s.tdCell, background: colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent' }}>
+                {cellule(col[j])}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <div style={{ maxWidth: 1100 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Trames {annee}</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-        Une <strong>trame</strong> est la semaine (lundi → vendredi) d'un associé : une suite de postes,
-        une case vide = repos. Le catalogue se remplit par collage depuis Excel, autant de trames que
-        vous voulez, nommées librement (« Normale post-WE », « Avec remplaçant », « Vendredi de garde »…).
-        Le week-end est géré dans l'étape Week-ends.
+        Une <strong>trame</strong> est une <strong>semaine type entière</strong> : une grille de plusieurs
+        colonnes, chaque colonne étant une séquence figée de postes du lundi au vendredi (case vide = repos).
+        Les colonnes s'intervertissent entre associés selon les jours off ; certaines colonnes (Réa, vacances,
+        retour de week-end) seront reconnues automatiquement au moment de l'affectation. Le catalogue se
+        remplit par collage depuis Excel, autant de trames que vous voulez (« Normale », « Avec remplaçant »,
+        « Vendredi de garde »…).
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -193,13 +207,13 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
-          {/* ── Coller des trames ── */}
+          {/* ── Coller une trame ── */}
           <div style={s.carte}>
-            <div style={s.titreSection}>Coller des trames depuis Excel</div>
+            <div style={s.titreSection}>Coller une trame depuis Excel</div>
             <p style={s.aide}>
-              Dans Excel, sélectionnez un bloc de <strong>5 lignes (lundi → vendredi)</strong> et autant
-              de <strong>colonnes</strong> que de trames (un associé = une colonne), puis collez-le
-              ci-dessous (Ctrl+V). Chaque colonne devient une trame à nommer. Une cellule vide = repos.
+              Dans Excel, sélectionnez le bloc de la semaine type : <strong>5 lignes (lundi → vendredi)</strong> et
+              toutes ses <strong>colonnes</strong> (sans la colonne des dates), puis collez-le ci-dessous (Ctrl+V).
+              Vérifiez l'aperçu, nommez la trame, puis ajoutez-la au catalogue. Une cellule vide = repos.
             </p>
             <textarea
               value={texteCollage}
@@ -208,52 +222,28 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
               style={s.textarea}
             />
 
-            {candidats.length > 0 && (
+            {candidatColonnes.length > 0 && (
               <>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={s.table}>
-                    <thead>
-                      <tr>
-                        <th style={s.thJour}>Jour</th>
-                        {candidats.map((c, i) => (
-                          <th key={i} style={s.thCol}>
-                            <input
-                              type="text"
-                              value={c.nom}
-                              onChange={e => majCandidatNom(i, e.target.value)}
-                              placeholder={`Trame ${i + 1}`}
-                              style={s.inputNom}
-                            />
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6, fontSize: 12, color: 'var(--color-text-secondary)', justifyContent: 'center' }}>
-                              <input type="checkbox" checked={c.inclure} onChange={() => toggleCandidat(i)} />
-                              inclure
-                            </label>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {JOURS.map(j => (
-                        <tr key={j}>
-                          <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
-                          {candidats.map((c, i) => (
-                            <td key={i} style={{ ...s.tdCell, opacity: c.inclure ? 1 : 0.4 }}>
-                              {reposOuPoste(c.jours[j])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
-                  <button type="button" onClick={ajouterAuCatalogue} disabled={aInclure === 0} style={{ ...s.boutonSecondaire, opacity: aInclure === 0 ? 0.5 : 1 }}>
-                    + Ajouter au catalogue ({aInclure})
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', margin: '14px 0 12px' }}>
+                  <div style={{ flex: '0 0 320px' }}>
+                    <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Nom de la trame</label>
+                    <input
+                      type="text"
+                      value={candidatNom}
+                      onChange={e => setCandidatNom(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ajouterAuCatalogue() } }}
+                      placeholder="ex. Normale, Avec remplaçant Dr X, Vendredi de garde…"
+                      style={s.inputNom}
+                    />
+                  </div>
+                  <button type="button" onClick={ajouterAuCatalogue} style={s.boutonSecondaire}>
+                    + Ajouter au catalogue
                   </button>
-                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                    {candidats.length} colonne{candidats.length > 1 ? 's' : ''} détectée{candidats.length > 1 ? 's' : ''}
+                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>
+                    {candidatColonnes.length} colonne{candidatColonnes.length > 1 ? 's' : ''} détectée{candidatColonnes.length > 1 ? 's' : ''}
                   </span>
                 </div>
+                <div style={{ overflowX: 'auto' }}>{grille(candidatColonnes)}</div>
               </>
             )}
           </div>
@@ -265,33 +255,25 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
             </div>
             {data.trames.length === 0 ? (
               <p style={{ ...s.aide, marginBottom: 0 }}>
-                Aucune trame pour l'instant. Collez un bloc Excel ci-dessus pour commencer.
+                Aucune trame pour l'instant. Collez une semaine type ci-dessus pour commencer.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 8 }}>
+              <div style={{ marginTop: 8 }}>
                 {data.trames.map(t => (
                   <div key={t.id} style={s.trameCarte}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                       <input
                         type="text"
                         value={t.nom}
                         onChange={e => majNomTrame(t.id, e.target.value)}
-                        style={{ ...s.inputNom, fontWeight: 600 }}
+                        style={{ ...s.inputNom, fontWeight: 600, flex: '0 0 320px' }}
                       />
-                      <button type="button" onClick={() => supprimerTrame(t.id)} style={s.croix} title="Supprimer cette trame">✕</button>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                        {t.colonnes.length} colonne{t.colonnes.length > 1 ? 's' : ''}
+                      </span>
+                      <button type="button" onClick={() => supprimerTrame(t.id)} style={{ ...s.croix, marginLeft: 'auto' }} title="Supprimer cette trame">✕</button>
                     </div>
-                    <table style={{ borderCollapse: 'collapse', fontSize: 12.5, width: '100%' }}>
-                      <tbody>
-                        {JOURS.map(j => (
-                          <tr key={j}>
-                            <td style={{ ...s.tdJour, padding: '4px 8px' }}>{JOURS_LABEL[j]}</td>
-                            <td style={{ padding: '4px 8px', borderBottom: '0.5px solid var(--color-border)', textAlign: 'right' }}>
-                              {reposOuPoste(t.jours[j])}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {grille(t.colonnes)}
                   </div>
                 ))}
               </div>
