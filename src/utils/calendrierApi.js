@@ -3,7 +3,7 @@
 // Lecture pour tout authenticated ; écriture réservée au faiseur (RLS).
 // ============================================================
 import { supabase } from '../lib/supabase'
-import { listerSemaines, joursFeriesFR, semainesVacancesScolaires } from './calendrier'
+import { listerSemaines, semainesVacancesScolaires } from './calendrier'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -37,23 +37,22 @@ export async function recupererVacancesScolairesZoneC(annee) {
 }
 
 // Base par défaut calculée (non stockée tant que le faiseur n'enregistre pas).
+// Défaut jeudi = Garde (on est plus souvent de garde le jeudi) ; samedi=A/dimanche=G (§3).
 export function calendrierVide(annee) {
   const semaines = {}
   for (const s of listerSemaines(annee)) {
-    semaines[s.num] = { jeu: 'A', ven: 'A', sam: 'A', dim: 'G' } // défauts §3/§12
+    semaines[s.num] = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
   }
-  const feries = {}
-  for (const f of joursFeriesFR(annee)) feries[f.iso] = 'A' // défaut astreinte
-  return { semaines, vacancesScolaires: semainesVacancesScolaires(annee), feries }
+  return { semaines, vacancesScolaires: semainesVacancesScolaires(annee) }
 }
 
 // Fusionne un data stocké (potentiellement partiel) avec la base par défaut.
+// (Le statut des jours fériés n'est plus stocké : il découle du jour où ils tombent.)
 export function normaliserCalendrier(annee, data) {
   const base = calendrierVide(annee)
   return {
     semaines: { ...base.semaines, ...(data?.semaines ?? {}) },
     vacancesScolaires: data?.vacancesScolaires ?? base.vacancesScolaires,
-    feries: { ...base.feries, ...(data?.feries ?? {}) },
   }
 }
 
