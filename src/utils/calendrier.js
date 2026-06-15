@@ -60,6 +60,12 @@ export function formatDateLongueFR(date) {
   return `${JOURS_FR[date.getUTCDay()]} ${date.getUTCDate()} ${MOIS_FR[date.getUTCMonth()]} ${date.getUTCFullYear()}`
 }
 
+// Libellé « Mars 2026 » (mois capitalisé + année) — pour les séparateurs de mois.
+export function moisAnneeFR(date) {
+  const m = MOIS_FR[date.getUTCMonth()]
+  return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${date.getUTCFullYear()}`
+}
+
 // ── Liste des semaines ISO de l'année ──
 // → [{ num, lundi, dimanche, label: 'S12 · 16/03 → 22/03' }]
 export function listerSemaines(annee) {

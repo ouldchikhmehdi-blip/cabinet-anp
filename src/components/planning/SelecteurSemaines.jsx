@@ -1,8 +1,13 @@
+import { moisAnneeFR } from '../../utils/calendrier'
+
+const JOUR_MS = 24 * 60 * 60 * 1000
+
 /**
- * SelecteurSemaines — grille de cases à cocher pour sélectionner des semaines ISO.
+ * SelecteurSemaines — grille de cases à cocher pour sélectionner des semaines ISO,
+ * découpée par mois (séparateur « Mars 2026 » au changement de mois).
  *
  * Props :
- *   semaines    — [{ num, label }] (issu de listerSemaines)
+ *   semaines    — [{ num, lundi, label }] (issu de semainesDansPlage / listerSemaines)
  *   selection   — number[] (numéros de semaine cochés)
  *   onChange    — (nouvelleSelection: number[]) => void
  *   accent      — 'primary' (défaut) | 'danger' (pour les vacances refusées)
@@ -42,33 +47,49 @@ export default function SelecteurSemaines({ semaines, selection, onChange, accen
       opacity: (bloque && !scolaire) ? 0.5 : 1,
       userSelect: 'none',
     }),
+    moisSep: {
+      gridColumn: '1 / -1',
+      fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+      color: 'var(--color-text-secondary)',
+      padding: '10px 2px 2px', marginTop: 2,
+      borderTop: '0.5px solid var(--color-border)',
+    },
   }
 
-  return (
-    <div style={s.grille}>
-      {semaines.map(sem => {
-        const actif = selection.includes(sem.num)
-        const scolaire = semainesScolaires.includes(sem.num)
-        const bloque = !actif && (desactivees.includes(sem.num) || scolaire)
-        return (
-          <label
-            key={sem.num}
-            style={s.item(actif, bloque, scolaire)}
-            title={scolaire
-              ? 'Vacances scolaires — à gérer dans « Préférence vacances scolaires »'
-              : bloque ? 'Déjà sélectionnée dans l\'autre liste' : undefined}
-          >
-            <input
-              type="checkbox"
-              checked={actif}
-              disabled={bloque}
-              onChange={() => toggle(sem.num)}
-              style={{ accentColor: couleur }}
-            />
-            {sem.label}
-          </label>
-        )
-      })}
-    </div>
-  )
+  // Construit la liste : séparateur de mois (rattachement par le jeudi) + cases.
+  const elements = []
+  let moisPrec = null
+  for (const sem of semaines) {
+    if (sem.lundi) {
+      const jeudi = new Date(sem.lundi.getTime() + 3 * JOUR_MS)
+      const mois = jeudi.getUTCMonth()
+      if (mois !== moisPrec) {
+        elements.push(<div key={`m-${sem.num}`} style={s.moisSep}>{moisAnneeFR(jeudi)}</div>)
+        moisPrec = mois
+      }
+    }
+    const actif = selection.includes(sem.num)
+    const scolaire = semainesScolaires.includes(sem.num)
+    const bloque = !actif && (desactivees.includes(sem.num) || scolaire)
+    elements.push(
+      <label
+        key={sem.num}
+        style={s.item(actif, bloque, scolaire)}
+        title={scolaire
+          ? 'Vacances scolaires — à gérer dans « Préférence vacances scolaires »'
+          : bloque ? 'Déjà sélectionnée dans l\'autre liste' : undefined}
+      >
+        <input
+          type="checkbox"
+          checked={actif}
+          disabled={bloque}
+          onChange={() => toggle(sem.num)}
+          style={{ accentColor: couleur }}
+        />
+        {sem.label}
+      </label>
+    )
+  }
+
+  return <div style={s.grille}>{elements}</div>
 }

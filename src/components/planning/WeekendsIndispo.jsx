@@ -1,9 +1,11 @@
+import { moisAnneeFR } from '../../utils/calendrier'
+
 /**
  * WeekendsIndispo — pour chaque week-end de la période, l'associé coche s'il est
- * INDISPONIBLE. Simple et épuré (§11B simplifié).
+ * INDISPONIBLE. Simple et épuré (§11B simplifié), découpé par mois.
  *
  * Props :
- *   weekends  — [{ num, label }] (issu de listerWeekendsPeriode)
+ *   weekends  — [{ num, samedi, label }] (issu de weekendsDansPlage)
  *   selection — number[] (n° de semaine des week-ends indisponibles)
  *   onChange  — (nouvelleSelection: number[]) => void
  */
@@ -35,24 +37,39 @@ export default function WeekendsIndispo({ weekends, selection, onChange }) {
       cursor: 'pointer',
       userSelect: 'none',
     }),
+    moisSep: {
+      gridColumn: '1 / -1',
+      fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4,
+      color: 'var(--color-text-secondary)',
+      padding: '10px 2px 2px', marginTop: 2,
+      borderTop: '0.5px solid var(--color-border)',
+    },
   }
 
-  return (
-    <div style={s.grille}>
-      {weekends.map(we => {
-        const actif = selection.includes(we.num)
-        return (
-          <label key={we.num} style={s.item(actif)}>
-            <input
-              type="checkbox"
-              checked={actif}
-              onChange={() => toggle(we.num)}
-              style={{ accentColor: 'var(--color-danger)' }}
-            />
-            {we.label}
-          </label>
-        )
-      })}
-    </div>
-  )
+  // Construit la liste : séparateur de mois (par le samedi) + cases.
+  const elements = []
+  let moisPrec = null
+  for (const we of weekends) {
+    if (we.samedi) {
+      const mois = we.samedi.getUTCMonth()
+      if (mois !== moisPrec) {
+        elements.push(<div key={`m-${we.num}`} style={s.moisSep}>{moisAnneeFR(we.samedi)}</div>)
+        moisPrec = mois
+      }
+    }
+    const actif = selection.includes(we.num)
+    elements.push(
+      <label key={we.num} style={s.item(actif)}>
+        <input
+          type="checkbox"
+          checked={actif}
+          onChange={() => toggle(we.num)}
+          style={{ accentColor: 'var(--color-danger)' }}
+        />
+        {we.label}
+      </label>
+    )
+  }
+
+  return <div style={s.grille}>{elements}</div>
 }

@@ -46,12 +46,26 @@ export function calendrierVide(annee) {
   return { semaines, vacancesScolaires: semainesVacancesScolaires(annee) }
 }
 
+const VERSION_CAL = 2 // v2 : jeudi = Garde par défaut
+
 // Fusionne un data stocké (potentiellement partiel) avec la base par défaut.
 // (Le statut des jours fériés n'est plus stocké : il découle du jour où ils tombent.)
+// Migration v2 : une base enregistrée avant la bascule « jeudi=Garde » (donc sans `v`)
+// porte des jeudis en Astreinte qui ne sont que l'ancien défaut → on les ramène tous à
+// Garde. Le marqueur `v:2` (persisté au prochain enregistrement) empêche que cela se
+// reproduise, donc un jeudi mis volontairement en Astreinte *après* la bascule est conservé.
 export function normaliserCalendrier(annee, data) {
   const base = calendrierVide(annee)
+  const semaines = { ...base.semaines, ...(data?.semaines ?? {}) }
+  const ancienFormat = data && data.v == null
+  if (ancienFormat) {
+    for (const num of Object.keys(semaines)) {
+      semaines[num] = { ...semaines[num], jeu: 'G' }
+    }
+  }
   return {
-    semaines: { ...base.semaines, ...(data?.semaines ?? {}) },
+    v: VERSION_CAL,
+    semaines,
     vacancesScolaires: data?.vacancesScolaires ?? base.vacancesScolaires,
   }
 }
