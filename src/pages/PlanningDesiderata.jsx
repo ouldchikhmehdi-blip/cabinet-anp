@@ -1,23 +1,49 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import {
-  listerSemainesPeriode, listerWeekendsPeriode, bornesPeriode, VACANCES_SCOLAIRES_2026,
-} from '../utils/calendrier'
-import { desiderataVide, ANNEE_DEFAUT } from '../utils/desiderata'
-import { chargerMesDesiderata, sauverMesDesiderata, listerPeriodes } from '../utils/desiderataApi'
-import { LISTE_PERIODES } from '../utils/calendrier'
-import SelecteurPeriode from '../components/planning/SelecteurPeriode'
+import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026 } from '../utils/calendrier'
+import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES } from '../utils/desiderata'
+import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../utils/desiderataApi'
+import SelecteurRecueil from '../components/planning/SelecteurRecueil'
 import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
 import WeekendsIndispo from '../components/planning/WeekendsIndispo'
+
+// Sélecteur de sous-semaine de vacances (1ʳᵉ / 2ᵉ / les deux).
+function SousSemaine({ nom, valeur, onChange }) {
+  const st = {
+    bloc: { marginTop: 10, paddingLeft: 14, borderLeft: '2px solid var(--color-primary-light)' },
+    aide: { fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 8 },
+    ligne: { display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' },
+    radio: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--color-text)', cursor: 'pointer' },
+  }
+  return (
+    <div style={st.bloc}>
+      <div style={st.aide}>Quelle semaine ?</div>
+      <div style={st.ligne}>
+        {SOUS_SEMAINES.map(opt => (
+          <label key={opt.val} style={st.radio}>
+            <input
+              type="radio"
+              name={nom}
+              checked={valeur === opt.val}
+              onChange={() => onChange(opt.val)}
+              style={{ accentColor: 'var(--color-primary)' }}
+            />
+            {opt.lib}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function PlanningDesiderata() {
   const { session, profile } = useAuth()
   const initiales = profile?.initiales ?? null
 
   const [annee, setAnnee] = useState(ANNEE_DEFAUT)
-  const [periode, setPeriode] = useState(null)
-  const [periodesOuvertes, setPeriodesOuvertes] = useState([])
+  const [recueils, setRecueils] = useState([])     // recueils ouverts de l'année
+  const [recueilId, setRecueilId] = useState(null)
   const [data, setData] = useState(desiderataVide())
   const [soumis, setSoumis] = useState(false)
   const [majLe, setMajLe] = useState(null)
@@ -25,33 +51,32 @@ export default function PlanningDesiderata() {
   const [flash, setFlash] = useState(null)
   const [erreur, setErreur] = useState(null)
 
-  // Charge les périodes ouvertes de l'année
+  // Charge les recueils ouverts de l'année
   useEffect(() => {
     let annule = false
     async function charger() {
       try {
-        const ps = await listerPeriodes(annee)
+        const rs = await listerRecueils(annee)
         if (annule) return
-        const ouvertes = LISTE_PERIODES.filter(p =>
-          ps.some(x => x.periode === p && x.statut === 'ouvert'))
-        setPeriodesOuvertes(ouvertes)
-        setPeriode(prev => (ouvertes.includes(prev) ? prev : (ouvertes[0] ?? null)))
+        const ouverts = rs.filter(r => r.statut === 'ouvert')
+        setRecueils(ouverts)
+        setRecueilId(prev => (ouverts.some(r => r.id === prev) ? prev : (ouverts[0]?.id ?? null)))
       } catch {
-        if (!annule) setErreur('Impossible de charger les périodes ouvertes.')
+        if (!annule) setErreur('Impossible de charger les recueils ouverts.')
       }
     }
     charger()
     return () => { annule = true }
   }, [annee])
 
-  // Charge les desiderata pour (année, période)
+  // Charge les desiderata pour le recueil sélectionné
   useEffect(() => {
-    if (!periode || !session) return
+    if (!recueilId || !session) return
     let annule = false
     async function charger() {
       setChargement(true)
       try {
-        const r = await chargerMesDesiderata(session.user.id, annee, periode)
+        const r = await chargerMesDesiderata(session.user.id, recueilId)
         if (annule) return
         setData(r.data); setSoumis(r.soumis); setMajLe(r.updatedAt)
       } catch {
@@ -62,11 +87,21 @@ export default function PlanningDesiderata() {
     }
     charger()
     return () => { annule = true }
-  }, [periode, annee, session])
+  }, [recueilId, session])
 
-  const semaines = useMemo(() => (periode ? listerSemainesPeriode(annee, periode) : []), [annee, periode])
-  const weekends = useMemo(() => (periode ? listerWeekendsPeriode(annee, periode) : []), [annee, periode])
-  const bornes = useMemo(() => (periode ? bornesPeriode(annee, periode) : null), [annee, periode])
+  const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
+  const semaines = useMemo(
+    () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
+    [annee, recueil]
+  )
+  const weekends = useMemo(
+    () => (recueil ? weekendsDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
+    [annee, recueil]
+  )
+  const bornes = useMemo(
+    () => (recueil ? bornesPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : null),
+    [annee, recueil]
+  )
 
   function maj(champ, valeur) {
     setData(prev => ({ ...prev, [champ]: valeur }))
@@ -75,7 +110,7 @@ export default function PlanningDesiderata() {
   async function enregistrer() {
     setErreur(null)
     try {
-      await sauverMesDesiderata(session.user.id, annee, periode, data, true)
+      await sauverMesDesiderata(session.user.id, recueilId, data, true)
       setSoumis(true)
       setMajLe(new Date().toISOString())
       setFlash('Desiderata enregistrés.')
@@ -133,6 +168,7 @@ export default function PlanningDesiderata() {
   const desactive = data.rienASignaler
   const grise = desactive ? { opacity: 0.45, pointerEvents: 'none', filter: 'grayscale(0.4)' } : {}
   const vacScol = VACANCES_SCOLAIRES_2026
+  const prefVac = data.preferenceVacancesScolaires
 
   return (
     <div style={{ maxWidth: 920 }}>
@@ -141,13 +177,13 @@ export default function PlanningDesiderata() {
         Tous les champs sont facultatifs. Vos desiderata sont privés : seul le faiseur de planning peut les consulter.
       </p>
 
-      <SelecteurPeriode
+      <SelecteurRecueil
         initiales={initiales}
         annee={annee}
         onChangeAnnee={setAnnee}
-        periode={periode}
-        onChangePeriode={setPeriode}
-        periodesOuvertes={periodesOuvertes}
+        recueilId={recueilId}
+        onChangeRecueil={setRecueilId}
+        recueils={recueils}
       />
 
       {erreur && (
@@ -156,7 +192,7 @@ export default function PlanningDesiderata() {
         </div>
       )}
 
-      {!periode ? (
+      {!recueilId ? (
         <div style={s.info}>
           Aucun recueil de desiderata n'est ouvert pour {annee}. Le faiseur de planning
           ouvrira une période quand il sera prêt à recueillir vos souhaits.
@@ -175,7 +211,7 @@ export default function PlanningDesiderata() {
                 style={{ accentColor: 'var(--color-success)', width: 16, height: 16 }}
               />
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>
-                Rien à signaler pour cette période
+                Rien à signaler pour ce recueil
               </span>
             </label>
             <div style={{ ...s.aide, marginBottom: 0, marginTop: 6 }}>
@@ -238,14 +274,24 @@ export default function PlanningDesiderata() {
                     <input
                       type="radio"
                       name="pref-vac"
-                      checked={data.preferenceVacancesScolaires === opt.val}
-                      onChange={() => maj('preferenceVacancesScolaires', opt.val)}
+                      checked={prefVac === opt.val}
+                      onChange={() => {
+                        maj('preferenceVacancesScolaires', opt.val)
+                        if (opt.val === null) maj('prefVacancesSemaine', null)
+                      }}
                       style={{ accentColor: 'var(--color-primary)' }}
                     />
                     {opt.lib}
                   </label>
                 ))}
               </div>
+              {(prefVac === 'fevrier' || prefVac === 'paques') && (
+                <SousSemaine
+                  nom="pref-vac-semaine"
+                  valeur={data.prefVacancesSemaine}
+                  onChange={v => maj('prefVacancesSemaine', v)}
+                />
+              )}
 
               <div style={{ ...s.titre, marginTop: 18 }}>Toussaint</div>
               <div style={s.aide}>Conditionnel selon les remplaçants trouvés.</div>
@@ -260,13 +306,23 @@ export default function PlanningDesiderata() {
                       type="radio"
                       name="toussaint"
                       checked={data.toussaintSouhaitee === opt.val}
-                      onChange={() => maj('toussaintSouhaitee', opt.val)}
+                      onChange={() => {
+                        maj('toussaintSouhaitee', opt.val)
+                        if (opt.val !== true) maj('toussaintSemaine', null)
+                      }}
                       style={{ accentColor: 'var(--color-primary)' }}
                     />
                     {opt.lib}
                   </label>
                 ))}
               </div>
+              {data.toussaintSouhaitee === true && (
+                <SousSemaine
+                  nom="toussaint-semaine"
+                  valeur={data.toussaintSemaine}
+                  onChange={v => maj('toussaintSemaine', v)}
+                />
+              )}
             </div>
 
             {/* Week-ends indisponibles */}

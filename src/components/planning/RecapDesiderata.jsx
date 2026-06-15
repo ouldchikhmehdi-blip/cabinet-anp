@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { listerSemaines, listerWeekends, parseISO, formatDateLongueFR } from '../../utils/calendrier'
+import { labelSousSemaine } from '../../utils/desiderata'
 
 const styles = {
   titre: { fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 12 },
@@ -40,14 +41,17 @@ export default function RecapDesiderata({ initiales, d, annee }) {
     return map
   }, [annee])
 
-  const prefVac = d.preferenceVacancesScolaires === 'paques'
+  const nomVac = d.preferenceVacancesScolaires === 'paques'
     ? 'Pâques'
     : d.preferenceVacancesScolaires === 'fevrier'
       ? 'Février'
       : null
+  const sousVac = labelSousSemaine(d.prefVacancesSemaine)
+  const prefVac = nomVac ? `${nomVac}${sousVac ? ` (${sousVac})` : ''}` : null
 
+  const sousTouss = labelSousSemaine(d.toussaintSemaine)
   const toussaint = d.toussaintSouhaitee === true
-    ? 'Souhaitée'
+    ? `Souhaitée${sousTouss ? ` (${sousTouss})` : ''}`
     : d.toussaintSouhaitee === false
       ? 'Non souhaitée'
       : null

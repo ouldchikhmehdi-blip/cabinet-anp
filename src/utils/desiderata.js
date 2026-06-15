@@ -1,11 +1,20 @@
 // ============================================================
 // desiderata.js — modèle de données des desiderata (cf. PLANNING.md §11B).
-// La persistance est désormais dans desiderataApi.js (Supabase).
+// La persistance est dans desiderataApi.js (Supabase).
 // Ici uniquement la forme de l'objet `data` (jsonb) et les helpers de lecture.
 // ============================================================
-import { PERIODES } from './calendrier'
 
 export const ANNEE_DEFAUT = 2026
+
+// Sous-semaine d'une période de vacances scolaires (qui dure ~2 semaines).
+export const SOUS_SEMAINES = [
+  { val: 's1', lib: '1ʳᵉ semaine' },
+  { val: 's2', lib: '2ᵉ semaine' },
+  { val: 'les-deux', lib: 'Les deux semaines' },
+]
+export function labelSousSemaine(v) {
+  return SOUS_SEMAINES.find(s => s.val === v)?.lib ?? null
+}
 
 // Objet desiderata vide — tous facultatifs. `soumis`/`updated_at` sont des
 // colonnes SQL, hors de cet objet `data`.
@@ -16,7 +25,9 @@ export function desiderataVide() {
     vacancesRefusees: [],        // numéros de semaine ISO (contrainte négative)
     joursOffSouhaites: [],       // dates 'YYYY-MM-DD'
     preferenceVacancesScolaires: null, // 'paques' | 'fevrier' | null (exclusivité §8)
+    prefVacancesSemaine: null,   // 's1' | 's2' | 'les-deux' | null (quelle semaine des vacances)
     toussaintSouhaitee: null,    // true | false | null
+    toussaintSemaine: null,      // 's1' | 's2' | 'les-deux' | null
     weekendsIndispo: [],         // numéros de semaine ISO des week-ends indisponibles
     demandeColonneSemaineType: '',
     commentaire: '',
@@ -43,9 +54,4 @@ export function estRempli(d, soumis = false) {
     d.demandeColonneSemaineType.trim() !== '' ||
     d.commentaire.trim() !== ''
   )
-}
-
-// Libellé d'une période.
-export function labelPeriode(periode) {
-  return PERIODES[periode]?.label ?? periode
 }

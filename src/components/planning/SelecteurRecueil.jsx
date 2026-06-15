@@ -1,18 +1,16 @@
-import { PERIODES } from '../../utils/calendrier'
+import { ANNEES } from '../../utils/calendrier'
 
 /**
- * SelecteurPeriode — barre identité (lecture seule) + année + période ouverte.
+ * SelecteurRecueil — barre identité (lecture seule) + année + recueil ouvert.
  *
  * Props :
- *   initiales            — initiales de l'associé connecté (détectées du compte)
- *   annee, onChangeAnnee — année courante
- *   periode, onChangePeriode — période courante
- *   periodesOuvertes     — string[] des périodes ouvertes pour l'année
- *   annees               — liste d'années proposées
+ *   initiales              — initiales de l'associé connecté
+ *   annee, onChangeAnnee   — année courante
+ *   recueilId, onChangeRecueil — recueil sélectionné (id)
+ *   recueils               — recueils OUVERTS de l'année [{ id, nom, semaine_debut, semaine_fin }]
  */
-export default function SelecteurPeriode({
-  initiales, annee, onChangeAnnee, periode, onChangePeriode,
-  periodesOuvertes = [], annees = [2025, 2026, 2027],
+export default function SelecteurRecueil({
+  initiales, annee, onChangeAnnee, recueilId, onChangeRecueil, recueils = [],
 }) {
   const s = {
     barre: {
@@ -24,7 +22,7 @@ export default function SelecteurPeriode({
     select: {
       padding: '8px 12px', fontSize: 14, border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', color: 'var(--color-text)',
-      outline: 'none', minWidth: 150,
+      outline: 'none', minWidth: 180,
     },
     badge: {
       display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -43,21 +41,25 @@ export default function SelecteurPeriode({
       <div>
         <label style={s.label} htmlFor="sel-annee">Année</label>
         <select id="sel-annee" value={annee} onChange={e => onChangeAnnee(Number(e.target.value))} style={s.select}>
-          {annees.map(a => <option key={a} value={a}>{a}</option>)}
+          {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
       </div>
       <div>
-        <label style={s.label} htmlFor="sel-periode">Période</label>
+        <label style={s.label} htmlFor="sel-recueil">Recueil</label>
         <select
-          id="sel-periode"
-          value={periode ?? ''}
-          onChange={e => onChangePeriode(e.target.value)}
+          id="sel-recueil"
+          value={recueilId ?? ''}
+          onChange={e => onChangeRecueil(e.target.value)}
           style={s.select}
-          disabled={periodesOuvertes.length === 0}
+          disabled={recueils.length === 0}
         >
-          {periodesOuvertes.length === 0
-            ? <option value="">Aucune période ouverte</option>
-            : periodesOuvertes.map(p => <option key={p} value={p}>{PERIODES[p]?.label ?? p}</option>)}
+          {recueils.length === 0
+            ? <option value="">Aucun recueil ouvert</option>
+            : recueils.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.nom} (S{r.semaine_debut}→S{r.semaine_fin})
+              </option>
+            ))}
         </select>
       </div>
     </div>
