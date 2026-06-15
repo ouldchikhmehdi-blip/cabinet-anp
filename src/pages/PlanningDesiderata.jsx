@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026 } from '../utils/calendrier'
 import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES } from '../utils/desiderata'
 import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../utils/desiderataApi'
+import { chargerCalendrier } from '../utils/calendrierApi'
 import SelecteurRecueil from '../components/planning/SelecteurRecueil'
 import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
@@ -53,9 +54,20 @@ export default function PlanningDesiderata() {
   const [chargement, setChargement] = useState(false)
   const [flash, setFlash] = useState(null)
   const [erreur, setErreur] = useState(null)
+  const [semainesScolaires, setSemainesScolaires] = useState([]) // vacances scolaires (Base calendrier)
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const ferme = recueil?.statut === 'ferme'
+
+  // Charge les semaines de vacances scolaires depuis la Base calendrier de l'année
+  // (pour les bloquer dans les grilles : elles se gèrent dans la section Préférence).
+  useEffect(() => {
+    let annule = false
+    chargerCalendrier(annee)
+      .then(c => { if (!annule) setSemainesScolaires(c.vacancesScolaires ?? []) })
+      .catch(() => { if (!annule) setSemainesScolaires([]) })
+    return () => { annule = true }
+  }, [annee])
 
   // Charge les recueils de l'année (ouverts ET fermés ; les fermés sont en lecture seule)
   useEffect(() => {
@@ -258,25 +270,30 @@ export default function PlanningDesiderata() {
             {/* Vacances souhaitées */}
             <div style={s.carte}>
               <div style={s.titre}>Vacances souhaitées</div>
-              <div style={s.aide}>Cochez les semaines où vous souhaitez être en congé.</div>
+              <div style={s.aide}>
+                Cochez les semaines où vous souhaitez être en congé.
+                {semainesScolaires.length > 0 && ' Les semaines de vacances scolaires (en bleu) se gèrent dans « Préférence vacances scolaires » plus bas.'}
+              </div>
               <SelecteurSemaines
                 semaines={semaines}
                 selection={data.vacancesSouhaitees}
                 onChange={v => maj('vacancesSouhaitees', v)}
                 desactivees={data.vacancesRefusees}
+                semainesScolaires={semainesScolaires}
               />
             </div>
 
             {/* Vacances refusées */}
             <div style={s.carte}>
               <div style={s.titre}>Semaines où je ne veux surtout PAS de vacances</div>
-              <div style={s.aide}>Contrainte négative. Les semaines déjà souhaitées ne sont pas sélectionnables ici.</div>
+              <div style={s.aide}>Contrainte négative. Les semaines déjà souhaitées (et les vacances scolaires) ne sont pas sélectionnables ici.</div>
               <SelecteurSemaines
                 semaines={semaines}
                 selection={data.vacancesRefusees}
                 onChange={v => maj('vacancesRefusees', v)}
                 accent="danger"
                 desactivees={data.vacancesSouhaitees}
+                semainesScolaires={semainesScolaires}
               />
             </div>
 
