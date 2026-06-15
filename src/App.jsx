@@ -20,6 +20,7 @@ import AdminUsers from './pages/AdminUsers'
 import PlanningDesiderata from './pages/PlanningDesiderata'
 import PlanningSuivi from './pages/PlanningSuivi'
 import PlanningCalendrier from './pages/PlanningCalendrier'
+import PlanningObjectifs from './pages/PlanningObjectifs'
 import './index.css'
 
 export default function App() {
@@ -139,6 +140,7 @@ export default function App() {
       case 'regles-virements': return <ReglesVirements />
       case 'planning-desiderata': return <PlanningDesiderata />
       case 'planning-calendrier': return profile?.is_faiseur ? <PlanningCalendrier /> : <VueGlobale />
+      case 'planning-objectifs':  return profile?.is_faiseur ? <PlanningObjectifs /> : <VueGlobale />
       case 'planning-suivi':      return profile?.is_faiseur ? <PlanningSuivi /> : <VueGlobale />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />

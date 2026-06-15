@@ -4,6 +4,7 @@ import { listerSemaines, joursFeriesFR, formatISO, ANNEES } from '../utils/calen
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import { chargerObjectifs } from '../utils/objectifsApi'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -131,7 +132,10 @@ export default function PlanningCalendrier() {
   async function exporter() {
     setErreur(null); setExportEnCours(true)
     try {
-      await exporterCalendrierExcel(annee, data)
+      // Objectifs facultatifs : si la table n'existe pas encore / vide, on exporte sans bloquer.
+      let objectifs = null
+      try { objectifs = await chargerObjectifs(annee) } catch { objectifs = null }
+      await exporterCalendrierExcel(annee, data, objectifs)
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

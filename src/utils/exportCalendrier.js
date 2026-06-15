@@ -48,7 +48,7 @@ async function telecharger(workbook, nomFichier) {
   URL.revokeObjectURL(url)
 }
 
-export async function exporterCalendrierExcel(annee, data) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -144,6 +144,38 @@ export async function exporterCalendrierExcel(annee, data) {
         // Note le nom du férié en commentaire sur la cellule date de gauche.
         row.getCell(1).note = feries[iso]
       }
+    }
+  }
+
+  // ── Bloc « Objectifs » en bas (cf. PLANNING.md §16, photo « Objectifs 2025 ») ──
+  // Aligné sur les colonnes du calendrier : libellé | 8 associés | libellé.
+  if (objectifs?.lignes?.length) {
+    ws.addRow([]) // ligne vide de séparation
+    ws.addRow([])
+
+    const libObj = `Objectifs ${annee}`
+    const entete = ws.addRow([libObj, ...ASSOCIES, libObj])
+    entete.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.border = bordures()
+      cell.alignment = centre
+      cell.font = { name: 'Calibri', bold: true, size: 11 }
+      if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
+      else cell.fill = solid('FFF2F2F2')
+    })
+
+    for (const ligne of objectifs.lignes) {
+      const valeurs = ASSOCIES.map(a => {
+        const v = objectifs.valeurs?.[a]?.[ligne.id]
+        return v == null ? '' : v
+      })
+      const row = ws.addRow([ligne.label, ...valeurs, ligne.label])
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        cell.border = bordures()
+        cell.alignment = (col === 1 || col === 1 + ASSOCIES.length + 1)
+          ? { vertical: 'middle', horizontal: 'left' }
+          : centre
+        cell.font = { name: 'Calibri', size: 11 }
+      })
     }
   }
 
