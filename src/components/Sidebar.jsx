@@ -13,13 +13,13 @@ const navItems = [
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
   { section: true, label: 'Planning' },
   { id: 'planning-desiderata', label: 'Mes desiderata', icon: '📝' },
-  { id: 'planning-suivi', label: 'Suivi desiderata', icon: '✅' },
 ]
 
-// Entrée de navigation admin (ajoutée dynamiquement si admin)
+// Entrées ajoutées dynamiquement selon les droits
+const suiviItem = { id: 'planning-suivi', label: 'Suivi desiderata', icon: '✅' }
 const adminItem = { id: 'admin-users', label: 'Comptes', icon: '🔑' }
 
-export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin }) {
+export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur }) {
   const toggleBtn = (active) => ({
     flex: 1,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -33,7 +33,11 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
     transition: 'all 0.15s',
   })
 
-  const items = isAdmin ? [...navItems, adminItem] : navItems
+  const items = [
+    ...navItems,
+    ...(isFaiseur ? [suiviItem] : []),
+    ...(isAdmin ? [adminItem] : []),
+  ]
 
   async function deconnecter() {
     await supabase.auth.signOut()

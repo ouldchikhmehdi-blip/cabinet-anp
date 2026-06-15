@@ -93,6 +93,45 @@ export function listerWeekends(annee) {
   })
 }
 
+// ── Périodes de l'année (cf. PLANNING.md §1) ──
+// Bornes par mois (0 = janvier). Une semaine/un week-end est rattaché à la
+// période contenant son JEUDI (jour qui détermine l'année ISO) → rattachement
+// déterministe et unique pour les semaines à cheval sur deux périodes.
+export const PERIODES = {
+  'janv-juin': { label: 'Janvier → juin', mois: [0, 1, 2, 3, 4, 5] },
+  'ete':       { label: 'Été (juillet–août)', mois: [6, 7] },
+  'sept-dec':  { label: 'Septembre → décembre', mois: [8, 9, 10, 11] },
+}
+
+export const LISTE_PERIODES = ['janv-juin', 'ete', 'sept-dec']
+
+// Jeudi de la semaine ISO `num`.
+function jeudiDeSemaineISO(annee, num) {
+  return new Date(lundiDeSemaineISO(annee, num).getTime() + 3 * JOUR_MS)
+}
+
+export function semaineDansPeriode(annee, num, periode) {
+  const mois = jeudiDeSemaineISO(annee, num).getUTCMonth()
+  return PERIODES[periode]?.mois.includes(mois) ?? false
+}
+
+export function listerSemainesPeriode(annee, periode) {
+  return listerSemaines(annee).filter(s => semaineDansPeriode(annee, s.num, periode))
+}
+
+export function listerWeekendsPeriode(annee, periode) {
+  return listerWeekends(annee).filter(w => semaineDansPeriode(annee, w.num, periode))
+}
+
+// Bornes de dates ISO d'une période (pour borner un <input type="date">).
+export function bornesPeriode(annee, periode) {
+  const mois = PERIODES[periode]?.mois ?? [0, 11]
+  const premier = mois[0]
+  const dernier = mois[mois.length - 1]
+  const finMois = new Date(Date.UTC(annee, dernier + 1, 0)) // dernier jour du mois
+  return { min: formatISO(new Date(Date.UTC(annee, premier, 1))), max: formatISO(finMois) }
+}
+
 // ── Vacances scolaires (indicatif, À CONFIRMER selon la zone de la clinique) ──
 // Les numéros de semaine ISO sont approximatifs et doivent être validés.
 export const VACANCES_SCOLAIRES_2026 = {

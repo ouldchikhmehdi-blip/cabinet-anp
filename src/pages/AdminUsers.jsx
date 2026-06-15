@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
+import { ASSOCIES } from '../data/associes'
 
 /**
  * AdminUsers — gestion des comptes (visible uniquement par les admins).
@@ -40,7 +41,7 @@ export default function AdminUsers() {
     setErreur(null)
     try {
       const [{ data: p }, { data: i }] = await Promise.all([
-        supabase.from('profiles').select('id, email, role, status, created_at').order('created_at'),
+        supabase.from('profiles').select('id, email, role, status, initiales, is_faiseur, created_at').order('created_at'),
         supabase.from('invitations').select('id, email, role, expires_at, used_at, created_at').order('created_at', { ascending: false }),
       ])
       setProfiles(p ?? [])
@@ -91,6 +92,22 @@ export default function AdminUsers() {
     } catch {
       // navigator.clipboard indisponible (contexte non sécurisé) — l'utilisateur
       // peut sélectionner manuellement le champ, qui est en lecture seule.
+    }
+  }
+
+  // ── Attribuer initiales + rôle faiseur de planning ────────────────
+  async function attribuer(userId, initiales, isFaiseur) {
+    try {
+      const res = await fetch('/api/planning-attribuer', {
+        method: 'POST', headers,
+        body: JSON.stringify({ userId, initiales, isFaiseur }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      flash(data.message)
+      charger()
+    } catch (err) {
+      flash(err.message, true)
     }
   }
 
@@ -292,6 +309,8 @@ export default function AdminUsers() {
                   <th style={s.th}>E-mail</th>
                   <th style={s.th}>Rôle</th>
                   <th style={s.th}>Statut</th>
+                  <th style={s.th}>Initiales</th>
+                  <th style={s.th}>Faiseur</th>
                   <th style={s.th}>Depuis</th>
                   <th style={s.th}>Actions</th>
                 </tr>
@@ -312,6 +331,32 @@ export default function AdminUsers() {
                       <span style={{ fontSize: 11, color: p.status === 'active' ? 'var(--color-success)' : 'var(--color-text-tertiary)' }}>
                         {p.status === 'active' ? 'Actif' : 'Désactivé'}
                       </span>
+                    </td>
+                    <td style={s.td}>
+                      <select
+                        value={p.initiales ?? ''}
+                        disabled={p.status !== 'active'}
+                        onChange={e => attribuer(p.id, e.target.value || null, p.is_faiseur)}
+                        style={{ ...s.input, padding: '4px 8px', fontSize: 12 }}
+                      >
+                        <option value="">—</option>
+                        {ASSOCIES.map(a => {
+                          const prisAilleurs = profiles.some(x => x.id !== p.id && x.initiales === a)
+                          return <option key={a} value={a} disabled={prisAilleurs}>{a}</option>
+                        })}
+                      </select>
+                    </td>
+                    <td style={s.td}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: p.status === 'active' ? 'pointer' : 'default' }}>
+                        <input
+                          type="checkbox"
+                          checked={p.is_faiseur === true}
+                          disabled={p.status !== 'active'}
+                          onChange={e => attribuer(p.id, p.initiales ?? null, e.target.checked)}
+                          style={{ accentColor: 'var(--color-primary)' }}
+                        />
+                        {p.is_faiseur && <span style={s.badge('admin', p.status)}>Faiseur</span>}
+                      </label>
                     </td>
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{fmtDate(p.created_at)}</td>
                     <td style={s.td}>

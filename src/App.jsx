@@ -137,7 +137,7 @@ export default function App() {
       case 'tresorerie':       return <Tresorerie />
       case 'regles-virements': return <ReglesVirements />
       case 'planning-desiderata': return <PlanningDesiderata />
-      case 'planning-suivi':      return <PlanningSuivi />
+      case 'planning-suivi':      return profile?.is_faiseur ? <PlanningSuivi /> : <VueGlobale />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }
@@ -153,6 +153,7 @@ export default function App() {
         sombre={sombre}
         onToggleSombre={toggleSombre}
         isAdmin={profile?.role === 'admin'}
+        isFaiseur={profile?.is_faiseur === true}
       />
       <main style={{
         flex: 1,

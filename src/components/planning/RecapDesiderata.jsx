@@ -1,13 +1,6 @@
 import { useMemo } from 'react'
 import { listerSemaines, listerWeekends, parseISO, formatDateLongueFR } from '../../utils/calendrier'
 
-const LIBELLE_WE = {
-  'dispo': 'Disponible',
-  'indispo': 'Pas disponible',
-  'garde-ok': 'Garde OK',
-  'astreinte-ok': 'Astreinte OK',
-}
-
 const styles = {
   titre: { fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 12 },
   section: { marginBottom: 10 },
@@ -59,8 +52,6 @@ export default function RecapDesiderata({ initiales, d, annee }) {
       ? 'Non souhaitée'
       : null
 
-  const weekendsRenseignes = Object.entries(d.weekends)
-
   return (
     <div className="recap-associe">
       <div style={styles.titre}>{initiales}</div>
@@ -83,10 +74,6 @@ export default function RecapDesiderata({ initiales, d, annee }) {
         {d.joursOffSouhaites.map(x => formatDateLongueFR(parseISO(x))).join(' · ')}
       </Ligne>
 
-      <Ligne titre="Jours où ne pas poser le repos" vide={d.joursReposInterdits.length === 0}>
-        {d.joursReposInterdits.map(x => formatDateLongueFR(parseISO(x))).join(' · ')}
-      </Ligne>
-
       <Ligne titre="Préférence vacances scolaires" vide={!prefVac}>
         {prefVac}
       </Ligne>
@@ -95,11 +82,8 @@ export default function RecapDesiderata({ initiales, d, annee }) {
         {toussaint}
       </Ligne>
 
-      <Ligne titre="Week-ends" vide={weekendsRenseignes.length === 0}>
-        {weekendsRenseignes
-          .sort((a, b) => Number(a[0]) - Number(b[0]))
-          .map(([num, statut]) => `${labelWeekend[num] ?? `S${num}`} : ${LIBELLE_WE[statut] ?? statut}`)
-          .join(' · ')}
+      <Ligne titre="Week-ends indisponibles" vide={d.weekendsIndispo.length === 0}>
+        {d.weekendsIndispo.map(n => labelWeekend[n] ?? `S${n}`).join(' · ')}
       </Ligne>
 
       <Ligne titre="Demande de colonne (semaine type)" vide={!d.demandeColonneSemaineType.trim()}>

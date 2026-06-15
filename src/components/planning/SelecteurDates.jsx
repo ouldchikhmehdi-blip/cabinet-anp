@@ -7,10 +7,13 @@ import { parseISO, formatDateLongueFR } from '../../utils/calendrier'
  * Props :
  *   dates     — string[] au format 'YYYY-MM-DD'
  *   onChange  — (nouvellesDates: string[]) => void
- *   annee     — number (borne min/max du sélecteur)
+ *   annee     — number (borne par défaut si `bornes` absent)
+ *   bornes    — { min, max } 'YYYY-MM-DD' (optionnel, ex. bornes de période)
  *   accent    — 'primary' (défaut) | 'danger'
  */
-export default function SelecteurDates({ dates, onChange, annee, accent = 'primary' }) {
+export default function SelecteurDates({ dates, onChange, annee, bornes = null, accent = 'primary' }) {
+  const min = bornes?.min ?? `${annee}-01-01`
+  const max = bornes?.max ?? `${annee}-12-31`
   const [saisie, setSaisie] = useState('')
   const couleur = accent === 'danger' ? 'var(--color-danger)' : 'var(--color-primary)'
   const couleurFond = accent === 'danger' ? 'var(--color-danger-light)' : 'var(--color-primary-light)'
@@ -73,8 +76,8 @@ export default function SelecteurDates({ dates, onChange, annee, accent = 'prima
         <input
           type="date"
           value={saisie}
-          min={`${annee}-01-01`}
-          max={`${annee}-12-31`}
+          min={min}
+          max={max}
           onChange={e => setSaisie(e.target.value)}
           style={s.input}
         />
