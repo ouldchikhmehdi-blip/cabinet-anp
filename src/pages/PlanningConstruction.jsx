@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import PlanningCalendrier from './PlanningCalendrier'
@@ -17,6 +17,11 @@ export default function PlanningConstruction() {
 
   const [i, setI] = useState(0)
   const [annee, setAnnee] = useState(ANNEE_DEFAUT) // partagée entre toutes les étapes
+  const [statuts, setStatuts] = useState({})       // { <etapeId>: 'enregistre' | 'modifie' | 'vierge' }
+
+  // Callbacks stables (sinon l'effet de chargement des sous-pages se relancerait à chaque rendu).
+  const statutCalendrier = useCallback(st => setStatuts(p => ({ ...p, calendrier: st })), [])
+  const statutObjectifs = useCallback(st => setStatuts(p => ({ ...p, objectifs: st })), [])
 
   // ── Styles ──
   const s = {
@@ -36,12 +41,18 @@ export default function PlanningConstruction() {
       background: actif ? 'var(--color-primary-light)' : 'var(--color-bg)',
       color: actif ? 'var(--color-primary-dark)' : fait ? 'var(--color-text)' : 'var(--color-text-secondary)',
     }),
-    num: (actif, fait) => ({
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 700,
-      background: actif ? 'var(--color-primary)' : fait ? 'var(--color-success)' : 'var(--color-border)',
-      color: (actif || fait) ? '#fff' : 'var(--color-text-secondary)',
-    }),
+    // Rond numéroté : vert ✓ si enregistré, ambre • si modifié non enregistré, neutre sinon.
+    num: (statut) => {
+      const fond = statut === 'enregistre' ? 'var(--color-success)'
+        : statut === 'modifie' ? 'var(--color-amber)'
+          : 'var(--color-border)'
+      const texte = (statut === 'enregistre' || statut === 'modifie') ? '#fff' : 'var(--color-text-secondary)'
+      return {
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 700,
+        background: fond, color: texte,
+      }
+    },
     nav: { display: 'flex', gap: 8 },
     boutonNav: (off) => ({
       padding: '8px 16px', fontSize: 13, fontWeight: 500,
@@ -79,12 +90,16 @@ export default function PlanningConstruction() {
     <div style={{ maxWidth: 1000 }}>
       <div style={s.barre}>
         <div style={s.pills}>
-          {ETAPES.map((e, idx) => (
-            <button key={e.id} type="button" onClick={() => setI(idx)} style={s.pill(idx === i, idx < i)}>
-              <span style={s.num(idx === i, idx < i)}>{idx + 1}</span>
-              {e.titre}
-            </button>
-          ))}
+          {ETAPES.map((e, idx) => {
+            const statut = statuts[e.id]
+            const contenu = statut === 'enregistre' ? '✓' : statut === 'modifie' ? '•' : idx + 1
+            return (
+              <button key={e.id} type="button" onClick={() => setI(idx)} style={s.pill(idx === i, statut === 'enregistre')}>
+                <span style={s.num(statut)}>{contenu}</span>
+                {e.titre}
+              </button>
+            )
+          })}
         </div>
         <div style={s.nav}>
           <button type="button" disabled={premier} onClick={() => setI(i - 1)} style={s.boutonNav(premier)}>
@@ -96,8 +111,8 @@ export default function PlanningConstruction() {
         </div>
       </div>
 
-      {etape.id === 'calendrier' && <PlanningCalendrier annee={annee} onChangeAnnee={setAnnee} />}
-      {etape.id === 'objectifs' && <PlanningObjectifs annee={annee} onChangeAnnee={setAnnee} />}
+      {etape.id === 'calendrier' && <PlanningCalendrier annee={annee} onChangeAnnee={setAnnee} onStatut={statutCalendrier} />}
+      {etape.id === 'objectifs' && <PlanningObjectifs annee={annee} onChangeAnnee={setAnnee} onStatut={statutObjectifs} />}
     </div>
   )
 }

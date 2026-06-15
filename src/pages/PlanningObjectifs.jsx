@@ -4,8 +4,10 @@ import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { chargerObjectifs, sauverObjectifs } from '../utils/objectifsApi'
+import { chargerCalendrier } from '../utils/calendrierApi'
+import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 
-export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = {}) {
+export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -15,20 +17,21 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
+  const [exportEnCours, setExportEnCours] = useState(false)
   const [nouvelleLigne, setNouvelleLigne] = useState('')
 
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
     chargerObjectifs(annee)
-      .then(d => { if (!annule) setData(d) })
+      .then(d => { if (!annule) { setData(d); onStatut?.('vierge') } })
       .catch(() => { if (!annule) setErreur('Impossible de charger les objectifs.') })
     return () => { annule = true }
-  }, [annee, estFaiseur])
+  }, [annee, estFaiseur, onStatut])
 
   // Met à jour la valeur d'une cellule (associé × ligne). Vide → on retire la clé.
   function majValeur(associe, ligneId, valeur) {
-    setEnregistre(false)
+    setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const valeurs = { ...prev.valeurs }
       const ligneAssocie = { ...(valeurs[associe] ?? {}) }
@@ -45,7 +48,7 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
   function ajouterLigne() {
     const label = nouvelleLigne.trim()
     if (!label) return
-    setEnregistre(false)
+    setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       // id unique stable (pas de Date.now/Math.random — on s'appuie sur le compte existant).
       const n = prev.lignes.filter(l => l.supprimable).length + 1
@@ -57,7 +60,7 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
   }
 
   function supprimerLigne(ligneId) {
-    setEnregistre(false)
+    setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const valeurs = {}
       for (const a of Object.keys(prev.valeurs)) {
@@ -73,10 +76,23 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
     setErreur(null)
     try {
       await sauverObjectifs(annee, data, session.user.id)
-      setEnregistre(true)
+      setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+    }
+  }
+
+  async function exporter() {
+    setErreur(null); setExportEnCours(true)
+    try {
+      // Étape 2 : on reprend la base calendrier enregistrée + on ajoute les objectifs en cours.
+      const cal = await chargerCalendrier(annee)
+      await exporterCalendrierExcel(annee, cal, data)
+    } catch {
+      setErreur('Export Excel impossible.')
+    } finally {
+      setExportEnCours(false)
     }
   }
 
@@ -155,6 +171,15 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
         </div>
         <button type="button" onClick={enregistrer} disabled={data === null} style={{ ...s.bouton, opacity: data === null ? 0.5 : 1 }}>
           Enregistrer
+        </button>
+        <button
+          type="button"
+          onClick={exporter}
+          disabled={exportEnCours || data === null}
+          style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (exportEnCours || data === null) ? 0.6 : 1 }}
+          title="Génère un fichier Excel : base calendrier + objectifs"
+        >
+          {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
         </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
       </div>

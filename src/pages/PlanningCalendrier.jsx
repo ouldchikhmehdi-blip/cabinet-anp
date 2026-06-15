@@ -4,7 +4,6 @@ import { listerSemaines, joursFeriesFR, formatISO, ANNEES } from '../utils/calen
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
-import { chargerObjectifs } from '../utils/objectifsApi'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -28,7 +27,7 @@ const JOURS_FIXES = [
 ]
 const DEFAUT_SEMAINE = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
 
-export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } = {}) {
+export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -69,13 +68,13 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
     if (!estFaiseur) return
     let annule = false
     chargerCalendrier(annee)
-      .then(d => { if (!annule) setData(d) })
+      .then(d => { if (!annule) { setData(d); onStatut?.('vierge') } })
       .catch(() => { if (!annule) setErreur('Impossible de charger la base calendrier.') })
     return () => { annule = true }
-  }, [annee, estFaiseur])
+  }, [annee, estFaiseur, onStatut])
 
   function basculerJour(num, jour) {
-    setEnregistre(false)
+    setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const courant = prev.semaines[num]?.[jour] === 'G' ? 'A' : 'G'
       return {
@@ -88,7 +87,7 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
   // Week-end : samedi/dimanche couplés (opposés) + alternance imposée à toutes
   // les semaines en dessous (rotation avec l'autre groupe).
   function basculerWeekend(num) {
-    setEnregistre(false)
+    setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const idx = semaines.findIndex(s => s.num === num)
       if (idx === -1) return prev
@@ -106,7 +105,7 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
   }
 
   function basculerVacances(num) {
-    setEnregistre(false)
+    setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const present = prev.vacancesScolaires.includes(num)
       return {
@@ -123,7 +122,7 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
     try {
       const weeks = await recupererVacancesScolairesZoneC(annee)
       setData(prev => ({ ...prev, vacancesScolaires: weeks }))
-      setEnregistre(false)
+      setEnregistre(false); onStatut?.('modifie')
     } catch {
       setErreur('Impossible de récupérer les vacances scolaires (API indisponible). Vous pouvez les cocher manuellement.')
     } finally {
@@ -134,10 +133,8 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
   async function exporter() {
     setErreur(null); setExportEnCours(true)
     try {
-      // Objectifs facultatifs : si la table n'existe pas encore / vide, on exporte sans bloquer.
-      let objectifs = null
-      try { objectifs = await chargerObjectifs(annee) } catch { objectifs = null }
-      await exporterCalendrierExcel(annee, data, objectifs)
+      // Étape 1 : on exporte uniquement la base calendrier (les objectifs s'ajoutent à l'étape 2).
+      await exporterCalendrierExcel(annee, data)
     } catch {
       setErreur('Export Excel impossible.')
     } finally {
@@ -149,7 +146,7 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
     setErreur(null)
     try {
       await sauverCalendrier(annee, data, session.user.id)
-      setEnregistre(true)
+      setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
