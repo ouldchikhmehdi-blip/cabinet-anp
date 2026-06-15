@@ -7,6 +7,7 @@ import {
   chargerTousDesiderata, chargerProfilsAvecInitiales,
   listerRecueils, creerRecueil, definirStatutRecueil, supprimerRecueil,
 } from '../utils/desiderataApi'
+import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
 
 export default function PlanningSuivi() {
@@ -25,6 +26,10 @@ export default function PlanningSuivi() {
   const [nom, setNom] = useState('')
   const [semDebut, setSemDebut] = useState(1)
   const [semFin, setSemFin] = useState(13)
+
+  // Récupération des vacances scolaires (écrit dans la base calendrier de l'année)
+  const [recupVac, setRecupVac] = useState(false)
+  const [msgVac, setMsgVac] = useState(null)
 
   const semainesAnnee = useMemo(() => listerSemaines(annee), [annee])
 
@@ -67,6 +72,21 @@ export default function PlanningSuivi() {
     setRecueils(rs)
     if (selId !== undefined) setRecueilId(selId)
     else setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : (rs[0]?.id ?? null)))
+  }
+
+  async function recupererVacances() {
+    setMsgVac(null); setErreur(null); setRecupVac(true)
+    try {
+      const cal = await chargerCalendrier(annee)
+      const weeks = await recupererVacancesScolairesZoneC(annee)
+      await sauverCalendrier(annee, { ...cal, vacancesScolaires: weeks }, session.user.id)
+      setMsgVac(`Vacances scolaires ${annee} récupérées et enregistrées dans la base calendrier.`)
+      setTimeout(() => setMsgVac(null), 4000)
+    } catch {
+      setErreur('Impossible de récupérer les vacances scolaires (API indisponible).')
+    } finally {
+      setRecupVac(false)
+    }
   }
 
   async function creer() {
@@ -211,13 +231,27 @@ export default function PlanningSuivi() {
 
       {/* Gestion des recueils */}
       <div style={s.carteSection} className="no-print">
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 8 }}>
           <div>
             <label style={s.label}>Année</label>
             <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
               {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
+          <button
+            type="button"
+            onClick={recupererVacances}
+            disabled={recupVac}
+            style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: recupVac ? 0.6 : 1 }}
+            title="Pré-remplit les vacances scolaires zone C dans la base calendrier (avant que les associés saisissent)"
+          >
+            {recupVac ? 'Récupération…' : 'Récupérer les vacances scolaires (zone C)'}
+          </button>
+        </div>
+        {msgVac && <div style={{ fontSize: 12, color: 'var(--color-success)', marginBottom: 12 }}>{msgVac}</div>}
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
+          Au démarrage, récupérez les vacances scolaires : elles seront bloquées dans les grilles
+          de desiderata des associés (gérées via la question dédiée). Vous pourrez les ajuster dans « Base calendrier ».
         </div>
 
         <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
