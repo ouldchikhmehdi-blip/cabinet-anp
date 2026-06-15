@@ -55,9 +55,9 @@ export async function exporterCalendrierExcel(annee, data) {
   // Largeurs (unité Excel = nb de caractères, comme la boîte « Largeur de colonne »).
   // Date | 8 associés | Date | Groupe
   ws.columns = [
-    { width: 26 },
-    ...ASSOCIES.map(() => ({ width: 18 })),
-    { width: 26 },
+    { width: 35 },
+    ...ASSOCIES.map(() => ({ width: 24 })),
+    { width: 35 },
     { width: 8 },
   ]
 
