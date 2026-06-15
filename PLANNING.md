@@ -7,6 +7,8 @@
 > **Contexte métier** : outil d'aide à la fabrication du planning d'une équipe de 8 anesthésistes (gardes, astreintes, réanimation, bloc, vacances…), en complémentarité avec un second groupe d'anesthésie de la même clinique. Aucune donnée patient ni bancaire ici ; les personnes sont désignées par leurs initiales.
 >
 > **Esprit de l'outil** : un assistant (pas un robot). Il propose, tient les compteurs à jour, alerte sur les déséquilibres — mais l'humain a toujours le dernier mot. Voir §13.
+>
+> **Environnement du faiseur** : le faiseur de planning travaille sur ordinateur (PC Windows, grand écran). Ses écrans réservés — Base calendrier (Étape 0), Suivi des desiderata, construction du planning — sont pensés et optimisés pour un usage **desktop Windows** (grilles et tableaux larges, forte densité, impression A4/PDF), sans contrainte de responsive mobile. Seuls les écrans de **saisie des desiderata** (côté associés) restent accessibles depuis n'importe quel appareil.
 
 ---
 
@@ -108,6 +110,8 @@ Le repos qui suit une garde/astreinte est **déplaçable**, puisque c'est l'équ
 - Cette maquette est fournie chaque année au moment de faire le planning d'été. L'outil l'importe telle quelle et l'ajoute au planning (sur demande, ex. « donne-moi la maquette d'été »).
 - Pas de rotation : maquette neuve chaque été, le choix de colonne dépendant des contraintes perso de l'année.
 - Ensuite seulement, le planning est construit autour, sur les périodes hors-vacances.
+- **Saisie d'été (flux à part, à coder ultérieurement)** : le faiseur met à disposition les **colonnes disponibles**, chaque associé **choisit sa colonne**, puis le faiseur **réattribue/arbitre** qui prend quelle colonne. C'est un module distinct du recueil de desiderata classique.
+- **Recueil de type « été » (déjà en place)** : un recueil peut être marqué « été » à sa création par le faiseur (colonne `type` = `ete` sur `planning_recueils`). Dans « Mes desiderata », un recueil d'été **masque** les sections **Week-ends indisponibles** et **Jours off souhaités** (sans objet l'été : les week-ends sont bloqués et les congés se gèrent par colonnes). Un bandeau l'explique à l'associé.
 
 ### 10. Périodes spéciales fournies d'emblée
 

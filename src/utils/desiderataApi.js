@@ -10,14 +10,14 @@ import { normaliser } from './desiderata'
 export async function listerRecueils(annee) {
   const { data, error } = await supabase
     .from('planning_recueils')
-    .select('id, annee, nom, semaine_debut, semaine_fin, statut')
+    .select('id, annee, nom, semaine_debut, semaine_fin, statut, type')
     .eq('annee', annee)
     .order('semaine_debut')
   if (error) throw error
   return data ?? []
 }
 
-export async function creerRecueil({ annee, nom, semaineDebut, semaineFin, userId }) {
+export async function creerRecueil({ annee, nom, semaineDebut, semaineFin, type = 'normal', userId }) {
   const { error } = await supabase
     .from('planning_recueils')
     .insert({
@@ -25,6 +25,7 @@ export async function creerRecueil({ annee, nom, semaineDebut, semaineFin, userI
       nom,
       semaine_debut: semaineDebut,
       semaine_fin: semaineFin,
+      type,
       statut: 'ouvert',
       created_by: userId,
     })

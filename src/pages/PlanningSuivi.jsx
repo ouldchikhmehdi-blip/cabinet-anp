@@ -26,6 +26,7 @@ export default function PlanningSuivi() {
   const [nom, setNom] = useState('')
   const [semDebut, setSemDebut] = useState(1)
   const [semFin, setSemFin] = useState(13)
+  const [estEte, setEstEte] = useState(false)
 
   // Récupération des vacances scolaires (écrit dans la base calendrier de l'année)
   const [recupVac, setRecupVac] = useState(false)
@@ -94,8 +95,9 @@ export default function PlanningSuivi() {
     if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
     if (semFin < semDebut) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
     try {
-      await creerRecueil({ annee, nom: nom.trim(), semaineDebut: semDebut, semaineFin: semFin, userId: session.user.id })
+      await creerRecueil({ annee, nom: nom.trim(), semaineDebut: semDebut, semaineFin: semFin, type: estEte ? 'ete' : 'normal', userId: session.user.id })
       setNom('')
+      setEstEte(false)
       await rechargerRecueils()
     } catch {
       setErreur('Création impossible (réservée au faiseur).')
@@ -267,7 +269,7 @@ export default function PlanningSuivi() {
               return (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: `0.5px solid ${actif ? 'var(--color-primary)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '8px 12px' }}>
                   <button type="button" onClick={() => setRecueilId(r.id)} style={{ ...s.boutonSec, border: 'none', background: 'transparent', fontSize: 13, fontWeight: actif ? 600 : 400, color: 'var(--color-text)', flex: 1, textAlign: 'left' }}>
-                    {r.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>· S{r.semaine_debut}→S{r.semaine_fin}</span>
+                    {r.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>· S{r.semaine_debut}→S{r.semaine_fin}{r.type === 'ete' ? ' · été' : ''}</span>
                   </button>
                   <span style={s.pastille(ouvertR ? 'var(--color-success)' : 'var(--color-text-tertiary)')}>
                     <span style={s.point(ouvertR ? 'var(--color-success)' : 'var(--color-text-tertiary)')} />
@@ -299,6 +301,10 @@ export default function PlanningSuivi() {
               {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
             </select>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', paddingBottom: 9, cursor: 'pointer' }} title="Saisie simplifiée : pas de week-ends ni de jours off (congés répartis par colonnes)">
+            <input type="checkbox" checked={estEte} onChange={e => setEstEte(e.target.checked)} style={{ accentColor: 'var(--color-primary)' }} />
+            Période d'été
+          </label>
           <button type="button" onClick={creer} style={s.bouton}>Créer le recueil</button>
         </div>
       </div>
@@ -332,7 +338,7 @@ export default function PlanningSuivi() {
           {/* Panneau récap */}
           {ouvert && (
             <div style={s.panneau} className="no-print">
-              <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} />
+              <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={recueil.type === 'ete'} />
             </div>
           )}
 
@@ -343,7 +349,7 @@ export default function PlanningSuivi() {
             </h2>
             {lignes.map(l => (
               <div key={l.ini} style={{ marginBottom: 24 }}>
-                <RecapDesiderata initiales={l.ini} d={l.data} annee={annee} />
+                <RecapDesiderata initiales={l.ini} d={l.data} annee={annee} estEte={recueil.type === 'ete'} />
               </div>
             ))}
           </div>

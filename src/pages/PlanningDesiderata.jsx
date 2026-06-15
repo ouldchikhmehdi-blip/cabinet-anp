@@ -58,6 +58,7 @@ export default function PlanningDesiderata() {
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const ferme = recueil?.statut === 'ferme'
+  const estEte = recueil?.type === 'ete'
 
   // Charge les semaines de vacances scolaires depuis la Base calendrier de l'année
   // (pour les bloquer dans les grilles : elles se gèrent dans la section Préférence).
@@ -235,7 +236,7 @@ export default function PlanningDesiderata() {
           ) : null}
 
           <div style={{ ...s.carte }}>
-            <RecapDesiderata initiales={initiales} d={data} annee={annee} />
+            <RecapDesiderata initiales={initiales} d={data} annee={annee} estEte={estEte} />
           </div>
 
           {!ferme && (
@@ -248,6 +249,13 @@ export default function PlanningDesiderata() {
       ) : (
         // ── Mode édition ──
         <>
+          {estEte && (
+            <div style={s.banniere('var(--color-text-secondary)', 'var(--color-bg)')}>
+              <strong>Recueil d'été.</strong> Les congés d'été se répartissent par <strong>choix de colonnes</strong>
+              {' '}(maquette fournie chaque année). Les week-ends et les jours off ne se saisissent pas ici.
+            </div>
+          )}
+
           {/* Rien à signaler */}
           <div style={s.carte}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
@@ -297,17 +305,19 @@ export default function PlanningDesiderata() {
               />
             </div>
 
-            {/* Jours off souhaités */}
-            <div style={s.carte}>
-              <div style={s.titre}>Jours off souhaités</div>
-              <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
-              <SelecteurDates
-                dates={data.joursOffSouhaites}
-                onChange={v => maj('joursOffSouhaites', v)}
-                annee={annee}
-                bornes={bornes}
-              />
-            </div>
+            {/* Jours off souhaités (sans objet l'été) */}
+            {!estEte && (
+              <div style={s.carte}>
+                <div style={s.titre}>Jours off souhaités</div>
+                <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
+                <SelecteurDates
+                  dates={data.joursOffSouhaites}
+                  onChange={v => maj('joursOffSouhaites', v)}
+                  annee={annee}
+                  bornes={bornes}
+                />
+              </div>
+            )}
 
             {/* Préférence vacances scolaires + Toussaint */}
             <div style={s.carte}>
@@ -377,16 +387,18 @@ export default function PlanningDesiderata() {
               )}
             </div>
 
-            {/* Week-ends indisponibles */}
-            <div style={s.carte}>
-              <div style={s.titre}>Week-ends indisponibles</div>
-              <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
-              <WeekendsIndispo
-                weekends={weekends}
-                selection={data.weekendsIndispo}
-                onChange={v => maj('weekendsIndispo', v)}
-              />
-            </div>
+            {/* Week-ends indisponibles (sans objet l'été) */}
+            {!estEte && (
+              <div style={s.carte}>
+                <div style={s.titre}>Week-ends indisponibles</div>
+                <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
+                <WeekendsIndispo
+                  weekends={weekends}
+                  selection={data.weekendsIndispo}
+                  onChange={v => maj('weekendsIndispo', v)}
+                />
+              </div>
+            )}
 
             {/* Demande de colonne */}
             <div style={s.carte}>

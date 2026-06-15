@@ -27,8 +27,9 @@ function Ligne({ titre, children, vide }) {
  *   initiales — string
  *   d         — objet desiderata
  *   annee     — number (pour libeller semaines / week-ends)
+ *   estEte    — bool : recueil d'été (masque jours off et week-ends, sans objet l'été)
  */
-export default function RecapDesiderata({ initiales, d, annee }) {
+export default function RecapDesiderata({ initiales, d, annee, estEte = false }) {
   const labelSemaine = useMemo(() => {
     const map = {}
     for (const s of listerSemaines(annee)) map[s.num] = s.label
@@ -74,9 +75,11 @@ export default function RecapDesiderata({ initiales, d, annee }) {
         {d.vacancesRefusees.map(n => labelSemaine[n] ?? `S${n}`).join(' · ')}
       </Ligne>
 
-      <Ligne titre="Jours off souhaités" vide={d.joursOffSouhaites.length === 0}>
-        {d.joursOffSouhaites.map(x => formatDateLongueFR(parseISO(x))).join(' · ')}
-      </Ligne>
+      {!estEte && (
+        <Ligne titre="Jours off souhaités" vide={d.joursOffSouhaites.length === 0}>
+          {d.joursOffSouhaites.map(x => formatDateLongueFR(parseISO(x))).join(' · ')}
+        </Ligne>
+      )}
 
       <Ligne titre="Préférence vacances scolaires" vide={!prefVac}>
         {prefVac}
@@ -86,9 +89,11 @@ export default function RecapDesiderata({ initiales, d, annee }) {
         {toussaint}
       </Ligne>
 
-      <Ligne titre="Week-ends indisponibles" vide={d.weekendsIndispo.length === 0}>
-        {d.weekendsIndispo.map(n => labelWeekend[n] ?? `S${n}`).join(' · ')}
-      </Ligne>
+      {!estEte && (
+        <Ligne titre="Week-ends indisponibles" vide={d.weekendsIndispo.length === 0}>
+          {d.weekendsIndispo.map(n => labelWeekend[n] ?? `S${n}`).join(' · ')}
+        </Ligne>
+      )}
 
       <Ligne titre="Demande de colonne (semaine type)" vide={!d.demandeColonneSemaineType.trim()}>
         {d.demandeColonneSemaineType}
