@@ -260,20 +260,20 @@ export default function PlanningDesiderata() {
                 semaines={semaines}
                 selection={data.vacancesSouhaitees}
                 onChange={v => maj('vacancesSouhaitees', v)}
-                surligner={data.vacancesRefusees}
+                desactivees={data.vacancesRefusees}
               />
             </div>
 
             {/* Vacances refusées */}
             <div style={s.carte}>
               <div style={s.titre}>Semaines où je ne veux surtout PAS de vacances</div>
-              <div style={s.aide}>Contrainte négative. Les semaines déjà souhaitées sont signalées en orange.</div>
+              <div style={s.aide}>Contrainte négative. Les semaines déjà souhaitées ne sont pas sélectionnables ici.</div>
               <SelecteurSemaines
                 semaines={semaines}
                 selection={data.vacancesRefusees}
                 onChange={v => maj('vacancesRefusees', v)}
                 accent="danger"
-                surligner={data.vacancesSouhaitees}
+                desactivees={data.vacancesSouhaitees}
               />
             </div>
 

@@ -6,13 +6,14 @@
  *   selection   — number[] (numéros de semaine cochés)
  *   onChange    — (nouvelleSelection: number[]) => void
  *   accent      — 'primary' (défaut) | 'danger' (pour les vacances refusées)
- *   surligner   — number[] : semaines à signaler visuellement (ex. présentes dans l'autre liste)
+ *   desactivees — number[] : semaines non-sélectionnables (déjà choisies dans l'autre liste)
  */
-export default function SelecteurSemaines({ semaines, selection, onChange, accent = 'primary', surligner = [] }) {
+export default function SelecteurSemaines({ semaines, selection, onChange, accent = 'primary', desactivees = [] }) {
   const couleur = accent === 'danger' ? 'var(--color-danger)' : 'var(--color-primary)'
   const couleurFond = accent === 'danger' ? 'var(--color-danger-light)' : 'var(--color-primary-light)'
 
   function toggle(num) {
+    if (desactivees.includes(num)) return // bloqué : déjà choisi dans l'autre liste
     if (selection.includes(num)) {
       onChange(selection.filter(n => n !== num))
     } else {
@@ -26,17 +27,18 @@ export default function SelecteurSemaines({ semaines, selection, onChange, accen
       gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
       gap: 6,
     },
-    item: (actif, alerte) => ({
+    item: (actif, bloque) => ({
       display: 'flex',
       alignItems: 'center',
       gap: 8,
       padding: '6px 10px',
       fontSize: 12,
       borderRadius: 'var(--radius-md)',
-      border: `0.5px solid ${actif ? couleur : alerte ? 'var(--color-amber)' : 'var(--color-border)'}`,
-      background: actif ? couleurFond : alerte ? 'var(--color-amber-light)' : 'var(--color-bg)',
-      color: 'var(--color-text)',
-      cursor: 'pointer',
+      border: `0.5px solid ${actif ? couleur : 'var(--color-border)'}`,
+      background: actif ? couleurFond : 'var(--color-bg)',
+      color: bloque ? 'var(--color-text-tertiary)' : 'var(--color-text)',
+      cursor: bloque ? 'not-allowed' : 'pointer',
+      opacity: bloque ? 0.5 : 1,
       userSelect: 'none',
     }),
   }
@@ -45,12 +47,17 @@ export default function SelecteurSemaines({ semaines, selection, onChange, accen
     <div style={s.grille}>
       {semaines.map(sem => {
         const actif = selection.includes(sem.num)
-        const alerte = !actif && surligner.includes(sem.num)
+        const bloque = !actif && desactivees.includes(sem.num)
         return (
-          <label key={sem.num} style={s.item(actif, alerte)}>
+          <label
+            key={sem.num}
+            style={s.item(actif, bloque)}
+            title={bloque ? 'Déjà sélectionnée dans l\'autre liste' : undefined}
+          >
             <input
               type="checkbox"
               checked={actif}
+              disabled={bloque}
               onChange={() => toggle(sem.num)}
               style={{ accentColor: couleur }}
             />
