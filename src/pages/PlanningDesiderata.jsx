@@ -387,6 +387,25 @@ export default function PlanningDesiderata() {
               )}
             </div>
 
+            {/* Fêtes de fin d'année — réparties à la main (sans objet l'été) */}
+            {!estEte && (
+              <div style={s.carte}>
+                <div style={s.titre}>Fêtes de fin d'année (Noël / Nouvel An)</div>
+                <div style={s.aide}>
+                  Les 15 jours de fin d'année sont répartis <strong>à la main</strong> par le faiseur de planning,
+                  dès la mise en place du planning de début d'année. Rien n'est automatisé ici : indiquez en
+                  texte libre vos préférences selon les possibilités qu'il proposera — par exemple la 1ʳᵉ ou la
+                  2ᵉ semaine, ou si vous préférez travailler le 24/25 décembre ou le 31/1ᵉʳ janvier.
+                </div>
+                <textarea
+                  style={s.textarea}
+                  value={data.noel}
+                  onChange={e => maj('noel', e.target.value)}
+                  placeholder="Ex. : plutôt la 2ᵉ semaine ; je préfère travailler le 24-25 et être off le 31-1er…"
+                />
+              </div>
+            )}
+
             {/* Week-ends indisponibles (sans objet l'été) */}
             {!estEte && (
               <div style={s.carte}>

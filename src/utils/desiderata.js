@@ -30,6 +30,7 @@ export function desiderataVide() {
     toussaintSouhaitee: null,    // true | false | null
     toussaintSemaine: null,      // 's1' | 's2' | 'les-deux' | null
     weekendsIndispo: [],         // numéros de semaine ISO des week-ends indisponibles
+    noel: '',                    // texte libre : préférences fêtes de fin d'année (réparties à la main)
     demandeColonneSemaineType: '',
     commentaire: '',
   }
@@ -52,6 +53,7 @@ export function estRempli(d, soumis = false) {
     d.preferenceVacancesScolaires !== null ||
     d.toussaintSouhaitee !== null ||
     d.weekendsIndispo.length > 0 ||
+    (d.noel ?? '').trim() !== '' ||
     d.demandeColonneSemaineType.trim() !== '' ||
     d.commentaire.trim() !== ''
   )

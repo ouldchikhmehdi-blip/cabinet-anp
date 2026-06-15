@@ -90,6 +90,12 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false })
       </Ligne>
 
       {!estEte && (
+        <Ligne titre="Fêtes de fin d'année" vide={!(d.noel ?? '').trim()}>
+          {d.noel}
+        </Ligne>
+      )}
+
+      {!estEte && (
         <Ligne titre="Week-ends indisponibles" vide={d.weekendsIndispo.length === 0}>
           {d.weekendsIndispo.map(n => labelWeekend[n] ?? `S${n}`).join(' · ')}
         </Ligne>
