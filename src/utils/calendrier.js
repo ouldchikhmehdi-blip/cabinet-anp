@@ -120,3 +120,55 @@ export const VACANCES_SCOLAIRES_2026 = {
   paques: { label: 'Pâques (printemps)', semaines: [16, 17] },
   toussaint: { label: 'Toussaint', semaines: [43, 44] },
 }
+
+// ── Jours fériés français (calcul valable toute année grégorienne, en UTC) ──
+// Pâques via l'algorithme de Meeus/Butcher ; les fériés mobiles en découlent.
+function paquesDimanche(annee) {
+  const a = annee % 19
+  const b = Math.floor(annee / 100)
+  const c = annee % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const mois = Math.floor((h + l - 7 * m + 114) / 31) // 3 = mars, 4 = avril
+  const jour = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(Date.UTC(annee, mois - 1, jour))
+}
+
+// → [{ iso, nom, date }] trié par date
+export function joursFeriesFR(annee) {
+  const paques = paquesDimanche(annee)
+  const liste = [
+    { date: new Date(Date.UTC(annee, 0, 1)), nom: "Jour de l'an" },
+    { date: new Date(paques.getTime() + 1 * JOUR_MS), nom: 'Lundi de Pâques' },
+    { date: new Date(Date.UTC(annee, 4, 1)), nom: 'Fête du travail' },
+    { date: new Date(Date.UTC(annee, 4, 8)), nom: 'Victoire 1945' },
+    { date: new Date(paques.getTime() + 39 * JOUR_MS), nom: 'Ascension' },
+    { date: new Date(paques.getTime() + 50 * JOUR_MS), nom: 'Lundi de Pentecôte' },
+    { date: new Date(Date.UTC(annee, 6, 14)), nom: 'Fête nationale' },
+    { date: new Date(Date.UTC(annee, 7, 15)), nom: 'Assomption' },
+    { date: new Date(Date.UTC(annee, 10, 1)), nom: 'Toussaint' },
+    { date: new Date(Date.UTC(annee, 10, 11)), nom: 'Armistice 1918' },
+    { date: new Date(Date.UTC(annee, 11, 25)), nom: 'Noël' },
+  ]
+  return liste
+    .sort((x, y) => x.date.getTime() - y.date.getTime())
+    .map(f => ({ iso: formatISO(f.date), nom: f.nom, date: f.date }))
+}
+
+// ── Vacances scolaires zone C (Montpellier) — n° de semaine ISO, EN DUR par
+// année connue. À CONFIRMER (calendrier Éducation nationale). Vide sinon. ──
+export const VACANCES_SCOLAIRES_ZONE_C = {
+  // 2026 : Noël (début janv), hiver/février, printemps/Pâques, été, Toussaint, Noël (fin déc).
+  2026: [1, 2, 7, 8, 15, 16, 28, 29, 30, 31, 32, 33, 34, 35, 43, 44, 52, 53],
+}
+
+export function semainesVacancesScolaires(annee) {
+  return VACANCES_SCOLAIRES_ZONE_C[annee] ?? []
+}

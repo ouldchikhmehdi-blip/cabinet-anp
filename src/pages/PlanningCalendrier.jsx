@@ -1,0 +1,249 @@
+import { useState, useEffect, useMemo } from 'react'
+import { useAuth } from '../auth/AuthContext'
+import { listerSemaines, joursFeriesFR, formatDateLongueFR, ANNEES } from '../utils/calendrier'
+import { ANNEE_DEFAUT } from '../utils/desiderata'
+import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
+
+// Couleurs des statuts (jaune/bleu en littéral : pas de variable CSS dédiée).
+const COULEUR = {
+  A: { bg: 'var(--color-amber-light)', fg: 'var(--color-amber)' }, // astreinte = orange
+  G: { bg: '#FBF3D0', fg: '#9A7B0A' },                             // garde = jaune
+}
+const JOURS_EDIT = [
+  { cle: 'jeu', label: 'Jeu' },
+  { cle: 'ven', label: 'Ven' },
+  { cle: 'sam', label: 'Sam' },
+  { cle: 'dim', label: 'Dim' },
+]
+// Jours fixes (non éditables) : lundi=A, mardi=G, mercredi=A (§3).
+const JOURS_FIXES = [
+  { label: 'Lun', statut: 'A' },
+  { label: 'Mar', statut: 'G' },
+  { label: 'Mer', statut: 'A' },
+]
+
+export default function PlanningCalendrier() {
+  const { session, profile } = useAuth()
+  const estFaiseur = profile?.is_faiseur === true
+
+  const [annee, setAnnee] = useState(ANNEE_DEFAUT)
+  const [data, setData] = useState(null)
+  const [erreur, setErreur] = useState(null)
+  const [enregistre, setEnregistre] = useState(false)
+
+  const semaines = useMemo(() => listerSemaines(annee), [annee])
+  const feries = useMemo(() => joursFeriesFR(annee), [annee])
+
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerCalendrier(annee)
+      .then(d => { if (!annule) setData(d) })
+      .catch(() => { if (!annule) setErreur('Impossible de charger la base calendrier.') })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
+  function basculerJour(num, jour) {
+    setEnregistre(false)
+    setData(prev => {
+      const courant = prev.semaines[num]?.[jour] === 'G' ? 'A' : 'G'
+      return {
+        ...prev,
+        semaines: { ...prev.semaines, [num]: { ...prev.semaines[num], [jour]: courant } },
+      }
+    })
+  }
+
+  function basculerVacances(num) {
+    setEnregistre(false)
+    setData(prev => {
+      const present = prev.vacancesScolaires.includes(num)
+      return {
+        ...prev,
+        vacancesScolaires: present
+          ? prev.vacancesScolaires.filter(n => n !== num)
+          : [...prev.vacancesScolaires, num].sort((a, b) => a - b),
+      }
+    })
+  }
+
+  function basculerFerie(iso) {
+    setEnregistre(false)
+    setData(prev => ({
+      ...prev,
+      feries: { ...prev.feries, [iso]: prev.feries[iso] === 'G' ? 'A' : 'G' },
+    }))
+  }
+
+  async function enregistrer() {
+    setErreur(null)
+    try {
+      await sauverCalendrier(annee, data, session.user.id)
+      setEnregistre(true)
+      setTimeout(() => setEnregistre(false), 3000)
+    } catch {
+      setErreur('Enregistrement impossible (réservé au faiseur).')
+    }
+  }
+
+  // ── Styles ──
+  const s = {
+    select: {
+      padding: '8px 12px', fontSize: 14, border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
+    },
+    bouton: {
+      padding: '10px 20px', background: 'var(--color-primary)', color: '#fff', border: 'none',
+      borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500,
+    },
+    carte: {
+      background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)', padding: '8px 12px', marginBottom: 24,
+    },
+    ligne: {
+      display: 'grid',
+      gridTemplateColumns: '170px repeat(7, 40px) 70px',
+      gap: 4, alignItems: 'center', padding: '3px 0',
+    },
+    entete: { fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'center', fontWeight: 600 },
+    celluleFixe: {
+      height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 12, borderRadius: 6, background: 'var(--color-bg)', color: 'var(--color-text-tertiary)',
+      border: '0.5px solid var(--color-border)',
+    },
+    boutonJour: (statut) => ({
+      height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 12, fontWeight: 600, borderRadius: 6,
+      background: COULEUR[statut].bg, color: COULEUR[statut].fg,
+      border: `0.5px solid ${COULEUR[statut].fg}`,
+    }),
+    caseVac: (actif) => ({
+      height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 11, borderRadius: 6, cursor: 'pointer',
+      background: actif ? '#E3EEF9' : 'var(--color-bg)',
+      color: actif ? '#2D6CB5' : 'var(--color-text-tertiary)',
+      border: `0.5px solid ${actif ? '#2D6CB5' : 'var(--color-border)'}`,
+      fontWeight: actif ? 600 : 400,
+    }),
+    legende: { display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16, fontSize: 12, color: 'var(--color-text-secondary)' },
+    pastille: () => ({
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+    }),
+    pt: (bg, fg) => ({ width: 14, height: 14, borderRadius: 4, background: bg, border: `0.5px solid ${fg}` }),
+    ferieLigne: {
+      display: 'flex', alignItems: 'center', gap: 12, padding: '6px 0',
+      borderBottom: '0.5px solid var(--color-border)',
+    },
+  }
+
+  if (!estFaiseur) {
+    return (
+      <div style={{ maxWidth: 640 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>Base calendrier</h1>
+        <div style={{ ...s.carte, color: 'var(--color-text-secondary)', fontSize: 14, padding: 24 }}>
+          Cette page est réservée au faiseur de planning.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Base calendrier — Étape 0</h1>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+        Lundi, mardi, mercredi sont fixes (A / G / A). Pour jeudi, vendredi, samedi et dimanche,
+        cliquez pour basculer entre <strong>Astreinte (A)</strong> et <strong>Garde (G)</strong> selon
+        la rotation avec l'autre groupe. Cochez les semaines de vacances scolaires et ajustez les fériés.
+      </p>
+
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Année</label>
+          <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
+            {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {erreur && (
+        <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+          {erreur}
+        </div>
+      )}
+
+      {/* Légende */}
+      <div style={s.legende}>
+        <span style={s.pastille()}><span style={s.pt(COULEUR.A.bg, COULEUR.A.fg)} /> Astreinte (A)</span>
+        <span style={s.pastille()}><span style={s.pt(COULEUR.G.bg, COULEUR.G.fg)} /> Garde (G)</span>
+        <span style={s.pastille()}><span style={s.pt('var(--color-bg)', 'var(--color-border)')} /> Jour fixe</span>
+        <span style={s.pastille()}><span style={s.pt('#E3EEF9', '#2D6CB5')} /> Vacances scolaires</span>
+      </div>
+
+      {data === null ? (
+        <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
+      ) : (
+        <>
+          {/* Grille des semaines */}
+          <div style={s.carte}>
+            <div style={{ ...s.ligne, borderBottom: '0.5px solid var(--color-border)', paddingBottom: 6, marginBottom: 4 }}>
+              <span style={{ ...s.entete, textAlign: 'left' }}>Semaine</span>
+              {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(j => <span key={j} style={s.entete}>{j}</span>)}
+              <span style={s.entete}>Vac.</span>
+            </div>
+            {semaines.map(sem => {
+              const jours = data.semaines[sem.num] ?? { jeu: 'A', ven: 'A', sam: 'A', dim: 'G' }
+              const enVac = data.vacancesScolaires.includes(sem.num)
+              return (
+                <div key={sem.num} style={s.ligne}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{sem.label}</span>
+                  {JOURS_FIXES.map(jf => (
+                    <div key={jf.label} style={s.celluleFixe} title="Jour fixe">{jf.statut}</div>
+                  ))}
+                  {JOURS_EDIT.map(j => (
+                    <button
+                      key={j.cle}
+                      type="button"
+                      onClick={() => basculerJour(sem.num, j.cle)}
+                      style={s.boutonJour(jours[j.cle])}
+                      title={`${j.label} — ${jours[j.cle] === 'G' ? 'Garde' : 'Astreinte'}`}
+                    >
+                      {jours[j.cle]}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => basculerVacances(sem.num)} style={s.caseVac(enVac)}>
+                    {enVac ? '✓ Vac.' : '—'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Jours fériés */}
+          <div style={s.carte}>
+            <div style={{ fontSize: 14, fontWeight: 600, padding: '6px 0 10px' }}>Jours fériés {annee}</div>
+            {feries.map(f => (
+              <div key={f.iso} style={s.ferieLigne}>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--color-text)' }}>
+                  {f.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>· {formatDateLongueFR(f.date)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => basculerFerie(f.iso)}
+                  style={{ ...s.boutonJour(data.feries[f.iso] ?? 'A'), width: 80 }}
+                >
+                  {(data.feries[f.iso] ?? 'A') === 'G' ? 'Garde' : 'Astreinte'}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Enregistrer */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 24 }}>
+            <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
+            {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>Enregistré ✓</span>}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
