@@ -52,12 +52,13 @@ export async function exporterCalendrierExcel(annee, data) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
-  // Largeurs : Date | 8 associés | Date | Groupe
+  // Largeurs (unité Excel = nb de caractères, comme la boîte « Largeur de colonne »).
+  // Date | 8 associés | Date | Groupe
   ws.columns = [
-    { width: 24 },
-    ...ASSOCIES.map(() => ({ width: 14 })),
-    { width: 24 },
-    { width: 9 },
+    { width: 26 },
+    ...ASSOCIES.map(() => ({ width: 18 })),
+    { width: 26 },
+    { width: 8 },
   ]
 
   const feries = {}
@@ -79,7 +80,7 @@ export async function exporterCalendrierExcel(annee, data) {
     row.eachCell({ includeEmpty: true }, (cell, col) => {
       cell.border = bordures()
       cell.alignment = centre
-      cell.font = { bold: true, size: 11 }
+      cell.font = { name: 'Calibri', bold: true, size: 11 }
       // Initiales sur fond rose ; colonnes date plus sobres.
       if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
       else cell.fill = solid('FFF2F2F2')
@@ -103,17 +104,24 @@ export async function exporterCalendrierExcel(annee, data) {
       const role = roleDuJour(data, sem.num, offset)
       const dateLong = formatDateLongueFR(date)
 
+      // Colonne G/A : on n'affiche que vendredi / samedi / dimanche, plus le jeudi
+      // UNIQUEMENT s'il est d'astreinte (cas exceptionnel). Lun/mar/mer et jeudi de
+      // garde restent vides (redondant, connu — évite de surcharger la colonne).
+      let groupeAffiche = ''
+      if (offset >= 4) groupeAffiche = role
+      else if (offset === 3 && role === 'A') groupeAffiche = 'A'
+
       const row = ws.addRow([
         dateLong,
         ...ASSOCIES.map(() => ''),
         dateLong,
-        role,
+        groupeAffiche,
       ])
 
       row.eachCell({ includeEmpty: true }, (cell, col) => {
         cell.border = bordures()
         cell.alignment = centre
-        cell.font = { size: 10 }
+        cell.font = { name: 'Calibri', size: 11 }
 
         const estDate = col === 1 || col === NB_COL - 1
         const estAssocie = col >= 2 && col <= 1 + ASSOCIES.length
@@ -126,8 +134,9 @@ export async function exporterCalendrierExcel(annee, data) {
         } else if (estAssocie) {
           if (estWeekend) cell.fill = solid(ARGB.weekend)
         } else if (estGroupe) {
-          cell.fill = solid(role === 'G' ? ARGB.garde : ARGB.astreinte)
-          cell.font = { size: 11, bold: true }
+          if (groupeAffiche === 'G') cell.fill = solid(ARGB.garde)
+          else if (groupeAffiche === 'A') cell.fill = solid(ARGB.astreinte)
+          cell.font = { name: 'Calibri', size: 11, bold: true }
         }
       })
 
