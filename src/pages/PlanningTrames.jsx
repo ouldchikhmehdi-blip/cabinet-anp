@@ -6,7 +6,7 @@ import { chargerTrames, sauverTrames } from '../utils/tramesApi'
 import { parserCollage, prochainIdTrame, suggererRoles } from '../utils/trames'
 import TrameGrille from '../components/planning/TrameGrille'
 
-export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStatut, sansEntete = false } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -226,7 +226,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Trames {annee}</h1>
+      {!sansEntete && <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Trames {annee}</h1>}
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
         Une <strong>trame</strong> est une <strong>semaine type entière</strong> : une grille de plusieurs
         colonnes, chaque colonne étant une séquence figée de postes du lundi au vendredi (case vide = repos).
@@ -242,12 +242,14 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Année</label>
-          <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
-            {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </div>
+        {!sansEntete && (
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Année</label>
+            <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
+              {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        )}
         <button type="button" onClick={enregistrer} disabled={data === null} style={{ ...s.bouton, opacity: data === null ? 0.5 : 1 }}>
           Enregistrer
         </button>

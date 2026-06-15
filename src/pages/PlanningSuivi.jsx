@@ -9,6 +9,7 @@ import {
 } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
+import PlanningTrames from './PlanningTrames'
 
 export default function PlanningSuivi() {
   const { session, profile } = useAuth()
@@ -20,6 +21,7 @@ export default function PlanningSuivi() {
   const [profils, setProfils] = useState([])
   const [desideratas, setDesideratas] = useState([])
   const [ouvert, setOuvert] = useState(null)
+  const [tramesOuvert, setTramesOuvert] = useState(false)
   const [erreur, setErreur] = useState(null)
 
   // Formulaire de création de recueil
@@ -320,6 +322,27 @@ export default function PlanningSuivi() {
           </label>
           <button type="button" onClick={creer} style={s.bouton}>Créer le recueil</button>
         </div>
+      </div>
+
+      {/* Trames de l'année — gérées ici, en même temps que l'ouverture des desiderata */}
+      <div style={s.carteSection} className="no-print">
+        <button
+          type="button"
+          onClick={() => setTramesOuvert(o => !o)}
+          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}
+        >
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{tramesOuvert ? '▾' : '▸'}</span>
+          Trames de l'année {annee}
+        </button>
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+          Collez vos semaines type, désignez la trame principale (montrée aux associés dans leurs desiderata).
+          Modifiable à tout moment.
+        </div>
+        {tramesOuvert && (
+          <div style={{ marginTop: 16 }}>
+            <PlanningTrames sansEntete annee={annee} onChangeAnnee={setAnnee} />
+          </div>
+        )}
       </div>
 
       {recueil && (

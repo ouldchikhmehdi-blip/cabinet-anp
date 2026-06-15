@@ -92,12 +92,15 @@ Elle est affichée aux associés dans leurs desiderata (recueils **hors été**)
 Seules les **colonnes normales** sont proposées (Réa, Vacances et Remplaçant exclues — affectées
 automatiquement). Helper : `colonnesSelectionnables()` dans `src/utils/trames.js`.
 
-**Catalogue annuel de trames (Étape « Trames », en place).** Le faiseur apporte ses semaines type
-par **collage depuis Excel** : un bloc de 5 lignes lun→ven × N colonnes = **une trame**, nommée une
-seule fois et enregistrée. Catalogue libre, propre à chaque année (les structures changent selon les
+**Catalogue annuel de trames (en place).** Le faiseur apporte ses semaines type par **collage depuis
+Excel** : un bloc de 5 lignes lun→ven × N colonnes = **une trame**, nommée une seule fois et
+enregistrée. Catalogue libre, propre à chaque année (les structures changent selon les
 chirurgiens/opérateurs). Persistance : table `planning_trames`
-(`{annee, data:{ v, trames:[{id,nom,colonnes:[{lun..ven}]}] }}`), RLS lecture-tous / écriture-faiseur.
-Modèle : `src/utils/trames.js` ; API : `src/utils/tramesApi.js` ; écran : `src/pages/PlanningTrames.jsx`.
+(`{annee, data:{ v, principaleId, trames:[{id,nom,colonnes:[{lun..ven}]}] }}`), RLS lecture-tous /
+écriture-faiseur. Modèle : `src/utils/trames.js` ; API : `src/utils/tramesApi.js` ;
+composant : `src/pages/PlanningTrames.jsx`. **Géré depuis la page « Suivi des desiderata »** (section
+dépliable « Trames de l'année »), pour que le faiseur prépare ses trames au moment où il ouvre le
+recueil de desiderata — et non plus dans l'assistant « Base calendrier ».
 
 Plusieurs variantes coexistent dans le catalogue (fournies chaque année) :
 
