@@ -23,6 +23,8 @@ export default function AdminUsers() {
   const [emailInvit, setEmailInvit] = useState('')
   const [roleInvit,  setRoleInvit]  = useState('user')
   const [envoi,      setEnvoi]      = useState(false)
+  const [lienGenere, setLienGenere] = useState(null)  // { email, url, emailSent }
+  const [copie,      setCopie]      = useState(false)
 
   // Obtenir le JWT pour appeler les /api
   const jwt = session?.access_token
@@ -61,7 +63,7 @@ export default function AdminUsers() {
   // ── Inviter ───────────────────────────────────────────────────────
   async function inviter(e) {
     e.preventDefault()
-    setEnvoi(true); setErreur(null)
+    setEnvoi(true); setErreur(null); setLienGenere(null); setCopie(false)
     try {
       const res = await fetch('/api/invite', {
         method: 'POST', headers,
@@ -69,13 +71,26 @@ export default function AdminUsers() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      flash(`Invitation envoyée à ${emailInvit}.`)
+      setLienGenere({ email: emailInvit.trim(), url: data.link, emailSent: data.emailSent })
+      flash(data.message)
       setEmailInvit(''); setRoleInvit('user')
       charger()
     } catch (err) {
       flash(err.message, true)
     } finally {
       setEnvoi(false)
+    }
+  }
+
+  // ── Copier le lien d'invitation ───────────────────────────────────
+  async function copierLien() {
+    try {
+      await navigator.clipboard.writeText(lienGenere.url)
+      setCopie(true)
+      setTimeout(() => setCopie(false), 2500)
+    } catch {
+      // navigator.clipboard indisponible (contexte non sécurisé) — l'utilisateur
+      // peut sélectionner manuellement le champ, qui est en lecture seule.
     }
   }
 
@@ -225,9 +240,42 @@ export default function AdminUsers() {
               </select>
             </div>
             <button type="submit" disabled={envoi} style={s.boutonPrimary}>
-              {envoi ? 'Envoi…' : 'Envoyer l\'invitation'}
+              {envoi ? 'Envoi…' : 'Générer l\'invitation'}
             </button>
           </form>
+
+          {/* Lien d'invitation à transmettre manuellement */}
+          {lienGenere && (
+            <div style={{
+              borderTop: '0.5px solid var(--color-border)',
+              padding: 20,
+              background: 'var(--color-primary-light)',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>
+                Lien d'invitation pour {lienGenere.email}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+                {lienGenere.emailSent
+                  ? 'Un e-mail a aussi été envoyé. '
+                  : ''}
+                Transmettez ce lien à la personne (WhatsApp, SMS, e-mail perso).
+                Il est valable <strong>48 h</strong>, <strong>à usage unique</strong>, et
+                ne sera <strong>plus affiché</strong> après avoir quitté cette page.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={lienGenere.url}
+                  onFocus={e => e.target.select()}
+                  style={{ ...s.input, flex: 1, minWidth: 280, fontFamily: 'monospace', fontSize: 12 }}
+                />
+                <button type="button" onClick={copierLien} style={s.boutonPrimary}>
+                  {copie ? '✓ Copié' : 'Copier le lien'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

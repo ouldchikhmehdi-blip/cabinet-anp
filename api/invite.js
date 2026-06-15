@@ -66,39 +66,52 @@ export default async function handler(req, res) {
     return sendError(res, 500, 'Erreur interne lors de la création de l\'invitation.')
   }
 
-  // Envoie l'e-mail via Resend
+  // Construit le lien d'invitation (toujours renvoyé au front pour partage manuel)
   const appUrl = process.env.VITE_APP_URL ?? ''
   const lien   = `${appUrl}/?invite=${encodeURIComponent(token)}`
 
-  const resendRes = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type':  'application/json',
-    },
-    body: JSON.stringify({
-      from:    process.env.INVITE_FROM_EMAIL,
-      to:      email,
-      subject: 'Invitation — Dashboard SARM',
-      html: `
-        <p>Bonjour,</p>
-        <p>Vous avez été invité(e) à accéder au dashboard financier du SARM (Service Anesthésie Réanimation Millénaire).</p>
-        <p>
-          <a href="${lien}" style="display:inline-block;padding:10px 20px;background:#534AB7;color:#fff;border-radius:8px;text-decoration:none;font-weight:500;">
-            Créer mon compte
-          </a>
-        </p>
-        <p style="color:#888;font-size:12px;">Ce lien expire dans 48 heures et ne peut être utilisé qu'une seule fois.<br>Si vous n'attendiez pas cette invitation, ignorez cet e-mail.</p>
-      `,
-    }),
-  })
-
-  if (!resendRes.ok) {
-    const detail = await resendRes.text()
-    console.error('Erreur Resend:', detail)
-    // On a inséré l'invitation mais l'e-mail a échoué — à signaler
-    return sendError(res, 502, 'L\'invitation a été créée mais l\'envoi de l\'e-mail a échoué. Contactez l\'administrateur technique.')
+  // Tente l'envoi de l'e-mail via Resend (best-effort : sans domaine vérifié,
+  // l'envoi échoue pour les adresses autres que celle du compte Resend, mais
+  // l'invitation reste valable et le lien est affiché dans l'interface admin).
+  let emailSent = false
+  try {
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        from:    process.env.INVITE_FROM_EMAIL,
+        to:      email,
+        subject: 'Invitation — Dashboard SARM',
+        html: `
+          <p>Bonjour,</p>
+          <p>Vous avez été invité(e) à accéder au dashboard financier du SARM (Service Anesthésie Réanimation Millénaire).</p>
+          <p>
+            <a href="${lien}" style="display:inline-block;padding:10px 20px;background:#534AB7;color:#fff;border-radius:8px;text-decoration:none;font-weight:500;">
+              Créer mon compte
+            </a>
+          </p>
+          <p style="color:#888;font-size:12px;">Ce lien expire dans 48 heures et ne peut être utilisé qu'une seule fois.<br>Si vous n'attendiez pas cette invitation, ignorez cet e-mail.</p>
+        `,
+      }),
+    })
+    emailSent = resendRes.ok
+    if (!resendRes.ok) {
+      const detail = await resendRes.text()
+      console.error('Erreur Resend (non bloquante):', detail)
+    }
+  } catch (err) {
+    console.error('Erreur Resend (exception, non bloquante):', err)
   }
 
-  return res.status(201).json({ ok: true, message: `Invitation envoyée à ${email}.` })
+  return res.status(201).json({
+    ok:        true,
+    link:      lien,
+    emailSent,
+    message: emailSent
+      ? `Invitation envoyée par e-mail à ${email}.`
+      : `Lien d'invitation généré pour ${email}. Copiez-le et transmettez-le manuellement.`,
+  })
 }
