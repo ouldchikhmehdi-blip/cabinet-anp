@@ -194,7 +194,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       borderRadius: 'var(--radius-lg)', padding: '8px 14px', marginBottom: 24,
     },
     ligne: {
-      display: 'grid', gridTemplateColumns: '210px 54px 54px 1fr 200px',
+      display: 'grid', gridTemplateColumns: '200px 46px 46px 120px 150px 150px',
       gap: 8, alignItems: 'center', padding: '4px 0',
     },
     entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
@@ -311,6 +311,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               <span style={{ ...s.entete, textAlign: 'center' }}>Sam</span>
               <span style={{ ...s.entete, textAlign: 'center' }}>Dim</span>
               <span style={s.entete}>État</span>
+              <span style={s.entete}>Dispo</span>
               <span style={s.entete}>Associé</span>
             </div>
             {weekends.map((w, idx) => {
@@ -321,6 +322,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const ini = affectations[w.num] ?? ''
               const a = analyses[w.num]
               const alerte = a?.indispo ? 'rouge' : (a?.tropProche != null ? 'orange' : null)
+              const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num))
               return (
                 <Fragment key={w.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(w.samedi)}</div>}
@@ -341,6 +343,15 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
                     </span>
+                    <select
+                      value=""
+                      onChange={() => {}}
+                      style={s.selWE(null)}
+                      title="Associés disponibles ce week-end selon les desiderata (consultation)"
+                    >
+                      <option value="">{dispo.length}/{ASSOCIES.length} dispo</option>
+                      {dispo.map(x => <option key={x} value={x}>{x}</option>)}
+                    </select>
                     <select value={ini} onChange={e => majAffectation(w.num, e.target.value)} style={s.selWE(alerte)}>
                       <option value="">—</option>
                       {ASSOCIES.map(x => (
