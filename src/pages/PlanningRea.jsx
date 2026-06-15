@@ -103,6 +103,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
 
   const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
+  const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const rea = useMemo(() => data?.rea ?? {}, [data])
 
   const objectifRea = useMemo(() => {
@@ -337,6 +338,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                   <div style={s.ligne}>
                     <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                       S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
+                      {scolairesSet.has(sem.num) && <span style={{ color: '#2D6CB5' }}> · scol.</span>}
                     </span>
                     <span>
                       {!ini ? (
