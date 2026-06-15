@@ -68,8 +68,21 @@ select, input {
   .no-print {
     display: none !important;
   }
+  /* Neutraliser la hauteur fixe 100vh + overflow:hidden du layout, sinon
+     l'impression est coupée à une seule page. */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  #root,
+  #root > div {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
   main {
     overflow: visible !important;
+    height: auto !important;
     padding: 0 !important;
   }
   .zone-impression {
