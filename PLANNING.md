@@ -45,19 +45,31 @@ Le planning se construit en 3 phases dans l'année :
 
 Le jeudi, le vendredi et les week-ends sont régis par une rotation avec l'autre groupe d'anesthésie : pour chaque jour concerné, le statut de notre groupe (garde ou astreinte) est fixé dans la base brute du calendrier (cf. Étape 0, §12), pas décidé par l'outil.
 
-### 4. Les semaines type (cœur du système)
+### 4. Les semaines type / trames (cœur du système)
 
-Une **semaine type** est une matrice Jour × Colonne :
+**Une trame = la semaine d'UN associé** : une suite ordonnée de postes du **lundi au vendredi**
+(ex. lundi repos → mardi SARM 1 → mercredi Endoscopie → jeudi Bloc A → vendredi repos). Une
+**cellule vide = repos** (les repos « post-week-end », post-garde, post-viscéral sont déjà
+intégrés dans la trame fournie ; l'outil ne les recalcule pas). La trame encode à elle seule
+« ce qui doit se suivre / ce qui ne peut pas se suivre ».
 
-- Lignes = lundi à vendredi.
-- Colonnes = des « postes-types » ; chaque colonne donne une séquence de rôles sur la semaine (ex. lundi Viscérale → mardi Réa → mercredi … ).
+Dans le planning, **un associé = une colonne** : une *semaine type* est l'assemblage des colonnes
+des associés, chaque colonne étant remplie par une trame. Le travail du planning consiste à
+affecter à chaque associé une trame pour la semaine donnée (selon desiderata + quotas + espacement).
+Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même trame peut
+revenir rapprochée pour un même associé.
 
-Le travail du planning consiste à affecter chaque personne à une colonne pour la semaine donnée. La personne hérite alors de la séquence de cette colonne.
+**Catalogue annuel de trames (Étape « Trames », en place).** Le faiseur apporte ses trames par
+**collage depuis Excel** (bloc de 5 lignes lun→ven × N colonnes ; chaque colonne devient une trame),
+puis les nomme librement et les enregistre. Catalogue libre, propre à chaque année (les structures
+changent selon les chirurgiens/opérateurs). Persistance : table `planning_trames`
+(`{annee, data:{ v, trames:[{id,nom,jours:{lun..ven}}] }}`), RLS lecture-tous / écriture-faiseur.
+Modèle : `src/utils/trames.js` ; API : `src/utils/tramesApi.js` ; écran : `src/pages/PlanningTrames.jsx`.
 
-Plusieurs variantes existent, fournies chaque année (elles changent selon les chirurgiens/opérateurs) :
+Plusieurs variantes coexistent dans le catalogue (fournies chaque année) :
 
 - sans remplaçant ;
-- avec remplaçant — il existe plusieurs structures « avec remplaçant » (le planning change selon le remplaçant et ce qu'il couvre) ;
+- avec remplaçant — plusieurs structures « avec remplaçant » (la trame change selon le remplaçant et ce qu'il couvre ; la colonne remplaçant est ajoutée à droite du planning) ;
 - la semaine particulière qui suit un week-end de garde ;
 - variante « vendredi de garde » vs « vendredi d'astreinte ».
 
