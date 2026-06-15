@@ -8,6 +8,7 @@ import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { proposerWeekends, analyserAffectation, ESPACEMENT_MIN } from '../utils/weekends'
+import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 
 const COULEUR = {
   A: { bg: 'var(--color-amber-light)', fg: 'var(--color-amber)' }, // astreinte = orange
@@ -31,6 +32,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [data, setData] = useState(null)        // { v, affectations: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
+  const [exportEnCours, setExportEnCours] = useState(false)
 
   // Recueils (périodes) « normales » de l'année + profils.
   useEffect(() => {
@@ -165,6 +167,18 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
+  async function exporter() {
+    setErreur(null); setExportEnCours(true)
+    try {
+      // Étape 3 : base calendrier + objectifs + week-ends (incrémental).
+      await exporterCalendrierExcel(annee, calendrier, objectifs, data.affectations)
+    } catch {
+      setErreur('Export Excel impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
   // ── Styles ──
   const s = {
     select: {
@@ -243,8 +257,17 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
           Proposer automatiquement
         </button>
-        <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: !pret ? 0.5 : 1 }}>
+        <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, opacity: !pret ? 0.5 : 1 }}>
           Enregistrer
+        </button>
+        <button
+          type="button"
+          onClick={exporter}
+          disabled={!pret || exportEnCours}
+          style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || exportEnCours) ? 0.6 : 1 }}
+          title="Génère un fichier Excel : base calendrier + objectifs + week-ends"
+        >
+          {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
         </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
       </div>

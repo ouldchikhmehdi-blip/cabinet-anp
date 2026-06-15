@@ -48,7 +48,7 @@ async function telecharger(workbook, nomFichier) {
   URL.revokeObjectURL(url)
 }
 
-export async function exporterCalendrierExcel(annee, data, objectifs = null) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -111,9 +111,14 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null) {
       if (offset >= 4) groupeAffiche = role
       else if (offset === 3 && role === 'A') groupeAffiche = 'A'
 
+      // Week-end affecté (étape 3) : l'associé prend l'astreinte du samedi et la garde
+      // du dimanche → on inscrit le rôle du jour dans SA colonne (samedi/dimanche).
+      const iniWE = estWeekend ? (weekends?.[sem.num] ?? null) : null
+      const cellulesAssocies = ASSOCIES.map(a => (iniWE && a === iniWE ? role : ''))
+
       const row = ws.addRow([
         dateLong,
-        ...ASSOCIES.map(() => ''),
+        ...cellulesAssocies,
         dateLong,
         groupeAffiche,
       ])
@@ -132,7 +137,10 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null) {
           else if (estWeekend) cell.fill = solid(ARGB.weekend)
           else if (enVac) cell.fill = solid(ARGB.vacances)
         } else if (estAssocie) {
-          if (estWeekend) cell.fill = solid(ARGB.weekend)
+          // Cellule de l'associé de week-end : G jaune / A orange ; sinon grise le week-end.
+          if (cell.value === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
+          else if (cell.value === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+          else if (estWeekend) cell.fill = solid(ARGB.weekend)
         } else if (estGroupe) {
           if (groupeAffiche === 'G') cell.fill = solid(ARGB.garde)
           else if (groupeAffiche === 'A') cell.fill = solid(ARGB.astreinte)
