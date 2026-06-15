@@ -114,16 +114,17 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
 
       // Week-end affecté (étape 3) : l'associé prend l'astreinte du samedi et la garde
       // du dimanche → on inscrit le rôle du jour dans SA colonne (samedi/dimanche).
+      // Vacances (étape 4) : associés en congé cette semaine → colonne bleue (tous les jours).
+      const congesSemaine = conges?.[sem.num] ?? []
       const iniWE = estWeekend ? (weekends?.[sem.num] ?? null) : null
       // Réa (étape 5) : l'associé en réa porte « Réa » du lundi au vendredi (offset 0–4).
+      // La vacance prime (poste exclusif) : pas de « Réa » sur une semaine de congé.
       const iniRea = (!estWeekend && offset <= 4) ? (rea?.[sem.num] ?? null) : null
       const cellulesAssocies = ASSOCIES.map(a => {
         if (iniWE && a === iniWE) return role
-        if (iniRea && a === iniRea) return 'Réa'
+        if (iniRea && a === iniRea && !congesSemaine.includes(a)) return 'Réa'
         return ''
       })
-      // Vacances (étape 4) : associés en congé cette semaine → colonne bleue (tous les jours).
-      const congesSemaine = conges?.[sem.num] ?? []
 
       const row = ws.addRow([
         dateLong,

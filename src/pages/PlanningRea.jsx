@@ -56,9 +56,17 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
     if (!estFaiseur) return
     let annule = false
     Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee)])
-      .then(([cal, obj, we, vac, rea]) => {
+      .then(([cal, obj, we, vac, reaData]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setData(rea); onStatut?.('vierge')
+        // Vacances = poste exclusif (absolu) : on écarte toute réa tombant sur une semaine
+        // de congé de l'associé (purge des conflits résiduels au chargement).
+        const vacs = vac?.vacances ?? {}
+        const reaPur = {}
+        for (const [num, ini] of Object.entries(reaData.rea ?? {})) {
+          if (!vacs[Number(num)]?.includes(ini)) reaPur[Number(num)] = ini
+        }
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac)
+        setData({ ...reaData, rea: reaPur }); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -358,7 +366,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                         const off = joursOffParAssocie[x]?.has(sem.num)
                         const garde = weekendAff[sem.num] === x || weekendAff[sem.num - 1] === x
                         const marque = vac ? ' ⚠ vacances' : off ? ' ⚠ jour off' : garde ? ' ⚠ WE garde' : ''
-                        return <option key={x} value={x}>{x}{marque}</option>
+                        // Vacances = poste exclusif : option bloquée (on ne peut pas recréer le conflit).
+                        return <option key={x} value={x} disabled={vac}>{x}{marque}</option>
                       })}
                     </select>
                   </div>
