@@ -69,6 +69,12 @@ fiable) ; elles se remplissent automatiquement à l'affectation, d'après les é
 entièrement vide) mais restent modifiables. Les **autres colonnes** se répartissent ensuite pour
 **coller aux jours off demandés** (jour off demandé = on choisit la colonne dont ce jour est vide).
 
+**Colonnes remplaçant.** Certaines trames ont en plus une ou plusieurs colonnes **remplaçant** (le ou
+les remplaçants pris cette semaine-là ; c'est la colonne ajoutée à droite de la grille). Le faiseur les
+**désigne et les nomme** librement (`remplacants: [{ col, nom }]`, ex. « Remplaçant 1 », « Remplaçant 2 »).
+Le catalogue contient donc plusieurs variantes selon les cas : sans remplaçant, avec 1 remplaçant, avec
+2 remplaçants, ou même 1 remplaçant avec une **rotation différente** (chaque variante = une trame nommée).
+
 Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même colonne peut
 revenir rapprochée pour un même associé.
 

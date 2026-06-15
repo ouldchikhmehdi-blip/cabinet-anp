@@ -12,9 +12,14 @@
 // Au moment de l'affectation, ces colonnes se remplissent automatiquement selon les étapes
 // précédentes (Réa, Vacances, Week-ends). Le reste des colonnes colle aux jours off demandés.
 //
+// Certaines trames comportent EN PLUS une ou plusieurs colonnes « remplaçant » (le ou les
+// remplaçants pris cette semaine-là). Le faiseur les désigne et les nomme librement
+// (« Remplaçant 1 », « Remplaçant 2 »…) via remplacants: [ { col, nom } ].
+//
 // Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
-// data = { v, trames: [ { id, nom, colonnes: [ { lun..ven } ], rea, vacances, avantWE, apresWE } ] }
-// rea / vacances / avantWE / apresWE = index (0-based) d'une colonne, ou null si non défini.
+// data = { v, trames: [ { id, nom, colonnes: [ {lun..ven} ], rea, vacances, avantWE, apresWE,
+//                         remplacants: [ { col, nom } ] } ] }
+// rea / vacances / avantWE / apresWE / remplacants[].col = index (0-based) d'une colonne.
 // ============================================================
 export const VERSION_TRAMES = 1
 
@@ -54,6 +59,11 @@ export function normaliserTrames(data) {
       vacances: idxCol(t?.vacances),
       avantWE: idxCol(t?.avantWE),
       apresWE: idxCol(t?.apresWE),
+      remplacants: Array.isArray(t?.remplacants)
+        ? t.remplacants
+            .map(r => ({ col: idxCol(r?.col), nom: typeof r?.nom === 'string' ? r.nom.trim() : '' }))
+            .filter(r => r.col != null)
+        : [],
     }
   })
   // Garantit des id entiers uniques et stables (déterministe, sans Date.now/Math.random).

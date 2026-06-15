@@ -43,7 +43,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       const id = prochainIdTrame(prev.trames)
       const nom = candidatNom.trim() || `Trame ${id}`
       const colonnes = candidatColonnes.map(c => ({ ...c }))
-      const trame = { id, nom, colonnes, ...suggererRoles(colonnes) }
+      const trame = { id, nom, colonnes, ...suggererRoles(colonnes), remplacants: [] }
       return { ...prev, trames: [...prev.trames, trame] }
     })
     setTexteCollage('')
@@ -64,12 +64,43 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     setData(prev => ({ ...prev, trames: prev.trames.filter(t => t.id !== idTrame) }))
   }
 
-  // Désigne la colonne « après week-end » / « avant week-end » d'une trame (index ou null).
+  // Désigne une colonne spéciale d'une trame (réa / vacances / avantWE / apresWE) — index ou null.
   function majRoleColonne(idTrame, role, index) {
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => ({
       ...prev,
       trames: prev.trames.map(t => (t.id === idTrame ? { ...t, [role]: index } : t)),
+    }))
+  }
+
+  // ── Colonnes remplaçant (0, 1, 2… par trame) ──
+  function ajouterRemplacant(idTrame) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({
+      ...prev,
+      trames: prev.trames.map(t => (t.id === idTrame
+        ? { ...t, remplacants: [...t.remplacants, { col: null, nom: `Remplaçant ${t.remplacants.length + 1}` }] }
+        : t)),
+    }))
+  }
+
+  function majRemplacant(idTrame, idx, champ, valeur) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({
+      ...prev,
+      trames: prev.trames.map(t => (t.id === idTrame
+        ? { ...t, remplacants: t.remplacants.map((r, k) => (k === idx ? { ...r, [champ]: valeur } : r)) }
+        : t)),
+    }))
+  }
+
+  function supprimerRemplacant(idTrame, idx) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({
+      ...prev,
+      trames: prev.trames.map(t => (t.id === idTrame
+        ? { ...t, remplacants: t.remplacants.filter((_, k) => k !== idx) }
+        : t)),
     }))
   }
 
@@ -167,40 +198,48 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     { cle: 'apresWE', label: 'Colonne après le week-end :', court: '↩ après WE', couleur: 'var(--color-primary-dark)' },
   ]
 
+  const COULEUR_REMPLACANT = '#B45309'
+
   // Rendu d'une grille (jours en lignes × colonnes), pour l'aperçu et le catalogue.
-  // roles (optionnel) = { rea, vacances, avantWE, apresWE } : repères sur les colonnes désignées.
-  const grille = (colonnes, roles = null) => (
-    <table style={s.table}>
-      <thead>
-        <tr>
-          <th style={s.thJour}>Jour</th>
-          {colonnes.map((_, i) => (
-            <th key={i} style={s.thCol}>
-              <div>C{i + 1}</div>
-              {roles && ROLES.filter(r => roles[r.cle] === i).map(r => (
-                <div key={r.cle} style={{ ...s.badge, color: r.couleur }}>{r.court}</div>
-              ))}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {JOURS.map(j => (
-          <tr key={j}>
-            <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
-            {colonnes.map((col, i) => {
-              const estRole = roles && ROLES.some(r => roles[r.cle] === i)
-              return (
-                <td key={i} style={{ ...s.tdCell, background: estRole ? 'var(--color-primary-light)' : (colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent') }}>
-                  {cellule(col[j])}
-                </td>
-              )
-            })}
+  // roles (optionnel) = { rea, vacances, avantWE, apresWE, remplacants:[{col,nom}] }.
+  const grille = (colonnes, roles = null) => {
+    const remplA = (i) => roles?.remplacants?.filter(r => r.col === i) ?? []
+    return (
+      <table style={s.table}>
+        <thead>
+          <tr>
+            <th style={s.thJour}>Jour</th>
+            {colonnes.map((_, i) => (
+              <th key={i} style={s.thCol}>
+                <div>C{i + 1}</div>
+                {roles && ROLES.filter(r => roles[r.cle] === i).map(r => (
+                  <div key={r.cle} style={{ ...s.badge, color: r.couleur }}>{r.court}</div>
+                ))}
+                {remplA(i).map((r, k) => (
+                  <div key={`r${k}`} style={{ ...s.badge, color: COULEUR_REMPLACANT }}>{r.nom || 'Remplaçant'}</div>
+                ))}
+              </th>
+            ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
-  )
+        </thead>
+        <tbody>
+          {JOURS.map(j => (
+            <tr key={j}>
+              <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
+              {colonnes.map((col, i) => {
+                const estRole = roles && (ROLES.some(r => roles[r.cle] === i) || remplA(i).length > 0)
+                return (
+                  <td key={i} style={{ ...s.tdCell, background: estRole ? 'var(--color-primary-light)' : (colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent') }}>
+                    {cellule(col[j])}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
 
   // Sélecteur de colonne pour un rôle.
   const selecteurRole = (trame, role, label) => (
@@ -226,9 +265,10 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
         Les colonnes s'intervertissent entre associés selon les jours off. Sur chaque trame, vous désignez les
         4 colonnes spéciales — <strong>Réa</strong>, <strong>Vacances</strong>, <strong>avant le week-end</strong>,
         <strong>après le week-end</strong> (Réa et Vacances sont pré-suggérées, à vérifier). Elles se rempliront
-        automatiquement à l'affectation ; les autres colonnes collent aux jours off demandés. Le catalogue se
-        remplit par collage depuis Excel, autant de trames que vous voulez (« Normale », « Avec remplaçant »,
-        « Vendredi de garde »…).
+        automatiquement à l'affectation ; les autres colonnes collent aux jours off demandés. Si la trame comporte
+        une ou plusieurs colonnes <strong>remplaçant</strong> (colonnes en plus), désignez-les et nommez-les
+        (« Remplaçant 1 », « Remplaçant 2 »…). Le catalogue se remplit par collage depuis Excel, autant de trames
+        que vous voulez (« Normale », « Avec 1 remplaçant », « Avec 2 remplaçants », « Vendredi de garde »…).
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -323,7 +363,36 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                     <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
                       {ROLES.map(r => <span key={r.cle}>{selecteurRole(t, r.cle, r.label)}</span>)}
                     </div>
-                    {grille(t.colonnes, { rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE })}
+
+                    {/* Colonnes remplaçant (0, 1, 2…) */}
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: COULEUR_REMPLACANT, marginBottom: 6 }}>Colonnes remplaçant</div>
+                      {t.remplacants.map((r, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                          <select
+                            value={r.col == null ? '' : r.col}
+                            onChange={e => majRemplacant(t.id, idx, 'col', e.target.value === '' ? null : Number(e.target.value))}
+                            style={{ ...s.select, padding: '5px 8px', fontSize: 12 }}
+                          >
+                            <option value="">— colonne —</option>
+                            {t.colonnes.map((_, i) => <option key={i} value={i}>C{i + 1}</option>)}
+                          </select>
+                          <input
+                            type="text"
+                            value={r.nom}
+                            onChange={e => majRemplacant(t.id, idx, 'nom', e.target.value)}
+                            placeholder={`Remplaçant ${idx + 1}`}
+                            style={{ ...s.inputNom, flex: '0 0 220px' }}
+                          />
+                          <button type="button" onClick={() => supprimerRemplacant(t.id, idx)} style={s.croix} title="Retirer ce remplaçant">✕</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => ajouterRemplacant(t.id)} style={{ ...s.boutonSecondaire, padding: '5px 10px', fontSize: 12 }}>
+                        + Ajouter une colonne remplaçant
+                      </button>
+                    </div>
+
+                    {grille(t.colonnes, { rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE, remplacants: t.remplacants })}
                   </div>
                 ))}
               </div>
