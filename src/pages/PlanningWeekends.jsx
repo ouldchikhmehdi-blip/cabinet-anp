@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR } from '../utils/calendrier'
+import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
@@ -10,6 +10,7 @@ import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { proposerWeekends, analyserAffectation, ESPACEMENT_MIN } from '../utils/weekends'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import PanneauConflits from '../components/planning/PanneauConflits'
 
 const COULEUR = {
   A: { bg: 'var(--color-amber-light)', fg: 'var(--color-amber)' }, // astreinte = orange
@@ -90,6 +91,40 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return map
   }, [desideratas, profils])
 
+  // Jours off posés un samedi/dimanche → week-end (semaine ISO) concerné : { ini: Set(nums) }.
+  const joursOffWeekendParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const map = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      const set = new Set()
+      for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+        try {
+          const d = parseISO(iso)
+          const j = d.getUTCDay()
+          if (j === 6 || j === 0) set.add(numeroSemaineISO(d)) // samedi ou dimanche
+        } catch { /* date invalide ignorée */ }
+      }
+      map[ini] = set
+    }
+    return map
+  }, [desideratas, profils])
+
+  // Souhaits de colonne par associé : { ini: { numSemaine: colIndex } } (trame principale).
+  const colonnesSouhaiteesParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const map = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      map[ini] = normaliser(row.data).colonnesSouhaitees ?? {}
+    }
+    return map
+  }, [desideratas, profils])
+
   const weekends = useMemo(
     () => (recueil ? weekendsDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
     [annee, recueil]
@@ -111,9 +146,32 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   // Analyse des conflits sur la plage courante.
   const analyses = useMemo(() => {
     const m = {}
-    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine)
+    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie)
     return m
-  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine])
+  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie])
+
+  // Conflits explicites à arbitrer (où / qui / pourquoi / choix).
+  const conflits = useMemo(() => {
+    const out = []
+    const lib = (w) => `WE S${w.num} (${formatJJMM(w.samedi)}–${formatJJMM(w.dimanche)})`
+    for (const w of weekends) {
+      const ini = affectations[w.num]
+      const a = analyses[w.num]
+      if (!ini) {
+        const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
+        if (dispo.length === 0) {
+          out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — non attribuable : aucun associé sans conflit (indisponible / jour off le week-end). Arbitrage : forcer un associé malgré un conflit.` })
+        }
+        continue
+      }
+      if (a?.indispo) out.push({ severite: 'danger', semaine: w.num, message: `${lib(w)} — ${ini} indisponible ce week-end (desiderata). Arbitrage : choisir un autre associé, ou forcer ${ini} malgré son indisponibilité.` })
+      else if (a?.jourOffWE) out.push({ severite: 'danger', semaine: w.num, message: `${lib(w)} — ${ini} a demandé un jour off le samedi/dimanche de ce week-end. Arbitrage : choisir un autre associé, ou ignorer ce jour off.` })
+      if (a?.vacancesCollee) out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} : week-end de garde accolé à une semaine de vacances (S ou S+1). Arbitrage : décaler le week-end, ou les vacances.` })
+      if (a?.tropProche != null) out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} : moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}. Arbitrage : espacer davantage, ou accepter le rapprochement.` })
+      if (a?.souhaitColonne != null) out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} a souhaité la colonne C${a.souhaitColonne + 1} en S${w.num} ; ce week-end le placerait sur la colonne « avant week-end ». Arbitrage : choisir un autre associé, ou ignorer ce souhait.` })
+    }
+    return out
+  }, [weekends, affectations, analyses, indispoParAssocie, joursOffWeekendParAssocie])
 
   const recap = useMemo(() => {
     let attribues = 0, indispo = 0, proches = 0, vac = 0
@@ -155,7 +213,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = ini
       }
-      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage, vacancesParSemaine)
+      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie)
       return { ...prev, affectations: { ...horsPlage, ...proposees } }
     })
   }
@@ -293,6 +351,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          <PanneauConflits conflits={conflits} />
+
           {/* Récap des conflits */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.attribues}/{recap.total} week-ends attribués</span>
@@ -328,8 +388,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const roles = calendrier.semaines?.[w.num] ?? { sam: 'A', dim: 'G' }
               const ini = affectations[w.num] ?? ''
               const a = analyses[w.num]
-              const alerte = a?.indispo ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee ? 'orange' : null)
-              const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num))
+              const alerte = (a?.indispo || a?.jourOffWE) ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee || a?.souhaitColonne != null ? 'orange' : null)
+              const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
               return (
                 <Fragment key={w.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(w.samedi)}</div>}
@@ -344,10 +404,14 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-text-tertiary)')}>—</span>
                       ) : a.indispo ? (
                         <span style={s.etat('var(--color-danger)')} title="Indisponible (desiderata)">🔴 indispo</span>
+                      ) : a.jourOffWE ? (
+                        <span style={s.etat('var(--color-danger)')} title="Jour off demandé le samedi ou le dimanche de ce week-end">🔴 jour off</span>
                       ) : a.vacancesCollee ? (
                         <span style={s.etat('var(--color-amber)')} title="Week-end de garde accolé à une semaine de vacances de cet associé">🟠 vac.</span>
                       ) : a.tropProche != null ? (
                         <span style={s.etat('var(--color-amber)')} title={`Moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}`}>🟠 &lt;{ESPACEMENT_MIN} sem</span>
+                      ) : a.souhaitColonne != null ? (
+                        <span style={s.etat('var(--color-amber)')} title={`Cet associé a souhaité la colonne C${a.souhaitColonne + 1} (travailler) cette semaine`}>🟠 colonne</span>
                       ) : (
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
@@ -363,11 +427,12 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                     </select>
                     <select value={ini} onChange={e => majAffectation(w.num, e.target.value)} style={s.selWE(alerte)}>
                       <option value="">—</option>
-                      {ASSOCIES.map(x => (
-                        <option key={x} value={x}>
-                          {x}{indispoParAssocie[x]?.has(w.num) ? ' ⚠ indispo' : ''}
-                        </option>
-                      ))}
+                      {ASSOCIES.map(x => {
+                        const ind = indispoParAssocie[x]?.has(w.num)
+                        const offWE = joursOffWeekendParAssocie[x]?.has(w.num)
+                        const marque = ind ? ' ⚠ indispo' : offWE ? ' ⚠ jour off' : ''
+                        return <option key={x} value={x}>{x}{marque}</option>
+                      })}
                     </select>
                   </div>
                 </Fragment>

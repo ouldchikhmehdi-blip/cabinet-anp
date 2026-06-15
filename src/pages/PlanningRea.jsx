@@ -11,6 +11,7 @@ import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea, sauverRea } from '../utils/reaApi'
 import { proposerRea, analyserRea } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import PanneauConflits from '../components/planning/PanneauConflits'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -101,6 +102,19 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
     return map
   }, [desideratas, profils])
 
+  // Souhaits de colonne par associé : { ini: { numSemaine: colIndex } } (trame principale).
+  const colonnesSouhaiteesParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const map = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      map[ini] = normaliser(row.data).colonnesSouhaitees ?? {}
+    }
+    return map
+  }, [desideratas, profils])
+
   const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
@@ -119,9 +133,33 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
 
   const analyses = useMemo(() => {
     const m = {}
-    for (const s of semaines) m[s.num] = analyserRea(s.num, rea[s.num], joursOffParAssocie, weekendAff, vacancesParSemaine)
+    for (const s of semaines) m[s.num] = analyserRea(s.num, rea[s.num], joursOffParAssocie, weekendAff, vacancesParSemaine, colonnesSouhaiteesParAssocie)
     return m
-  }, [semaines, rea, joursOffParAssocie, weekendAff, vacancesParSemaine])
+  }, [semaines, rea, joursOffParAssocie, weekendAff, vacancesParSemaine, colonnesSouhaiteesParAssocie])
+
+  // Conflits explicites à arbitrer (où / qui / pourquoi / choix).
+  const conflits = useMemo(() => {
+    const out = []
+    const lib = (sem) => `S${sem.num} (${formatJJMM(sem.lundi)}→${formatJJMM(sem.dimanche)})`
+    for (const sem of semaines) {
+      const ini = rea[sem.num]
+      const a = analyses[sem.num]
+      if (!ini) {
+        const dispo = ASSOCIES.filter(x =>
+          !vacancesParSemaine[sem.num]?.includes(x) && !joursOffParAssocie[x]?.has(sem.num) &&
+          weekendAff[sem.num] !== x && weekendAff[sem.num - 1] !== x)
+        if (dispo.length === 0) {
+          out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — réa non attribuable : aucun associé sans conflit (tous en vacances / jour off / week-end de garde). Arbitrage : forcer un associé malgré un conflit.` })
+        }
+        continue
+      }
+      if (a?.vacances) out.push({ severite: 'danger', semaine: sem.num, message: `${lib(sem)} — ${ini} en réa ET en vacances la même semaine (poste exclusif, impossible). Arbitrage : retirer la réa, ou retirer les vacances de ${ini}.` })
+      else if (a?.jourOff) out.push({ severite: 'danger', semaine: sem.num, message: `${lib(sem)} — ${ini} en réa mais a demandé un jour off cette semaine (réa continue lun→ven). Arbitrage : choisir un autre associé, ou ignorer ce jour off.` })
+      if (a?.garde) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — ${ini} : réa accolée à un week-end de garde (repos du lendemain, §5). Arbitrage : décaler la réa, ou valider l'exception.` })
+      if (a?.souhaitColonne != null) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — ${ini} en réa mais a souhaité la colonne C${a.souhaitColonne + 1} (travailler) cette semaine. Arbitrage : maintenir la réa, ou respecter son souhait de colonne.` })
+    }
+    return out
+  }, [semaines, rea, analyses, vacancesParSemaine, joursOffParAssocie, weekendAff])
 
   const recap = useMemo(() => {
     let attribuees = 0, vac = 0, off = 0, garde = 0
@@ -162,7 +200,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = ini
       }
-      const proposees = proposerRea(semaines, joursOffParAssocie, weekendAff, objectifRea, horsPlage, vacancesParSemaine)
+      const proposees = proposerRea(semaines, joursOffParAssocie, weekendAff, objectifRea, horsPlage, vacancesParSemaine, colonnesSouhaiteesParAssocie)
       return { ...prev, rea: { ...horsPlage, ...proposees } }
     })
   }
@@ -294,6 +332,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          <PanneauConflits conflits={conflits} />
+
           {/* Récap */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.attribuees}/{recap.total} semaines attribuées</span>
@@ -326,7 +366,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
               const sep = idx === 0 || jeudi.getUTCMonth() !== moisPrec
               const ini = rea[sem.num] ?? ''
               const a = analyses[sem.num]
-              const alerte = (a?.vacances || a?.jourOff) ? 'rouge' : (a?.garde ? 'orange' : null)
+              const alerte = (a?.vacances || a?.jourOff) ? 'rouge' : (a?.garde || a?.souhaitColonne != null ? 'orange' : null)
               const dispo = ASSOCIES.filter(x =>
                 !vacancesParSemaine[sem.num]?.includes(x) &&
                 !joursOffParAssocie[x]?.has(sem.num) &&
@@ -349,6 +389,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                         <span style={s.etat('var(--color-danger)')} title="La réa tombe sur un jour off demandé par cet associé">🔴 jour off</span>
                       ) : a.garde ? (
                         <span style={s.etat('var(--color-amber)')} title="Réa accolée à un week-end de garde du même associé (repos du lendemain, §5 — éviter sauf exception)">🟠 WE garde</span>
+                      ) : a.souhaitColonne != null ? (
+                        <span style={s.etat('var(--color-amber)')} title={`Cet associé a souhaité la colonne C${a.souhaitColonne + 1} (travailler) cette semaine`}>🟠 colonne</span>
                       ) : (
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}

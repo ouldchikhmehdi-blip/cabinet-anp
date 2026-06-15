@@ -29,13 +29,16 @@ export function normaliserVacances(data) {
 //   gardeCollee : associés en congé qui sont de garde le week-end de la semaine (S)
 //                 ou du week-end précédent (S-1) — règle : jamais de vacances accolées
 //                 à un week-end de garde (avant comme après).
-export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}) {
+//   souhaitColonne : associés mis en congé qui avaient souhaité une colonne (travailler) cette
+//                    semaine — le congé contredit ce souhait.
+export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}, colonnesSouhaiteesParAssocie = {}) {
   const liste = inis ?? []
   return {
     sansVacance: liste.length === 0,
     refus: liste.filter(i => refusParAssocie?.[i]?.has(num)),
     sousScolaire: !!estScolaire && liste.length < 2,
     gardeCollee: liste.filter(i => weekendAff?.[num] === i || weekendAff?.[num - 1] === i),
+    souhaitColonne: liste.filter(i => Number.isInteger(colonnesSouhaiteesParAssocie?.[i]?.[num])),
   }
 }
 
@@ -46,7 +49,7 @@ export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekend
 // - vacancesHorsPlage : { num: [inis] } des autres périodes (pour l'équilibrage)
 // - weekendAff : { num: ini } affectations week-end (pour éviter une garde collée)
 // Renvoie { num: [inis] } pour la plage.
-export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}) {
+export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}, colonnesSouhaiteesParAssocie = {}) {
   const resultat = {}
   // Compteur de semaines par associé (hors-plage + ce qu'on attribue) pour l'équilibrage.
   const compte = {}
@@ -68,13 +71,19 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   for (const num of nums) {
     const min = scolairesSet?.has(num) ? 2 : 1
     const gardeCollee = (ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
+    const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
     while (resultat[num].length < min) {
       const base = ASSOCIES.filter(ini => !resultat[num].includes(ini) && !refusParAssocie?.[ini]?.has(num))
       // Éviter une garde collée ; à défaut (sinon couverture impossible), on relâche.
       let candidats = base.filter(ini => !gardeCollee(ini))
       if (candidats.length === 0) candidats = base
       if (candidats.length === 0) break
-      candidats.sort((a, b) => (compte[a] - compte[b]) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
+      // Moins chargé d'abord ; on déprioritise un souhait de colonne (le congé le contredirait).
+      candidats.sort((a, b) =>
+        (compte[a] - compte[b]) ||
+        ((veutColonne(a) ? 1 : 0) - (veutColonne(b) ? 1 : 0)) ||
+        (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b))
+      )
       const choisi = candidats[0]
       resultat[num].push(choisi)
       compte[choisi]++

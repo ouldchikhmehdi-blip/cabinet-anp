@@ -41,8 +41,11 @@ function semainesDe(ini, affectations, numExclu = null) {
 //   tropProche    : numéro du week-end le plus proche (< ESPACEMENT_MIN) déjà attribué à ini, sinon null
 //   vacancesCollee: ini est en vacances la semaine du week-end (S) ou la semaine suivante (S+1)
 //                   — règle : jamais de week-end de garde accolé à une semaine de vacances.
-export function analyserAffectation(num, ini, affectations, indispoParAssocie, vacancesParSemaine = {}) {
-  if (!ini) return { indispo: false, tropProche: null, vacancesCollee: false }
+//   jourOffWE     : ini a demandé un jour off le samedi ou le dimanche de ce week-end (desiderata)
+//   souhaitColonne: ini a souhaité une colonne (travailler) en semaine num ; lui donner ce week-end
+//                   le placerait sur la colonne « avant week-end » → contredit son souhait (index/null).
+export function analyserAffectation(num, ini, affectations, indispoParAssocie, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}) {
+  if (!ini) return { indispo: false, tropProche: null, vacancesCollee: false, jourOffWE: false, souhaitColonne: null }
   const indispo = !!indispoParAssocie?.[ini]?.has(num)
   let tropProche = null
   let meilleurEcart = ESPACEMENT_MIN
@@ -51,7 +54,9 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie, v
     if (ecart < meilleurEcart) { meilleurEcart = ecart; tropProche = autre }
   }
   const vacancesCollee = !!(vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini))
-  return { indispo, tropProche, vacancesCollee }
+  const jourOffWE = !!joursOffWeekendParAssocie?.[ini]?.has(num)
+  const col = colonnesSouhaiteesParAssocie?.[ini]?.[num]
+  return { indispo, tropProche, vacancesCollee, jourOffWE, souhaitColonne: Number.isInteger(col) ? col : null }
 }
 
 // Proposition automatique (glouton déterministe, par numéro de semaine croissant).
@@ -61,7 +66,7 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie, v
 // - affectationsHorsPlage : affectations des autres périodes (pour l'espacement aux bords)
 // - vacancesParSemaine : { num: [inis] } pour éviter une garde collée à des vacances (S ou S+1)
 // Renvoie un objet { num: ini } limité aux week-ends de la plage.
-export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}) {
+export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}) {
   const resultat = {}
   // Compteur courant (hors-plage + ce qu'on attribue), pour l'équilibrage et l'espacement.
   const courant = { ...affectationsHorsPlage }
@@ -72,17 +77,22 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
   for (const num of nums) {
     const espacementOk = (ini) =>
       semainesDe(ini, courant).every(n => Math.abs(n - num) >= ESPACEMENT_MIN)
-    const dispo = (ini) => !indispoParAssocie?.[ini]?.has(num)
+    // Dispo = ni indisponible déclaré, ni jour off posé le sam/dim de ce week-end.
+    const dispo = (ini) => !indispoParAssocie?.[ini]?.has(num) && !joursOffWeekendParAssocie?.[ini]?.has(num)
     const vacancesCollee = (ini) => vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini)
+    const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
 
     let candidats = ASSOCIES.filter(ini => dispo(ini) && espacementOk(ini) && !vacancesCollee(ini))
     if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini)) // relâche l'espacement
     if (candidats.length === 0) candidats = ASSOCIES.filter(dispo) // relâche aussi la garde collée
     if (candidats.length === 0) continue // personne de dispo → laissé vide, le faiseur tranche
 
-    // Moins de week-ends d'abord ; départage : plus grand déficit vs objectif ; puis ordre figé.
+    // Moins de week-ends d'abord ; on pénalise un souhait de colonne ; départage par déficit vs objectif ; puis ordre figé.
     candidats.sort((a, b) => {
       if (compte[a] !== compte[b]) return compte[a] - compte[b]
+      const colA = veutColonne(a) ? 1 : 0
+      const colB = veutColonne(b) ? 1 : 0
+      if (colA !== colB) return colA - colB
       const defA = (objectifParAssocie[a] ?? 0) - compte[a]
       const defB = (objectifParAssocie[b] ?? 0) - compte[b]
       if (defA !== defB) return defB - defA
