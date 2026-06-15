@@ -208,10 +208,6 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
       gap: 8, alignItems: 'center', padding: '5px 0',
     },
     entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
-    selPetit: {
-      padding: '5px 6px', fontSize: 12, borderRadius: 'var(--radius-md)',
-      border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', width: '100%',
-    },
     selRea: (alerte) => ({
       padding: '6px 8px', fontSize: 13, borderRadius: 'var(--radius-md)',
       border: `0.5px solid ${alerte === 'rouge' ? 'var(--color-danger)' : alerte === 'orange' ? 'var(--color-amber)' : 'var(--color-border)'}`,
@@ -355,10 +351,12 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
                     </span>
-                    <select value="" onChange={() => {}} style={s.selPetit} title="Associés sans jour off cette semaine et non de garde le week-end">
-                      <option value="">{dispo.length}/{ASSOCIES.length} dispo</option>
-                      {dispo.map(x => <option key={x} value={x}>{x}</option>)}
-                    </select>
+                    <span
+                      style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}
+                      title={`${dispo.length}/${ASSOCIES.length} disponibles (hors vacances, jour off, week-end de garde)`}
+                    >
+                      {dispo.length ? dispo.join(' · ') : 'aucun'}
+                    </span>
                     <select value={ini} onChange={e => majRea(sem.num, e.target.value)} style={s.selRea(alerte)}>
                       <option value="">—</option>
                       {ASSOCIES.map(x => {
