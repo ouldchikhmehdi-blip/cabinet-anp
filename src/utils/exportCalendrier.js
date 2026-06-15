@@ -21,7 +21,8 @@ const ARGB = {
   weekend: 'FFD9D9D9',   // gris
   ferie: 'FF92D050',     // vert
   header: 'FFFF99CC',    // rose
-  vacances: 'FFFFFF00',  // jaune (libellé de date)
+  vacances: 'FFFFFF00',  // jaune (libellé de date des semaines scolaires)
+  conge: 'FFE3EEF9',     // bleu clair (associé en vacances, §14)
 }
 const BORDURE = 'FFBFBFBF'
 
@@ -48,7 +49,7 @@ async function telecharger(workbook, nomFichier) {
   URL.revokeObjectURL(url)
 }
 
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -115,6 +116,8 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
       // du dimanche → on inscrit le rôle du jour dans SA colonne (samedi/dimanche).
       const iniWE = estWeekend ? (weekends?.[sem.num] ?? null) : null
       const cellulesAssocies = ASSOCIES.map(a => (iniWE && a === iniWE ? role : ''))
+      // Vacances (étape 4) : associés en congé cette semaine → colonne bleue (tous les jours).
+      const congesSemaine = conges?.[sem.num] ?? []
 
       const row = ws.addRow([
         dateLong,
@@ -137,9 +140,11 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
           else if (estWeekend) cell.fill = solid(ARGB.weekend)
           else if (enVac) cell.fill = solid(ARGB.vacances)
         } else if (estAssocie) {
-          // Cellule de l'associé de week-end : G jaune / A orange ; sinon grise le week-end.
+          // Priorité : rôle de week-end (G jaune / A orange) > congé (bleu) > grisé du week-end.
+          const assoc = ASSOCIES[col - 2]
           if (cell.value === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
           else if (cell.value === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+          else if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
           else if (estWeekend) cell.fill = solid(ARGB.weekend)
         } else if (estGroupe) {
           if (groupeAffiche === 'G') cell.fill = solid(ARGB.garde)
