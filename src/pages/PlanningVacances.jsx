@@ -98,22 +98,25 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   const vacances = useMemo(() => data?.vacances ?? {}, [data])
 
+  const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
+
   const analyses = useMemo(() => {
     const m = {}
-    for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num))
+    for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num), weekendAff)
     return m
-  }, [semaines, vacances, refusParAssocie, scolairesSet])
+  }, [semaines, vacances, refusParAssocie, scolairesSet, weekendAff])
 
   const recap = useMemo(() => {
-    let couvertes = 0, sans = 0, refus = 0, sous = 0
+    let couvertes = 0, sans = 0, refus = 0, sous = 0, garde = 0
     for (const s of semaines) {
       const a = analyses[s.num]
       if ((vacances[s.num]?.length ?? 0) > 0) couvertes++
       if (a?.sansVacance) sans++
       if (a?.refus?.length) refus++
       if (a?.sousScolaire) sous++
+      if (a?.gardeCollee?.length) garde++
     }
-    return { total: semaines.length, couvertes, sans, refus, sous }
+    return { total: semaines.length, couvertes, sans, refus, sous, garde }
   }, [semaines, vacances, analyses])
 
   const compteParAssocie = useMemo(() => {
@@ -152,7 +155,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = inis
       }
-      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage)
+      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff)
       return { ...prev, vacances: { ...horsPlage, ...proposees } }
     })
   }
@@ -302,6 +305,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
             <span style={{ color: recap.sans ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.sans} sans vacance</span>
             <span style={{ color: recap.refus ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.refus} refus</span>
             <span style={{ color: recap.sous ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.sous} scolaire &lt; 2</span>
+            <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} garde collée</span>
           </div>
 
           {/* Compteurs par associé */}
@@ -342,7 +346,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                       {a.sansVacance && <span style={s.etat('var(--color-danger)')} title="Aucun associé en congé">🔴 vide</span>}
                       {a.refus.length > 0 && <span style={s.etat('var(--color-danger)')} title={`A refusé cette semaine : ${a.refus.join(', ')}`}>🔴 refus</span>}
                       {a.sousScolaire && <span style={s.etat('var(--color-amber)')} title="Semaine scolaire : moins de 2 associés en congé">🟠 scol&lt;2</span>}
-                      {!a.sansVacance && a.refus.length === 0 && !a.sousScolaire && <span style={s.etat('var(--color-success)')}>✓</span>}
+                      {a.gardeCollee.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Vacances accolées à un week-end de garde : ${a.gardeCollee.join(', ')}`}>🟠 garde</span>}
+                      {!a.sansVacance && a.refus.length === 0 && !a.sousScolaire && a.gardeCollee.length === 0 && <span style={s.etat('var(--color-success)')}>✓</span>}
                     </span>
                     <select value="" onChange={() => {}} style={s.selPetit} title="Associés ayant souhaité cette semaine (desiderata)">
                       <option value="">{souhaits.length} souhait{souhaits.length > 1 ? 's' : ''}</option>

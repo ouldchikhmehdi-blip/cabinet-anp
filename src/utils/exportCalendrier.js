@@ -22,7 +22,7 @@ const ARGB = {
   ferie: 'FF92D050',     // vert
   header: 'FFFF99CC',    // rose
   vacances: 'FFFFFF00',  // jaune (libellé de date des semaines scolaires)
-  conge: 'FFE3EEF9',     // bleu clair (associé en vacances, §14)
+  conge: 'FF9DC3E6',     // bleu (associé en vacances, §14 — proche du fichier d'origine)
 }
 const BORDURE = 'FFBFBFBF'
 

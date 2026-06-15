@@ -22,16 +22,20 @@ export function normaliserVacances(data) {
   return { v: VERSION_VAC, vacances }
 }
 
-// Analyse une semaine : conflits de couverture / refus.
+// Analyse une semaine : conflits de couverture / refus / week-end de garde collé.
 //   sansVacance : aucun associé en congé
 //   refus       : associés affectés qui ont refusé cette semaine (desiderata)
 //   sousScolaire: semaine de vacances scolaires avec moins de 2 associés en congé
-export function analyserSemaine(num, inis, refusParAssocie, estScolaire) {
+//   gardeCollee : associés en congé qui sont de garde le week-end de la semaine (S)
+//                 ou du week-end précédent (S-1) — règle : jamais de vacances accolées
+//                 à un week-end de garde (avant comme après).
+export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}) {
   const liste = inis ?? []
   return {
     sansVacance: liste.length === 0,
     refus: liste.filter(i => refusParAssocie?.[i]?.has(num)),
     sousScolaire: !!estScolaire && liste.length < 2,
+    gardeCollee: liste.filter(i => weekendAff?.[num] === i || weekendAff?.[num - 1] === i),
   }
 }
 
@@ -40,8 +44,9 @@ export function analyserSemaine(num, inis, refusParAssocie, estScolaire) {
 // - souhaitParAssocie / refusParAssocie : { ini: Set(nums) }
 // - scolairesSet : Set(nums) des semaines de vacances scolaires (couverture min = 2)
 // - vacancesHorsPlage : { num: [inis] } des autres périodes (pour l'équilibrage)
+// - weekendAff : { num: ini } affectations week-end (pour éviter une garde collée)
 // Renvoie { num: [inis] } pour la plage.
-export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}) {
+export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}) {
   const resultat = {}
   // Compteur de semaines par associé (hors-plage + ce qu'on attribue) pour l'équilibrage.
   const compte = {}
@@ -62,8 +67,12 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   // 2) Couverture minimale (1, ou 2 en semaine scolaire) avec les moins chargés, hors refus.
   for (const num of nums) {
     const min = scolairesSet?.has(num) ? 2 : 1
+    const gardeCollee = (ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
     while (resultat[num].length < min) {
-      const candidats = ASSOCIES.filter(ini => !resultat[num].includes(ini) && !refusParAssocie?.[ini]?.has(num))
+      const base = ASSOCIES.filter(ini => !resultat[num].includes(ini) && !refusParAssocie?.[ini]?.has(num))
+      // Éviter une garde collée ; à défaut (sinon couverture impossible), on relâche.
+      let candidats = base.filter(ini => !gardeCollee(ini))
+      if (candidats.length === 0) candidats = base
       if (candidats.length === 0) break
       candidats.sort((a, b) => (compte[a] - compte[b]) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
       const choisi = candidats[0]

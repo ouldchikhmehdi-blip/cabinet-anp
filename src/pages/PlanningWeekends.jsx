@@ -7,6 +7,7 @@ import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } fr
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
+import { chargerVacances } from '../utils/vacancesApi'
 import { proposerWeekends, analyserAffectation, ESPACEMENT_MIN } from '../utils/weekends'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 
@@ -29,6 +30,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [desideratas, setDesideratas] = useState([]) // lignes brutes du recueil sélectionné
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
+  const [vacancesData, setVacancesData] = useState(null) // { v, vacances: { num: [ini] } }
   const [data, setData] = useState(null)        // { v, affectations: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -54,10 +56,10 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee)])
-      .then(([cal, obj, we]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee)])
+      .then(([cal, obj, we, vac]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setData(we); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -94,6 +96,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   )
 
   const affectations = useMemo(() => data?.affectations ?? {}, [data])
+  const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
 
   // Objectif « G week-end » par associé (étape 2), si renseigné.
   const objectifGW = useMemo(() => {
@@ -108,19 +111,20 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   // Analyse des conflits sur la plage courante.
   const analyses = useMemo(() => {
     const m = {}
-    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie)
+    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine)
     return m
-  }, [weekends, affectations, indispoParAssocie])
+  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine])
 
   const recap = useMemo(() => {
-    let attribues = 0, indispo = 0, proches = 0
+    let attribues = 0, indispo = 0, proches = 0, vac = 0
     for (const w of weekends) {
       if (affectations[w.num]) attribues++
       const a = analyses[w.num]
       if (a?.indispo) indispo++
       if (a?.tropProche != null) proches++
+      if (a?.vacancesCollee) vac++
     }
-    return { total: weekends.length, attribues, indispo, proches }
+    return { total: weekends.length, attribues, indispo, proches, vac }
   }, [weekends, affectations, analyses])
 
   // Compteur de week-ends par associé sur la période.
@@ -151,7 +155,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = ini
       }
-      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage)
+      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage, vacancesParSemaine)
       return { ...prev, affectations: { ...horsPlage, ...proposees } }
     })
   }
@@ -294,6 +298,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.attribues}/{recap.total} week-ends attribués</span>
             <span style={{ color: recap.indispo ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.indispo} indisponibilité(s)</span>
             <span style={{ color: recap.proches ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.proches} trop rapproché(s)</span>
+            <span style={{ color: recap.vac ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.vac} vacances collée(s)</span>
           </div>
 
           {/* Compteurs par associé */}
@@ -323,7 +328,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const roles = calendrier.semaines?.[w.num] ?? { sam: 'A', dim: 'G' }
               const ini = affectations[w.num] ?? ''
               const a = analyses[w.num]
-              const alerte = a?.indispo ? 'rouge' : (a?.tropProche != null ? 'orange' : null)
+              const alerte = a?.indispo ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee ? 'orange' : null)
               const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num))
               return (
                 <Fragment key={w.num}>
@@ -339,6 +344,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-text-tertiary)')}>—</span>
                       ) : a.indispo ? (
                         <span style={s.etat('var(--color-danger)')} title="Indisponible (desiderata)">🔴 indispo</span>
+                      ) : a.vacancesCollee ? (
+                        <span style={s.etat('var(--color-amber)')} title="Week-end de garde accolé à une semaine de vacances de cet associé">🟠 vac.</span>
                       ) : a.tropProche != null ? (
                         <span style={s.etat('var(--color-amber)')} title={`Moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}`}>🟠 &lt;{ESPACEMENT_MIN} sem</span>
                       ) : (

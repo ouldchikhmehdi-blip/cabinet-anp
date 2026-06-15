@@ -37,10 +37,12 @@ function semainesDe(ini, affectations, numExclu = null) {
 }
 
 // Analyse une affectation candidate (ini sur le week-end num) → conflits.
-//   indispo    : ini a marqué ce week-end indisponible (desiderata)
-//   tropProche : numéro du week-end le plus proche (< ESPACEMENT_MIN) déjà attribué à ini, sinon null
-export function analyserAffectation(num, ini, affectations, indispoParAssocie) {
-  if (!ini) return { indispo: false, tropProche: null }
+//   indispo       : ini a marqué ce week-end indisponible (desiderata)
+//   tropProche    : numéro du week-end le plus proche (< ESPACEMENT_MIN) déjà attribué à ini, sinon null
+//   vacancesCollee: ini est en vacances la semaine du week-end (S) ou la semaine suivante (S+1)
+//                   — règle : jamais de week-end de garde accolé à une semaine de vacances.
+export function analyserAffectation(num, ini, affectations, indispoParAssocie, vacancesParSemaine = {}) {
+  if (!ini) return { indispo: false, tropProche: null, vacancesCollee: false }
   const indispo = !!indispoParAssocie?.[ini]?.has(num)
   let tropProche = null
   let meilleurEcart = ESPACEMENT_MIN
@@ -48,7 +50,8 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie) {
     const ecart = Math.abs(autre - num)
     if (ecart < meilleurEcart) { meilleurEcart = ecart; tropProche = autre }
   }
-  return { indispo, tropProche }
+  const vacancesCollee = !!(vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini))
+  return { indispo, tropProche, vacancesCollee }
 }
 
 // Proposition automatique (glouton déterministe, par numéro de semaine croissant).
@@ -56,8 +59,9 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie) {
 // - indispoParAssocie : { ini: Set(nums) }
 // - objectifParAssocie : { ini: number|undefined } (objectif « G week-end »)
 // - affectationsHorsPlage : affectations des autres périodes (pour l'espacement aux bords)
+// - vacancesParSemaine : { num: [inis] } pour éviter une garde collée à des vacances (S ou S+1)
 // Renvoie un objet { num: ini } limité aux week-ends de la plage.
-export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}) {
+export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}) {
   const resultat = {}
   // Compteur courant (hors-plage + ce qu'on attribue), pour l'équilibrage et l'espacement.
   const courant = { ...affectationsHorsPlage }
@@ -69,9 +73,11 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     const espacementOk = (ini) =>
       semainesDe(ini, courant).every(n => Math.abs(n - num) >= ESPACEMENT_MIN)
     const dispo = (ini) => !indispoParAssocie?.[ini]?.has(num)
+    const vacancesCollee = (ini) => vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini)
 
-    let candidats = ASSOCIES.filter(ini => dispo(ini) && espacementOk(ini))
-    if (candidats.length === 0) candidats = ASSOCIES.filter(dispo) // relâche l'espacement
+    let candidats = ASSOCIES.filter(ini => dispo(ini) && espacementOk(ini) && !vacancesCollee(ini))
+    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini)) // relâche l'espacement
+    if (candidats.length === 0) candidats = ASSOCIES.filter(dispo) // relâche aussi la garde collée
     if (candidats.length === 0) continue // personne de dispo → laissé vide, le faiseur tranche
 
     // Moins de week-ends d'abord ; départage : plus grand déficit vs objectif ; puis ordre figé.
