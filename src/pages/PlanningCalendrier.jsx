@@ -55,6 +55,26 @@ export default function PlanningCalendrier() {
     })
   }
 
+  // Week-end : samedi/dimanche couplés (opposés) + alternance imposée à toutes
+  // les semaines en dessous (rotation avec l'autre groupe).
+  function basculerWeekend(num) {
+    setEnregistre(false)
+    setData(prev => {
+      const idx = semaines.findIndex(s => s.num === num)
+      if (idx === -1) return prev
+      const samActuel = prev.semaines[num]?.sam ?? 'A'
+      const samBase = samActuel === 'G' ? 'A' : 'G' // valeur basculée pour la semaine cliquée
+      const inverse = v => (v === 'G' ? 'A' : 'G')
+      const nouvelles = { ...prev.semaines }
+      for (let i = idx; i < semaines.length; i++) {
+        const n = semaines[i].num
+        const sam = (i - idx) % 2 === 0 ? samBase : inverse(samBase)
+        nouvelles[n] = { ...nouvelles[n], sam, dim: inverse(sam) }
+      }
+      return { ...prev, semaines: nouvelles }
+    })
+  }
+
   function basculerVacances(num) {
     setEnregistre(false)
     setData(prev => {
@@ -165,9 +185,10 @@ export default function PlanningCalendrier() {
     <div style={{ maxWidth: 760 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Base calendrier — Étape 0</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-        Lundi, mardi, mercredi sont fixes (A / G / A). Pour jeudi, vendredi, samedi et dimanche,
-        cliquez pour basculer entre <strong>Astreinte (A)</strong> et <strong>Garde (G)</strong> selon
-        la rotation avec l'autre groupe. Cochez les semaines de vacances scolaires et ajustez les fériés.
+        Lundi, mardi, mercredi sont fixes (A / G / A). Jeudi et vendredi se basculent à la main.
+        Le <strong>week-end</strong> (samedi/dimanche) est <strong>couplé</strong> (toujours opposés)
+        et <strong>alterne automatiquement</strong> d'une semaine à l'autre : cliquez un week-end pour
+        imposer l'alternance à toutes les semaines en dessous. Cochez les vacances scolaires et ajustez les fériés.
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -222,17 +243,22 @@ export default function PlanningCalendrier() {
                   {JOURS_FIXES.map(jf => (
                     <div key={jf.label} style={s.celluleFixe} title="Jour fixe">{jf.statut}</div>
                   ))}
-                  {JOURS_EDIT.map(j => (
-                    <button
-                      key={j.cle}
-                      type="button"
-                      onClick={() => basculerJour(sem.num, j.cle)}
-                      style={s.boutonJour(jours[j.cle])}
-                      title={`${j.label} — ${jours[j.cle] === 'G' ? 'Garde' : 'Astreinte'}`}
-                    >
-                      {jours[j.cle]}
-                    </button>
-                  ))}
+                  {JOURS_EDIT.map(j => {
+                    const estWeekend = j.cle === 'sam' || j.cle === 'dim'
+                    return (
+                      <button
+                        key={j.cle}
+                        type="button"
+                        onClick={() => estWeekend ? basculerWeekend(sem.num) : basculerJour(sem.num, j.cle)}
+                        style={s.boutonJour(jours[j.cle])}
+                        title={estWeekend
+                          ? `${j.label} — ${jours[j.cle] === 'G' ? 'Garde' : 'Astreinte'} (week-end couplé, alterne en dessous)`
+                          : `${j.label} — ${jours[j.cle] === 'G' ? 'Garde' : 'Astreinte'}`}
+                      >
+                        {jours[j.cle]}
+                      </button>
+                    )
+                  })}
                   <button type="button" onClick={() => basculerVacances(sem.num)} style={s.caseVac(enVac)}>
                     {enVac ? '✓ Vac.' : '—'}
                   </button>
