@@ -17,6 +17,8 @@ import Retrocessions from './pages/Retrocessions'
 import Tresorerie from './pages/Tresorerie'
 import ReglesVirements from './pages/ReglesVirements'
 import AdminUsers from './pages/AdminUsers'
+import PlanningDesiderata from './pages/PlanningDesiderata'
+import PlanningSuivi from './pages/PlanningSuivi'
 import './index.css'
 
 export default function App() {
@@ -134,6 +136,8 @@ export default function App() {
       case 'retrocessions':    return <Retrocessions />
       case 'tresorerie':       return <Tresorerie />
       case 'regles-virements': return <ReglesVirements />
+      case 'planning-desiderata': return <PlanningDesiderata />
+      case 'planning-suivi':      return <PlanningSuivi />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }

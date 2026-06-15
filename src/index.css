@@ -54,3 +54,34 @@ button {
 select, input {
   font-family: inherit;
 }
+
+/* ── Impression (export PDF du planning via window.print) ── */
+.zone-impression {
+  display: none;
+}
+
+@media print {
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  .zone-impression {
+    display: block !important;
+  }
+  .recap-associe {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .recap-associe + .recap-associe,
+  .zone-impression > div + div {
+    page-break-before: always;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

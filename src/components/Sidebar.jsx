@@ -11,6 +11,9 @@ const navItems = [
   { id: 'retrocessions', label: 'Virements associés', icon: '⇄' },
   { id: 'tresorerie', label: 'Trésorerie', icon: '🏦' },
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
+  { section: true, label: 'Planning' },
+  { id: 'planning-desiderata', label: 'Mes desiderata', icon: '📝' },
+  { id: 'planning-suivi', label: 'Suivi desiderata', icon: '✅' },
 ]
 
 // Entrée de navigation admin (ajoutée dynamiquement si admin)
@@ -67,6 +70,21 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
 
       <nav style={{ padding: '8px 0', flex: 1 }}>
         {items.map(item => (
+          item.section ? (
+            <div
+              key={`section-${item.label}`}
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--color-text-tertiary)',
+                padding: '14px 16px 4px',
+              }}
+            >
+              {item.label}
+            </div>
+          ) : (
           <button
             key={item.id}
             onClick={() => !item.disabled && onNavigate(item.id)}
@@ -108,6 +126,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
               }}>bientôt</span>
             )}
           </button>
+          )
         ))}
       </nav>
 
