@@ -101,7 +101,16 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false })
         </Ligne>
       )}
 
-      <Ligne titre="Demande de colonne (semaine type)" vide={!d.demandeColonneSemaineType.trim()}>
+      {!estEte && (
+        <Ligne titre="Souhaits de colonne (trame principale)" vide={Object.keys(d.colonnesSouhaitees ?? {}).length === 0}>
+          {Object.entries(d.colonnesSouhaitees ?? {})
+            .sort((a, b) => Number(a[0]) - Number(b[0]))
+            .map(([sem, col]) => `${labelSemaine[Number(sem)] ?? `S${sem}`} → C${Number(col) + 1}`)
+            .join(' · ')}
+        </Ligne>
+      )}
+
+      <Ligne titre="Demande de colonne (texte libre)" vide={!d.demandeColonneSemaineType.trim()}>
         {d.demandeColonneSemaineType}
       </Ligne>
 

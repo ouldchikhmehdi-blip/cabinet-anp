@@ -4,11 +4,14 @@ import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2
 import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES } from '../utils/desiderata'
 import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../utils/desiderataApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
+import { chargerTrames } from '../utils/tramesApi'
+import { colonnesSelectionnables } from '../utils/trames'
 import SelecteurRecueil from '../components/planning/SelecteurRecueil'
 import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
 import WeekendsIndispo from '../components/planning/WeekendsIndispo'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
+import TrameGrille from '../components/planning/TrameGrille'
 import InfoPlanning from '../components/planning/InfoPlanning'
 
 // Sélecteur de sous-semaine de vacances (1ʳᵉ / 2ᵉ / peu importe).
@@ -55,10 +58,20 @@ export default function PlanningDesiderata() {
   const [flash, setFlash] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [semainesScolaires, setSemainesScolaires] = useState([]) // vacances scolaires (Base calendrier)
+  const [tramesData, setTramesData] = useState(null) // catalogue de trames de l'année (pour la principale)
+  const [nouvSouhaitSem, setNouvSouhaitSem] = useState('')
+  const [nouvSouhaitCol, setNouvSouhaitCol] = useState('')
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const ferme = recueil?.statut === 'ferme'
   const estEte = recueil?.type === 'ete'
+
+  // Trame principale de l'année (affichée à l'associé pour choisir une colonne par semaine).
+  const tramePrincipale = useMemo(
+    () => (tramesData ? tramesData.trames.find(t => t.id === tramesData.principaleId) ?? null : null),
+    [tramesData]
+  )
+  const colonnesDispo = useMemo(() => colonnesSelectionnables(tramePrincipale), [tramePrincipale])
 
   // Charge les semaines de vacances scolaires depuis la Base calendrier de l'année
   // (pour les bloquer dans les grilles : elles se gèrent dans la section Préférence).
@@ -67,6 +80,15 @@ export default function PlanningDesiderata() {
     chargerCalendrier(annee)
       .then(c => { if (!annule) setSemainesScolaires(c.vacancesScolaires ?? []) })
       .catch(() => { if (!annule) setSemainesScolaires([]) })
+    return () => { annule = true }
+  }, [annee])
+
+  // Charge le catalogue de trames de l'année (pour récupérer la trame principale, lisible par tous).
+  useEffect(() => {
+    let annule = false
+    chargerTrames(annee)
+      .then(t => { if (!annule) setTramesData(t) })
+      .catch(() => { if (!annule) setTramesData(null) })
     return () => { annule = true }
   }, [annee])
 
@@ -123,6 +145,23 @@ export default function PlanningDesiderata() {
     setData(prev => ({ ...prev, [champ]: valeur }))
   }
 
+  // Souhaits de colonne (trame principale) : { <numSemaine>: <index colonne> }.
+  function ajouterSouhaitColonne() {
+    if (nouvSouhaitSem === '' || nouvSouhaitCol === '') return
+    const sem = Number(nouvSouhaitSem)
+    const col = Number(nouvSouhaitCol)
+    setData(prev => ({ ...prev, colonnesSouhaitees: { ...(prev.colonnesSouhaitees ?? {}), [sem]: col } }))
+    setNouvSouhaitSem(''); setNouvSouhaitCol('')
+  }
+
+  function retirerSouhaitColonne(sem) {
+    setData(prev => {
+      const reste = { ...(prev.colonnesSouhaitees ?? {}) }
+      delete reste[sem]
+      return { ...prev, colonnesSouhaitees: reste }
+    })
+  }
+
   async function enregistrer() {
     setErreur(null)
     try {
@@ -151,6 +190,10 @@ export default function PlanningDesiderata() {
       width: '100%', minHeight: 64, padding: '9px 12px', fontSize: 13,
       border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
       background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', resize: 'vertical',
+    },
+    select: {
+      padding: '8px 12px', fontSize: 13, border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
     },
     barreBas: {
       position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 14,
@@ -419,10 +462,69 @@ export default function PlanningDesiderata() {
               </div>
             )}
 
-            {/* Demande de colonne */}
+            {/* Trame principale — souhaits de colonne par semaine (sans objet l'été) */}
+            {!estEte && tramePrincipale && (
+              <div style={s.carte}>
+                <div style={s.titre}>Trame principale — souhaits de colonne</div>
+                <div style={s.aide}>
+                  Voici la semaine type principale. Pour les semaines qui comptent pour vous, indiquez la
+                  colonne souhaitée (facultatif). Les colonnes Réa, Vacances et Remplaçant sont gérées
+                  automatiquement et ne sont pas proposées au choix.
+                </div>
+                <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+                  <TrameGrille
+                    colonnes={tramePrincipale.colonnes}
+                    roles={{
+                      rea: tramePrincipale.rea, vacances: tramePrincipale.vacances,
+                      avantWE: tramePrincipale.avantWE, apresWE: tramePrincipale.apresWE,
+                      remplacants: tramePrincipale.remplacants,
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select value={nouvSouhaitSem} onChange={e => setNouvSouhaitSem(e.target.value)} style={s.select}>
+                    <option value="">Semaine…</option>
+                    {semaines.map(sem => <option key={sem.num} value={sem.num}>{sem.label}</option>)}
+                  </select>
+                  <select value={nouvSouhaitCol} onChange={e => setNouvSouhaitCol(e.target.value)} style={s.select}>
+                    <option value="">Colonne…</option>
+                    {colonnesDispo.map(i => <option key={i} value={i}>C{i + 1}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={ajouterSouhaitColonne}
+                    disabled={nouvSouhaitSem === '' || nouvSouhaitCol === ''}
+                    style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (nouvSouhaitSem === '' || nouvSouhaitCol === '') ? 0.5 : 1 }}
+                  >
+                    + Ajouter
+                  </button>
+                </div>
+                {Object.keys(data.colonnesSouhaitees ?? {}).length > 0 && (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {Object.entries(data.colonnesSouhaitees)
+                      .sort((a, b) => Number(a[0]) - Number(b[0]))
+                      .map(([sem, col]) => (
+                        <div key={sem} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                          <span>{semaines.find(x => x.num === Number(sem))?.label ?? `S${sem}`} → <strong>C{Number(col) + 1}</strong></span>
+                          <button
+                            type="button"
+                            onClick={() => retirerSouhaitColonne(sem)}
+                            style={{ border: 'none', background: 'transparent', color: 'var(--color-text-tertiary)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}
+                            title="Retirer ce souhait"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Demande de colonne (texte libre, complément) */}
             <div style={s.carte}>
-              <div style={s.titre}>Demande de colonne (semaine type)</div>
-              <div style={s.aide}>Optionnel — ex. un poste-type précis que vous souhaitez sur certaines semaines.</div>
+              <div style={s.titre}>Demande de colonne (texte libre)</div>
+              <div style={s.aide}>Optionnel — toute précision sur un poste-type que vous souhaitez sur certaines semaines.</div>
               <textarea
                 style={s.textarea}
                 value={data.demandeColonneSemaineType}

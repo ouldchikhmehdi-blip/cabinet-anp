@@ -75,8 +75,22 @@ les remplaçants pris cette semaine-là ; c'est la colonne ajoutée à droite de
 Le catalogue contient donc plusieurs variantes selon les cas : sans remplaçant, avec 1 remplaçant, avec
 2 remplaçants, ou même 1 remplaçant avec une **rotation différente** (chaque variante = une trame nommée).
 
+> **Règle Excel (planning assemblé, à venir).** Une colonne remplaçant ne tombe **jamais** sur une
+> colonne d'associé : dans l'export du planning assemblé, elle apparaît en **colonne(s) supplémentaire(s)
+> tout à droite** du tableau (`Date | 8 associés | Date | Groupe | Remplaçant 1 | Remplaçant 2…`).
+
 Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même colonne peut
 revenir rapprochée pour un même associé.
+
+**Repos = couleur vacances.** Dans les grilles de trame (écran), une case repos s'affiche avec la
+couleur « congé » cyan **#00B0F0** (identique à `ARGB.conge` de l'export et aux fichiers d'origine).
+Composant partagé : `src/components/planning/TrameGrille.jsx`.
+
+**Trame principale → desiderata.** Le faiseur désigne **une trame principale** (`data.principaleId`).
+Elle est affichée aux associés dans leurs desiderata (recueils **hors été**) : ils peuvent demander,
+**par semaine, une colonne** (`colonnesSouhaitees: { <numSemaine>: <colIndex> }` dans les desiderata).
+Seules les **colonnes normales** sont proposées (Réa, Vacances et Remplaçant exclues — affectées
+automatiquement). Helper : `colonnesSelectionnables()` dans `src/utils/trames.js`.
 
 **Catalogue annuel de trames (Étape « Trames », en place).** Le faiseur apporte ses semaines type
 par **collage depuis Excel** : un bloc de 5 lignes lun→ven × N colonnes = **une trame**, nommée une

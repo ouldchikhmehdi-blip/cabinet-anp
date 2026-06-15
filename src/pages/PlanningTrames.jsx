@@ -3,7 +3,8 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerTrames, sauverTrames } from '../utils/tramesApi'
-import { JOURS, JOURS_LABEL, parserCollage, prochainIdTrame, colonneVide, suggererRoles } from '../utils/trames'
+import { parserCollage, prochainIdTrame, suggererRoles } from '../utils/trames'
+import TrameGrille from '../components/planning/TrameGrille'
 
 export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
   const { session, profile } = useAuth()
@@ -61,7 +62,17 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
 
   function supprimerTrame(idTrame) {
     setEnregistre(false); onStatut?.('modifie')
-    setData(prev => ({ ...prev, trames: prev.trames.filter(t => t.id !== idTrame) }))
+    setData(prev => ({
+      ...prev,
+      principaleId: prev.principaleId === idTrame ? null : prev.principaleId,
+      trames: prev.trames.filter(t => t.id !== idTrame),
+    }))
+  }
+
+  // Désigne (ou retire) la trame principale, celle affichée aux associés dans leurs desiderata.
+  function definirPrincipale(idTrame) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({ ...prev, principaleId: prev.principaleId === idTrame ? null : idTrame }))
   }
 
   // Désigne une colonne spéciale d'une trame (réa / vacances / avantWE / apresWE) — index ou null.
@@ -188,8 +199,6 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     )
   }
 
-  const cellule = (v) => (v && v.trim() ? v : <span style={s.repos}>repos</span>)
-
   // Les 4 colonnes spéciales désignables, avec libellé + repère + couleur.
   const ROLES = [
     { cle: 'rea', label: 'Colonne réa :', court: 'Réa', couleur: '#0E7C66' },
@@ -199,47 +208,6 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
   ]
 
   const COULEUR_REMPLACANT = '#B45309'
-
-  // Rendu d'une grille (jours en lignes × colonnes), pour l'aperçu et le catalogue.
-  // roles (optionnel) = { rea, vacances, avantWE, apresWE, remplacants:[{col,nom}] }.
-  const grille = (colonnes, roles = null) => {
-    const remplA = (i) => roles?.remplacants?.filter(r => r.col === i) ?? []
-    return (
-      <table style={s.table}>
-        <thead>
-          <tr>
-            <th style={s.thJour}>Jour</th>
-            {colonnes.map((_, i) => (
-              <th key={i} style={s.thCol}>
-                <div>C{i + 1}</div>
-                {roles && ROLES.filter(r => roles[r.cle] === i).map(r => (
-                  <div key={r.cle} style={{ ...s.badge, color: r.couleur }}>{r.court}</div>
-                ))}
-                {remplA(i).map((r, k) => (
-                  <div key={`r${k}`} style={{ ...s.badge, color: COULEUR_REMPLACANT }}>{r.nom || 'Remplaçant'}</div>
-                ))}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {JOURS.map(j => (
-            <tr key={j}>
-              <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
-              {colonnes.map((col, i) => {
-                const estRole = roles && (ROLES.some(r => roles[r.cle] === i) || remplA(i).length > 0)
-                return (
-                  <td key={i} style={{ ...s.tdCell, background: estRole ? 'var(--color-primary-light)' : (colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent') }}>
-                    {cellule(col[j])}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )
-  }
 
   // Sélecteur de colonne pour un rôle.
   const selecteurRole = (trame, role, label) => (
@@ -269,6 +237,8 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
         une ou plusieurs colonnes <strong>remplaçant</strong> (colonnes en plus), désignez-les et nommez-les
         (« Remplaçant 1 », « Remplaçant 2 »…). Le catalogue se remplit par collage depuis Excel, autant de trames
         que vous voulez (« Normale », « Avec 1 remplaçant », « Avec 2 remplaçants », « Vendredi de garde »…).
+        Cochez enfin une <strong>trame principale</strong> : c'est elle qui sera montrée aux associés dans
+        leurs desiderata pour qu'ils choisissent une colonne par semaine.
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -330,7 +300,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                     {candidatColonnes.length} colonne{candidatColonnes.length > 1 ? 's' : ''} détectée{candidatColonnes.length > 1 ? 's' : ''}
                   </span>
                 </div>
-                <div style={{ overflowX: 'auto' }}>{grille(candidatColonnes)}</div>
+                <div style={{ overflowX: 'auto' }}><TrameGrille colonnes={candidatColonnes} /></div>
               </>
             )}
           </div>
@@ -358,7 +328,19 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                       <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                         {t.colonnes.length} colonne{t.colonnes.length > 1 ? 's' : ''}
                       </span>
-                      <button type="button" onClick={() => supprimerTrame(t.id)} style={{ ...s.croix, marginLeft: 'auto' }} title="Supprimer cette trame">✕</button>
+                      <label
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto',
+                          fontSize: 12, fontWeight: data.principaleId === t.id ? 600 : 500,
+                          color: data.principaleId === t.id ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)',
+                          cursor: 'pointer',
+                        }}
+                        title="La trame affichée aux associés dans leurs desiderata"
+                      >
+                        <input type="checkbox" checked={data.principaleId === t.id} onChange={() => definirPrincipale(t.id)} />
+                        Trame principale
+                      </label>
+                      <button type="button" onClick={() => supprimerTrame(t.id)} style={s.croix} title="Supprimer cette trame">✕</button>
                     </div>
                     <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
                       {ROLES.map(r => <span key={r.cle}>{selecteurRole(t, r.cle, r.label)}</span>)}
@@ -392,7 +374,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                       </button>
                     </div>
 
-                    {grille(t.colonnes, { rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE, remplacants: t.remplacants })}
+                    <TrameGrille colonnes={t.colonnes} roles={{ rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE, remplacants: t.remplacants }} />
                   </div>
                 ))}
               </div>

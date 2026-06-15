@@ -16,9 +16,12 @@
 // remplaçants pris cette semaine-là). Le faiseur les désigne et les nomme librement
 // (« Remplaçant 1 », « Remplaçant 2 »…) via remplacants: [ { col, nom } ].
 //
+// Le faiseur désigne une TRAME PRINCIPALE (data.principaleId) : celle qui est affichée aux
+// associés dans leurs desiderata pour qu'ils choisissent une colonne par semaine.
+//
 // Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
-// data = { v, trames: [ { id, nom, colonnes: [ {lun..ven} ], rea, vacances, avantWE, apresWE,
-//                         remplacants: [ { col, nom } ] } ] }
+// data = { v, principaleId, trames: [ { id, nom, colonnes: [ {lun..ven} ], rea, vacances,
+//                                       avantWE, apresWE, remplacants: [ { col, nom } ] } ] }
 // rea / vacances / avantWE / apresWE / remplacants[].col = index (0-based) d'une colonne.
 // ============================================================
 export const VERSION_TRAMES = 1
@@ -28,7 +31,7 @@ export const JOURS = ['lun', 'mar', 'mer', 'jeu', 'ven']
 export const JOURS_LABEL = { lun: 'Lundi', mar: 'Mardi', mer: 'Mercredi', jeu: 'Jeudi', ven: 'Vendredi' }
 
 export function tramesVide() {
-  return { v: VERSION_TRAMES, trames: [] }
+  return { v: VERSION_TRAMES, principaleId: null, trames: [] }
 }
 
 // Renvoie un objet jours complet (les 5 clés), valeurs nettoyées ; cellule vide = repos ("").
@@ -77,7 +80,9 @@ export function normaliserTrames(data) {
       prochain++
     }
   }
-  return { v: VERSION_TRAMES, trames }
+  // Trame principale : doit pointer sur une trame existante, sinon null.
+  const principaleId = trames.some(t => t.id === data?.principaleId) ? data.principaleId : null
+  return { v: VERSION_TRAMES, principaleId, trames }
 }
 
 // Prochain id disponible pour une nouvelle trame (déterministe : max existant + 1).
@@ -90,6 +95,17 @@ export function prochainIdTrame(trames) {
 // Une colonne est-elle entièrement vide (que du repos) ? (sert à la détection « vacances »).
 export function colonneVide(jours) {
   return JOURS.every(j => !(jours?.[j] ?? '').trim())
+}
+
+// Indices des colonnes qu'un associé peut DEMANDER dans ses desiderata : on exclut les colonnes
+// affectées automatiquement — Réa, Vacances et Remplaçant (avant/après WE restent demandables).
+export function colonnesSelectionnables(trame) {
+  if (!trame) return []
+  const exclus = new Set()
+  if (trame.rea != null) exclus.add(trame.rea)
+  if (trame.vacances != null) exclus.add(trame.vacances)
+  for (const r of trame.remplacants ?? []) if (r.col != null) exclus.add(r.col)
+  return trame.colonnes.map((_, i) => i).filter(i => !exclus.has(i))
 }
 
 function normaliserPoste(v) {

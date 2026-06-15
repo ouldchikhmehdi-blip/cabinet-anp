@@ -32,6 +32,7 @@ export function desiderataVide() {
     weekendsIndispo: [],         // numéros de semaine ISO des week-ends indisponibles
     noel: '',                    // texte libre : préférences fêtes de fin d'année (réparties à la main)
     demandeColonneSemaineType: '',
+    colonnesSouhaitees: {},      // { <numSemaineISO>: <index de colonne> } sur la trame principale
     commentaire: '',
   }
 }
@@ -55,6 +56,7 @@ export function estRempli(d, soumis = false) {
     d.weekendsIndispo.length > 0 ||
     (d.noel ?? '').trim() !== '' ||
     d.demandeColonneSemaineType.trim() !== '' ||
+    Object.keys(d.colonnesSouhaitees ?? {}).length > 0 ||
     d.commentaire.trim() !== ''
   )
 }
