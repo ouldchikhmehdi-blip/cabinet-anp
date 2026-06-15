@@ -5,11 +5,13 @@ import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { chargerObjectifs, sauverObjectifs } from '../utils/objectifsApi'
 
-export default function PlanningObjectifs() {
+export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
-  const [annee, setAnnee] = useState(ANNEE_DEFAUT)
+  const [anneeInterne, setAnneeInterne] = useState(ANNEE_DEFAUT)
+  const annee = anneeProp ?? anneeInterne
+  const setAnnee = onChangeAnnee ?? setAnneeInterne
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)

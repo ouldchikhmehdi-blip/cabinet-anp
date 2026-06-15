@@ -28,11 +28,13 @@ const JOURS_FIXES = [
 ]
 const DEFAUT_SEMAINE = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
 
-export default function PlanningCalendrier() {
+export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
-  const [annee, setAnnee] = useState(ANNEE_DEFAUT)
+  const [anneeInterne, setAnneeInterne] = useState(ANNEE_DEFAUT)
+  const annee = anneeProp ?? anneeInterne
+  const setAnnee = onChangeAnnee ?? setAnneeInterne
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
