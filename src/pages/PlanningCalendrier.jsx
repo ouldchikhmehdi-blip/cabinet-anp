@@ -245,6 +245,19 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
         >
           {recup ? 'Récupération…' : 'Récupérer les vacances (zone C)'}
         </button>
+        <button type="button" onClick={enregistrer} disabled={data === null} style={{ ...s.bouton, opacity: data === null ? 0.5 : 1 }}>
+          Enregistrer
+        </button>
+        <button
+          type="button"
+          onClick={exporter}
+          disabled={exportEnCours || data === null}
+          style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (exportEnCours || data === null) ? 0.6 : 1 }}
+          title="Génère un fichier Excel de la base (jours en lignes, G jaune / A orange)"
+        >
+          {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
+        </button>
+        {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
       </div>
 
       {erreur && (
@@ -322,21 +335,6 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee } =
                 </Fragment>
               )
             })}
-          </div>
-
-          {/* Enregistrer / Exporter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 24 }}>
-            <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
-            <button
-              type="button"
-              onClick={exporter}
-              disabled={exportEnCours}
-              style={{ ...s.bouton, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: exportEnCours ? 0.6 : 1 }}
-              title="Génère un fichier Excel de la base (jours en lignes, G jaune / A orange)"
-            >
-              {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
-            </button>
-            {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>Enregistré ✓</span>}
           </div>
         </>
       )}

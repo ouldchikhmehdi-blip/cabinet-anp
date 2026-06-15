@@ -146,11 +146,17 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
         propres lignes d'objectif. Servira de cible « Réalisé vs Objectif » dans le planning.
       </p>
 
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Année</label>
-        <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
-          {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>Année</label>
+          <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
+            {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={enregistrer} disabled={data === null} style={{ ...s.bouton, opacity: data === null ? 0.5 : 1 }}>
+          Enregistrer
+        </button>
+        {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
       </div>
 
       {erreur && (
@@ -223,11 +229,6 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee } = 
                 + Ajouter une ligne
               </button>
             </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 24 }}>
-            <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
-            {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>Enregistré ✓</span>}
           </div>
         </>
       )}
