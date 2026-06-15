@@ -162,13 +162,10 @@ export function joursFeriesFR(annee) {
     .map(f => ({ iso: formatISO(f.date), nom: f.nom, date: f.date }))
 }
 
-// ── Vacances scolaires zone C (Montpellier) — n° de semaine ISO, EN DUR par
-// année connue. À CONFIRMER (calendrier Éducation nationale). Vide sinon. ──
-export const VACANCES_SCOLAIRES_ZONE_C = {
-  // 2026 : Noël (début janv), hiver/février, printemps/Pâques, été, Toussaint, Noël (fin déc).
-  2026: [1, 2, 7, 8, 15, 16, 28, 29, 30, 31, 32, 33, 34, 35, 43, 44, 52, 53],
-}
-
-export function semainesVacancesScolaires(annee) {
-  return VACANCES_SCOLAIRES_ZONE_C[annee] ?? []
+// ── Vacances scolaires zone C — pré-remplissage par défaut (vide). ──
+// Les vraies dates sont récupérées en direct depuis l'API officielle
+// (cf. recupererVacancesScolairesZoneC dans calendrierApi.js), via un bouton
+// dans la page Base calendrier. Pas de valeurs codées en dur (évite l'imprécision).
+export function semainesVacancesScolaires() {
+  return []
 }

@@ -5,6 +5,37 @@
 import { supabase } from '../lib/supabase'
 import { listerSemaines, joursFeriesFR, semainesVacancesScolaires } from './calendrier'
 
+const JOUR_MS = 24 * 60 * 60 * 1000
+
+// Récupère les semaines de vacances scolaires (zone C) depuis l'API officielle
+// data.education.gouv.fr (jeu de données fr-en-calendrier-scolaire), pour une
+// année civile. Croise les deux années scolaires qui la chevauchent.
+// → number[] de numéros de semaine ISO. Lève une erreur si l'API échoue.
+export async function recupererVacancesScolairesZoneC(annee) {
+  const where = `zones="Zone C" and annee_scolaire in ("${annee - 1}-${annee}","${annee}-${annee + 1}")`
+  const url =
+    'https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records'
+    + `?where=${encodeURIComponent(where)}&limit=100&select=description,start_date,end_date`
+
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('API calendrier scolaire indisponible')
+  const json = await res.json()
+
+  // Garder uniquement les vraies vacances (exclut « Pont de l'Ascension », etc.)
+  const periodes = (json.results ?? [])
+    .filter(r => /^vacances/i.test(r.description ?? ''))
+    .map(r => ({ debut: new Date(r.start_date).getTime(), fin: new Date(r.end_date).getTime() }))
+
+  // Une semaine ISO est « vacances » si son jeudi tombe dans une période
+  // (règle du jeudi : évite de marquer les semaines de bord école/retour).
+  const weeks = []
+  for (const s of listerSemaines(annee)) {
+    const jeudi = s.lundi.getTime() + 3 * JOUR_MS
+    if (periodes.some(p => jeudi >= p.debut && jeudi <= p.fin)) weeks.push(s.num)
+  }
+  return weeks
+}
+
 // Base par défaut calculée (non stockée tant que le faiseur n'enregistre pas).
 export function calendrierVide(annee) {
   const semaines = {}

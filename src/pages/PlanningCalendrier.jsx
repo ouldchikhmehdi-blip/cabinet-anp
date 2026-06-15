@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { listerSemaines, joursFeriesFR, formatDateLongueFR, ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
-import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
+import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 
 // Couleurs des statuts (jaune/bleu en littéral : pas de variable CSS dédiée).
 const COULEUR = {
@@ -30,6 +30,7 @@ export default function PlanningCalendrier() {
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
+  const [recup, setRecup] = useState(false)
 
   const semaines = useMemo(() => listerSemaines(annee), [annee])
   const feries = useMemo(() => joursFeriesFR(annee), [annee])
@@ -73,6 +74,19 @@ export default function PlanningCalendrier() {
       ...prev,
       feries: { ...prev.feries, [iso]: prev.feries[iso] === 'G' ? 'A' : 'G' },
     }))
+  }
+
+  async function recupererVacances() {
+    setErreur(null); setRecup(true)
+    try {
+      const weeks = await recupererVacancesScolairesZoneC(annee)
+      setData(prev => ({ ...prev, vacancesScolaires: weeks }))
+      setEnregistre(false)
+    } catch {
+      setErreur('Impossible de récupérer les vacances scolaires (API indisponible). Vous pouvez les cocher manuellement.')
+    } finally {
+      setRecup(false)
+    }
   }
 
   async function enregistrer() {
@@ -163,6 +177,15 @@ export default function PlanningCalendrier() {
             {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
+        <button
+          type="button"
+          onClick={recupererVacances}
+          disabled={recup || data === null}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: recup ? 0.6 : 1 }}
+          title="Pré-cocher les semaines de vacances scolaires zone C depuis le calendrier officiel"
+        >
+          {recup ? 'Récupération…' : 'Récupérer les vacances (zone C)'}
+        </button>
       </div>
 
       {erreur && (
