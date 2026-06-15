@@ -58,13 +58,18 @@ colonnes entre associés**.
 Affecter le planning d'une semaine = donner une colonne à chaque associé. Certaines colonnes sont
 **déjà posées** par les étapes précédentes, ou reconnues automatiquement (détection par contenu) :
 
-- colonne **tout en Réa** → l'associé de réa (étape Réa) ;
-- colonne **entièrement vide** → semaine de **vacances** (étape Vacances) ;
-- colonne **lundi off + vendredi off** → associé qui **revient de week-end** ;
-- une colonne **systématiquement donnée à celui qui se prépare à faire le week-end suivant** (lien
-  avec l'étape Week-ends : ce week-end → cette colonne pré-WE, qui porte tel jour off) ;
+- colonne **après le week-end** → **désignée par le faiseur sur la trame** (`apresWE`) : donnée à
+  l'associé qui **revient de week-end** ;
+- colonne **avant le week-end** → **désignée par le faiseur sur la trame** (`avantWE`) : donnée à
+  celui qui **s'apprête à faire le week-end suivant** (lien avec l'étape Week-ends : ce week-end →
+  cette colonne, qui porte tel jour off) ;
+- colonne **tout en Réa** → l'associé de réa (étape Réa) — détection auto ;
+- colonne **entièrement vide** → semaine de **vacances** (étape Vacances) — détection auto ;
 - les **autres colonnes** se répartissent pour **coller aux jours off demandés** (jour off demandé
-  = on choisit la colonne dont ce jour est vide).
+  = on choisit la colonne dont ce jour est vide) — détection auto.
+
+Les colonnes après/avant week-end se remplissent **automatiquement** une fois les week-ends posés,
+d'après la désignation faite sur la trame.
 
 Il n'y a **pas de rotation strictement équilibrée** : selon les jours off, une même colonne peut
 revenir rapprochée pour un même associé.

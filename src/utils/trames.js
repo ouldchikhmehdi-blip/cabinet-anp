@@ -2,13 +2,17 @@
 // trames.js — modèle + parsing du catalogue de « semaines type » (PLANNING.md §4, §11).
 // Une trame = une SEMAINE TYPE entière (grille) : N colonnes, chaque colonne étant une
 // séquence figée lun→ven de postes ("" = repos). Les colonnes sont interchangeables entre
-// associés, mais la succession à l'intérieur d'une colonne ne change jamais. Au moment de
-// l'affectation (étape ultérieure), certaines colonnes sont reconnues automatiquement :
-// colonne tout en Réa, colonne entièrement vide (vacances), colonne lundi+vendredi off
-// (retour de week-end), et la colonne dont un jour est off pour coller à un jour off demandé.
+// associés, mais la succession à l'intérieur d'une colonne ne change jamais.
+//
+// Deux colonnes sont DÉSIGNÉES par le faiseur sur chaque trame (apresWE / avantWE) :
+//   - apresWE : colonne du retour de week-end (à donner à celui qui sort d'un week-end) ;
+//   - avantWE : colonne d'avant week-end (à donner à celui qui s'apprête à faire le week-end).
+// Au moment de l'affectation, ces colonnes se remplissent automatiquement selon les week-ends.
+// Les autres rôles restent détectés par contenu (Réa, vacances = colonne vide, jour off).
 //
 // Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
-// data = { v, trames: [ { id, nom, colonnes: [ { lun, mar, mer, jeu, ven } ] } ] }
+// data = { v, trames: [ { id, nom, colonnes: [ { lun..ven } ], apresWE, avantWE } ] }
+// apresWE / avantWE = index (0-based) d'une colonne, ou null si non défini.
 // ============================================================
 export const VERSION_TRAMES = 1
 
@@ -37,10 +41,15 @@ export function normaliserTrames(data) {
     const colsSrc = Array.isArray(t?.colonnes)
       ? t.colonnes
       : (t?.jours ? [t.jours] : [])
+    const colonnes = colsSrc.map(normaliserJours)
+    // Index de colonne valide (dans les bornes) sinon null.
+    const idxCol = (v) => (Number.isInteger(v) && v >= 0 && v < colonnes.length ? v : null)
     return {
       id: Number.isInteger(t?.id) ? t.id : null,
       nom: typeof t?.nom === 'string' ? t.nom.trim() : '',
-      colonnes: colsSrc.map(normaliserJours),
+      colonnes,
+      apresWE: idxCol(t?.apresWE),
+      avantWE: idxCol(t?.avantWE),
     }
   })
   // Garantit des id entiers uniques et stables (déterministe, sans Date.now/Math.random).

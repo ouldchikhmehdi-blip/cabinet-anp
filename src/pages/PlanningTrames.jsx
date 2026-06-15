@@ -42,7 +42,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     setData(prev => {
       const id = prochainIdTrame(prev.trames)
       const nom = candidatNom.trim() || `Trame ${id}`
-      const trame = { id, nom, colonnes: candidatColonnes.map(c => ({ ...c })) }
+      const trame = { id, nom, colonnes: candidatColonnes.map(c => ({ ...c })), apresWE: null, avantWE: null }
       return { ...prev, trames: [...prev.trames, trame] }
     })
     setTexteCollage('')
@@ -61,6 +61,15 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
   function supprimerTrame(idTrame) {
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => ({ ...prev, trames: prev.trames.filter(t => t.id !== idTrame) }))
+  }
+
+  // Désigne la colonne « après week-end » / « avant week-end » d'une trame (index ou null).
+  function majRoleColonne(idTrame, role, index) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({
+      ...prev,
+      trames: prev.trames.map(t => (t.id === idTrame ? { ...t, [role]: index } : t)),
+    }))
   }
 
   async function enregistrer() {
@@ -125,6 +134,8 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       borderBottom: '0.5px solid var(--color-border)', borderLeft: '0.5px solid var(--color-border)',
     },
     repos: { color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
+    badgeApres: { fontSize: 10, fontWeight: 600, color: 'var(--color-primary-dark)', marginTop: 2, whiteSpace: 'nowrap' },
+    badgeAvant: { fontSize: 10, fontWeight: 600, color: 'var(--color-primary-dark)', marginTop: 2, whiteSpace: 'nowrap' },
     croix: {
       border: 'none', background: 'transparent', color: 'var(--color-text-tertiary)',
       cursor: 'pointer', fontSize: 14, padding: '0 4px', lineHeight: 1,
@@ -149,27 +160,52 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
   const cellule = (v) => (v && v.trim() ? v : <span style={s.repos}>repos</span>)
 
   // Rendu d'une grille (jours en lignes × colonnes), pour l'aperçu et le catalogue.
-  const grille = (colonnes) => (
+  // roles (optionnel) = { apresWE, avantWE } : ajoute un repère sur les colonnes désignées.
+  const grille = (colonnes, roles = null) => (
     <table style={s.table}>
       <thead>
         <tr>
           <th style={s.thJour}>Jour</th>
-          {colonnes.map((_, i) => <th key={i} style={s.thCol}>C{i + 1}</th>)}
+          {colonnes.map((_, i) => (
+            <th key={i} style={s.thCol}>
+              <div>C{i + 1}</div>
+              {roles?.apresWE === i && <div style={s.badgeApres}>↩ après WE</div>}
+              {roles?.avantWE === i && <div style={s.badgeAvant}>→ avant WE</div>}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
         {JOURS.map(j => (
           <tr key={j}>
             <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
-            {colonnes.map((col, i) => (
-              <td key={i} style={{ ...s.tdCell, background: colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent' }}>
-                {cellule(col[j])}
-              </td>
-            ))}
+            {colonnes.map((col, i) => {
+              const estRole = roles && (roles.apresWE === i || roles.avantWE === i)
+              return (
+                <td key={i} style={{ ...s.tdCell, background: estRole ? 'var(--color-primary-light)' : (colonneVide(col) ? 'var(--color-bg-subtle, transparent)' : 'transparent') }}>
+                  {cellule(col[j])}
+                </td>
+              )
+            })}
           </tr>
         ))}
       </tbody>
     </table>
+  )
+
+  // Sélecteur de colonne pour un rôle (après / avant week-end).
+  const selecteurRole = (trame, role, label) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+      {label}
+      <select
+        value={trame[role] == null ? '' : trame[role]}
+        onChange={e => majRoleColonne(trame.id, role, e.target.value === '' ? null : Number(e.target.value))}
+        style={{ ...s.select, padding: '5px 8px', fontSize: 12 }}
+      >
+        <option value="">—</option>
+        {trame.colonnes.map((_, i) => <option key={i} value={i}>C{i + 1}</option>)}
+      </select>
+    </label>
   )
 
   return (
@@ -178,10 +214,11 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
         Une <strong>trame</strong> est une <strong>semaine type entière</strong> : une grille de plusieurs
         colonnes, chaque colonne étant une séquence figée de postes du lundi au vendredi (case vide = repos).
-        Les colonnes s'intervertissent entre associés selon les jours off ; certaines colonnes (Réa, vacances,
-        retour de week-end) seront reconnues automatiquement au moment de l'affectation. Le catalogue se
-        remplit par collage depuis Excel, autant de trames que vous voulez (« Normale », « Avec remplaçant »,
-        « Vendredi de garde »…).
+        Les colonnes s'intervertissent entre associés selon les jours off. Sur chaque trame, vous désignez la
+        colonne <strong>après le week-end</strong> et la colonne <strong>avant le week-end</strong> (elles se
+        rempliront automatiquement selon les week-ends attribués) ; les autres rôles (Réa, vacances, jour off)
+        sont reconnus automatiquement. Le catalogue se remplit par collage depuis Excel, autant de trames que
+        vous voulez (« Normale », « Avec remplaçant », « Vendredi de garde »…).
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -273,7 +310,11 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                       </span>
                       <button type="button" onClick={() => supprimerTrame(t.id)} style={{ ...s.croix, marginLeft: 'auto' }} title="Supprimer cette trame">✕</button>
                     </div>
-                    {grille(t.colonnes)}
+                    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {selecteurRole(t, 'apresWE', 'Colonne après le week-end :')}
+                      {selecteurRole(t, 'avantWE', 'Colonne avant le week-end :')}
+                    </div>
+                    {grille(t.colonnes, { apresWE: t.apresWE, avantWE: t.avantWE })}
                   </div>
                 ))}
               </div>
