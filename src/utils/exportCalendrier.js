@@ -4,9 +4,11 @@
 // Couleurs gérées via ExcelJS (la lib xlsx communautaire ne sait pas colorer).
 // ============================================================
 import ExcelJS from 'exceljs'
-import { listerSemaines, semainesDansPlage, joursFeriesFR, formatISO, formatDateLongueFR, moisAnneeFR, typeDuJour } from './calendrier'
+import { listerSemaines, semainesDansPlage, joursFeriesFR, formatDateLongueFR, moisAnneeFR } from './calendrier'
 import { ASSOCIES } from '../data/associes'
-import { JOURS } from './trames'
+import {
+  COULEURS_GRILLE, ctxJour, celluleAssocieJour, celluleRemplacantJour, celluleGroupeJour, celluleDateJour,
+} from './grilleSemaine'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -98,71 +100,27 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
         moisPrec = mois
       }
 
-      const iso = formatISO(date)
-      const estWeekend = offset >= 5
-      const estFerie = !!feries[iso]
-      const enVac = vacances.has(sem.num)
-      const role = typeDuJour(data, sem.num, offset)
+      // Modèle de cellule (texte + couleur + gras) calculé par la logique PARTAGÉE (grilleSemaine.js),
+      // pour que l'aperçu à l'écran soit strictement identique à cet export.
+      const ctx = ctxJour({
+        data, sem, offset, feries, vacancesScolaires: vacances,
+        weekendAff: weekends, reaAff: rea, congesParSemaine: conges,
+        affectationsSemaine, recupParSemaine, compteurs,
+      })
       const dateLong = formatDateLongueFR(date)
 
-      // Colonne G/A : on n'affiche que vendredi / samedi / dimanche, plus le jeudi
-      // UNIQUEMENT s'il est d'astreinte (cas exceptionnel). Lun/mar/mer et jeudi de
-      // garde restent vides (redondant, connu — évite de surcharger la colonne).
-      let groupeAffiche = ''
-      if (offset >= 4) groupeAffiche = role
-      else if (offset === 3 && role === 'A') groupeAffiche = 'A'
-
-      // Week-end affecté (étape 3) : l'associé prend l'astreinte du samedi et la garde
-      // du dimanche → on inscrit le rôle du jour dans SA colonne (samedi/dimanche).
-      // Vacances (étape 4) : associés en congé cette semaine → colonne bleue (tous les jours).
-      const congesSemaine = conges?.[sem.num] ?? []
-      const iniWE = estWeekend ? (weekends?.[sem.num] ?? null) : null
-      // Réa (étape 5) : l'associé en réa porte « Réa » du lundi au vendredi (offset 0–4).
-      // La vacance prime (poste exclusif) : pas de « Réa » sur une semaine de congé.
-      const iniRea = (!estWeekend && offset <= 4) ? (rea?.[sem.num] ?? null) : null
-      // n° de garde/astreinte cumulé à afficher dans la case de service ce jour-là (offset).
-      const numService = (off) => (off === 4 ? compteurs?.vendredi?.[sem.num] : compteurs?.gardeSem?.[sem.num]?.[off])
-      const cellulesAssocies = ASSOCIES.map(a => {
-        // Week-end : type + n° du week-end (En semaine), sinon juste le type (autres exports).
-        if (iniWE && a === iniWE) return compteurs ? `${role}${compteurs.weekend?.[sem.num] ?? ''}` : role
-        // Export « En semaine » : contenu quotidien de la colonne attribuée à l'associé (lun→ven).
-        if (affectationsSemaine && !estWeekend) {
-          const col = affectationsSemaine[sem.num]?.[a]
-          const jour = JOURS[offset]
-          // Congé : n° de semaine de vacances sur le lundi (offset 0), sinon vide.
-          if (congesSemaine.includes(a)) return offset === 0 ? String(compteurs?.vac?.[sem.num]?.[a] ?? '') : ''
-          if (estFerie && col) {
-            // Jour férié : de-service → Garde/Astreinte (+ n°) ; sinon qui travaillait → Récup JF-N ; repos → vide.
-            if (col.service?.[jour]) { const n = numService(offset); return `${role === 'G' ? 'Garde' : 'Astreinte'}${n != null ? ' ' + n : ''}` }
-            if ((col[jour] ?? '').trim()) return `Récup JF-${recupParSemaine?.[sem.num]?.[a] ?? ''}`
-            return ''
-          }
-          if (!col) return ''
-          // Réa : « RéaN » sur les jours travaillés de la semaine de réa.
-          if (iniRea && a === iniRea && (col[jour] ?? '').trim()) return `Réa${compteurs?.rea?.[sem.num] ?? ''}`
-          const poste = col[jour] ?? ''
-          if (!poste.trim()) return ''
-          // Jour de service travaillé : poste + n° (garde de semaine mardi/jeudi, ou vendredi A/G).
-          if (col.service?.[jour]) { const n = numService(offset); if (n != null) return `${poste} ${n}` }
-          return poste
-        }
-        if (iniRea && a === iniRea && !congesSemaine.includes(a)) return 'Réa'
-        return ''
-      })
-
-      // Colonnes remplaçant (postes lun→ven ; vides le week-end et les jours fériés — pas de bloc).
-      const cellulesRempl = Array.from({ length: nbRempl }, (_, k) => {
-        if (estWeekend || estFerie) return ''
-        const colObj = remplacantsSemaine?.[sem.num]?.[k]
-        return colObj ? (colObj[JOURS[offset]] ?? '') : ''
-      })
+      const cellulesAssocies = ASSOCIES.map(a => celluleAssocieJour(a, ctx))
+      const cellulesRempl = Array.from({ length: nbRempl }, (_, k) =>
+        celluleRemplacantJour(remplacantsSemaine?.[sem.num]?.[k], ctx))
+      const groupe = celluleGroupeJour(ctx)
+      const dateCell = celluleDateJour(ctx)
 
       const row = ws.addRow([
         dateLong,
-        ...cellulesAssocies,
+        ...cellulesAssocies.map(c => c.texte),
         dateLong,
-        groupeAffiche,
-        ...cellulesRempl,
+        groupe.texte,
+        ...cellulesRempl.map(c => c.texte),
       ])
 
       row.eachCell({ includeEmpty: true }, (cell, col) => {
@@ -173,57 +131,22 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
         const estDate = col === 1 || col === NB_COL - 1
         const estAssocie = col >= 2 && col <= 1 + ASSOCIES.length
         const estGroupe = col === NB_COL
+        const estRempl = col > NB_COL && col <= NB_COL + nbRempl
 
-        if (estDate) {
-          if (estFerie) cell.fill = solid(ARGB.ferie)
-          else if (estWeekend) cell.fill = solid(ARGB.weekend)
-          else if (enVac) cell.fill = solid(ARGB.vacances)
-        } else if (estAssocie) {
-          const assoc = ASSOCIES[col - 2]
-          if (estWeekend) {
-            // Week-end (toutes étapes) : rôle G/A de la personne affectée (texte « G1 »/« A1 » possible),
-            // sinon congé (bleu), sinon grisé.
-            if (assoc === iniWE && role === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
-            else if (assoc === iniWE && role === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
-            else if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
-            else cell.fill = solid(ARGB.weekend)
-          } else if (affectationsSemaine) {
-            // Jour ouvré (En semaine) : congé bleu > garde/astreinte si de service > récup vert > repos bleu > poste (blanc).
-            const colObj = affectationsSemaine[sem.num]?.[assoc]
-            const jour = JOURS[offset]
-            if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
-            else if (colObj?.service?.[jour]) {
-              const t = typeDuJour(data, sem.num, offset)
-              if (t === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
-              else if (t === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
-            } else if (estFerie && colObj && (colObj[jour] ?? '').trim()) {
-              cell.fill = solid(ARGB.ferie) // récup JF (vert)
-            } else if (colObj && !(colObj[jour] ?? '').trim()) {
-              cell.fill = solid(ARGB.conge) // repos → bleu
-            }
-          } else if (congesSemaine.includes(assoc)) {
-            // Autres exports (Vacances/Réa) : vacancier en semaine → bleu.
-            cell.fill = solid(ARGB.conge)
-          }
-        } else if (estGroupe) {
-          if (groupeAffiche === 'G') cell.fill = solid(ARGB.garde)
-          else if (groupeAffiche === 'A') cell.fill = solid(ARGB.astreinte)
-          cell.font = { name: 'Calibri', size: 11, bold: true }
-        } else if (col > NB_COL && col <= NB_COL + nbRempl) {
-          // Colonne remplaçant : garde/astreinte si la colonne est de service ce jour, sinon poste (blanc).
-          const colObj = remplacantsSemaine?.[sem.num]?.[col - NB_COL - 1]
-          const jour = JOURS[offset]
-          if (!estWeekend && !estFerie && colObj?.service?.[jour]) {
-            const t = typeDuJour(data, sem.num, offset)
-            if (t === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
-            else if (t === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
-          }
-        }
+        let modele = null
+        if (estDate) modele = dateCell
+        else if (estAssocie) modele = cellulesAssocies[col - 2]
+        else if (estGroupe) modele = groupe
+        else if (estRempl) modele = cellulesRempl[col - NB_COL - 1]
+
+        if (modele?.fond) cell.fill = solid('FF' + COULEURS_GRILLE[modele.fond])
+        // Cases de service en gras ; la colonne G/A reste en gras comme avant.
+        if (modele?.gras || estGroupe) cell.font = { name: 'Calibri', size: 11, bold: true }
       })
 
-      if (estFerie) {
+      if (ctx.estFerie) {
         // Note le nom du férié en commentaire sur la cellule date de gauche.
-        row.getCell(1).note = feries[iso]
+        row.getCell(1).note = feries[ctx.iso]
       }
     }
   }

@@ -17,8 +17,7 @@ import {
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
-import TrameGrille from '../components/planning/TrameGrille'
-import AffectationAssocies from '../components/planning/AffectationAssocies'
+import ApercuSemaine from '../components/planning/ApercuSemaine'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauConflits from '../components/planning/PanneauConflits'
 
@@ -542,10 +541,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       background: categorie === 'bloquant' ? 'var(--color-amber-light)' : categorie === 'surveiller' ? 'var(--color-primary-light)' : 'var(--color-bg)',
     }),
     haut: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+    // Bandeau cliquable (libellé + badges) qui déroule l'aperçu — zone bien plus large que la seule date.
+    bandeauCliquable: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 },
     libSemaine: { fontSize: 13, fontWeight: 600, color: 'var(--color-text)', minWidth: 168 },
     badges: { display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 },
     badge: (couleur, fond) => ({
-      fontSize: 11, fontWeight: 600, color: couleur, background: fond,
+      fontSize: 13, fontWeight: 600, color: couleur, background: fond,
       border: `0.5px solid ${couleur}`, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap',
     }),
     selTrame: {
@@ -682,8 +683,6 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               const affR = trame ? affectationResolue(trame, sem.num, contexteAmont, affectationsLibres) : {}
               const al = alertesColonnes[sem.num]
               const tropProche = al?.tropProche ?? {}
-              const remplaCols = trame ? new Set((trame.remplacants ?? []).map(r => r.col)) : new Set()
-              const visibles = trame ? trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && !trame.vacances.includes(i) && !remplaCols.has(i)) : []
               // ≥ 2 vacanciers : ne proposer que les trames à capacité suffisante (+ la trame courante).
               const vReq = a.vacanciers.length
               const tramesOptions = trames.filter(t => vReq < 2 || capaciteVacances(t) >= vReq || t.id === effectiveId)
@@ -691,14 +690,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               return (
                 <div key={sem.num} style={s.ligne(categorieSem(sem.num))}>
                   <div style={s.haut}>
-                    <span
-                      style={{ ...s.libSemaine, cursor: trame ? 'pointer' : 'default' }}
+                    <div
+                      style={{ ...s.bandeauCliquable, cursor: trame ? 'pointer' : 'default' }}
                       onClick={trame ? () => toggleApercu(sem.num) : undefined}
-                      title={trame ? 'Cliquer pour voir/masquer l’affectation de la semaine' : undefined}
+                      title={trame ? 'Cliquer pour voir/masquer l’aperçu de la semaine' : undefined}
                     >
-                      S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
-                    </span>
-                    <span style={s.badges}>
+                      <span style={s.libSemaine}>
+                        S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
+                      </span>
+                      <span style={s.badges}>
                       {a.multiVacances && (
                         <span style={s.badge('var(--color-text-secondary)', 'transparent')} title="Au moins deux associés en vacances cette semaine (information)">
                           🏖️ {a.vacanciers.length} en vacances : {a.vacanciers.join(', ')}
@@ -722,7 +722,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                           🔵 Souhait colonne ignoré (trame ≠ principale) : {al.souhaitsIgnoresTrame.join(', ')}
                         </span>
                       )}
-                    </span>
+                      </span>
+                    </div>
                     <select
                       value={trameParSemaine[sem.num] != null ? String(trameParSemaine[sem.num]) : ''}
                       onChange={e => majTrameSemaine(sem.num, e.target.value === '' ? null : Number(e.target.value))}
@@ -764,12 +765,17 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                   </div>
                   {ouvert && trame && (
                     <div style={s.apercu}>
-                      <AffectationAssocies trame={trame} affResolue={affR} annee={annee} num={sem.num} calendrier={calendrier} />
-                      <TrameGrille
-                        colonnes={trame.colonnes}
-                        roles={{ rea: trame.rea, vacances: trame.vacances, avantWE: trame.avantWE, apresWE: trame.apresWE, remplacants: trame.remplacants }}
-                        colonnesVisibles={visibles}
-                        associeParColonne={affR}
+                      <ApercuSemaine
+                        annee={annee}
+                        sem={sem}
+                        calendrier={calendrier}
+                        affectationsSemaine={affectationsSemaine}
+                        weekendAff={contexteAmont.weekendAff}
+                        reaAff={contexteAmont.rea}
+                        congesParSemaine={vacancesParSemaine}
+                        recupParSemaine={recup.parSemaine}
+                        compteurs={compteurs}
+                        remplacantsSemaine={remplacantsSemaine}
                       />
                       <div style={s.colonnesEdit}>
                         {colonnesSelectionnables(trame).map(c => {
