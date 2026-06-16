@@ -98,12 +98,15 @@ export function colonneVide(jours) {
 }
 
 // Indices des colonnes qu'un associé peut DEMANDER dans ses desiderata : on exclut les colonnes
-// affectées automatiquement — Réa, Vacances et Remplaçant (avant/après WE restent demandables).
+// affectées automatiquement — Réa, Vacances, Remplaçant, ainsi que les colonnes avant-WE et
+// après-WE (fixées par l'attribution des week-ends, donc non demandables).
 export function colonnesSelectionnables(trame) {
   if (!trame) return []
   const exclus = new Set()
   if (trame.rea != null) exclus.add(trame.rea)
   if (trame.vacances != null) exclus.add(trame.vacances)
+  if (trame.avantWE != null) exclus.add(trame.avantWE)
+  if (trame.apresWE != null) exclus.add(trame.apresWE)
   for (const r of trame.remplacants ?? []) if (r.col != null) exclus.add(r.col)
   return trame.colonnes.map((_, i) => i).filter(i => !exclus.has(i))
 }

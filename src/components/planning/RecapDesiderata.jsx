@@ -110,10 +110,6 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false })
         </Ligne>
       )}
 
-      <Ligne titre="Demande de colonne (texte libre)" vide={!d.demandeColonneSemaineType.trim()}>
-        {d.demandeColonneSemaineType}
-      </Ligne>
-
       <Ligne titre="Commentaire" vide={!d.commentaire.trim()}>
         {d.commentaire}
       </Ligne>

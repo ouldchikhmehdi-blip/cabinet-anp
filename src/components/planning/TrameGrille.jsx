@@ -40,15 +40,18 @@ const s = {
   badge: { fontSize: 10, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap' },
 }
 
-export default function TrameGrille({ colonnes = [], roles = null }) {
+// colonnesVisibles (optionnel) : indices d'origine à afficher (les numéros C{i+1} sont conservés).
+// Absent → toutes les colonnes (étape Trames du faiseur). Fourni → vue allégée (desiderata).
+export default function TrameGrille({ colonnes = [], roles = null, colonnesVisibles = null }) {
   const remplA = (i) => roles?.remplacants?.filter(r => r.col === i) ?? []
+  const indices = colonnesVisibles ?? colonnes.map((_, i) => i)
 
   return (
     <table style={s.table}>
       <thead>
         <tr>
           <th style={s.thJour}>Jour</th>
-          {colonnes.map((_, i) => (
+          {indices.map(i => (
             <th key={i} style={s.thCol}>
               <div>C{i + 1}</div>
               {roles && ROLES_BADGE.filter(r => roles[r.cle] === i).map(r => (
@@ -65,7 +68,8 @@ export default function TrameGrille({ colonnes = [], roles = null }) {
         {JOURS.map(j => (
           <tr key={j}>
             <td style={s.tdJour}>{JOURS_LABEL[j]}</td>
-            {colonnes.map((col, i) => {
+            {indices.map(i => {
+              const col = colonnes[i] ?? {}
               const repos = !(col[j] ?? '').trim()
               const estRole = roles && (ROLES_BADGE.some(r => roles[r.cle] === i) || remplA(i).length > 0)
               // Priorité de fond : repos (cyan) > colonne de rôle > neutre.

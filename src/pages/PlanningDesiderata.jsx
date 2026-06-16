@@ -10,6 +10,7 @@ import SelecteurRecueil from '../components/planning/SelecteurRecueil'
 import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
 import WeekendsIndispo from '../components/planning/WeekendsIndispo'
+import SectionRepliable from '../components/planning/SectionRepliable'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
 import TrameGrille from '../components/planning/TrameGrille'
 import InfoPlanning from '../components/planning/InfoPlanning'
@@ -234,6 +235,25 @@ export default function PlanningDesiderata() {
   const vacScol = VACANCES_SCOLAIRES_2026
   const prefVac = data.preferenceVacancesScolaires
 
+  // Une période scolaire n'est proposée que si ses semaines tombent dans le recueil courant.
+  const dansPeriode = (sem) => !!recueil && sem.some(w => w >= recueil.semaine_debut && w <= recueil.semaine_fin)
+  const voirFevrier = dansPeriode(vacScol.fevrier.semaines)
+  const voirPaques = dansPeriode(vacScol.paques.semaines)
+  const voirToussaint = dansPeriode(vacScol.toussaint.semaines)
+  const voirPrefScol = voirFevrier || voirPaques
+  const voirCarteScol = voirPrefScol || voirToussaint
+  const optionsPrefScol = [
+    ...(voirFevrier ? [{ val: 'fevrier', lib: vacScol.fevrier.label }] : []),
+    ...(voirPaques ? [{ val: 'paques', lib: vacScol.paques.label }] : []),
+    { val: null, lib: 'Sans préférence' },
+  ]
+  const titrePrefScol = (voirFevrier && voirPaques)
+    ? 'Préférence vacances scolaires : Pâques ou Février'
+    : `Préférence vacances scolaires : ${voirPaques ? vacScol.paques.label : vacScol.fevrier.label}`
+
+  // Résumés affichés quand les encarts repliables sont fermés.
+  const resumeSemaines = (nums) => (nums?.length ? [...nums].sort((a, b) => a - b).map(n => `S${n}`).join(' · ') : '—')
+
   return (
     <div style={{ maxWidth: 920 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Mes desiderata</h1>
@@ -319,8 +339,7 @@ export default function PlanningDesiderata() {
 
           <div style={grise}>
             {/* Vacances souhaitées */}
-            <div style={s.carte}>
-              <div style={s.titre}>Vacances souhaitées</div>
+            <SectionRepliable titre="Vacances souhaitées" resume={resumeSemaines(data.vacancesSouhaitees)}>
               <div style={s.aide}>
                 Cochez les semaines où vous souhaitez être en congé.
                 {semainesScolaires.length > 0 && ' Les semaines de vacances scolaires (en bleu) se gèrent dans « Préférence vacances scolaires » plus bas.'}
@@ -332,11 +351,10 @@ export default function PlanningDesiderata() {
                 desactivees={data.vacancesRefusees}
                 semainesScolaires={semainesScolaires}
               />
-            </div>
+            </SectionRepliable>
 
             {/* Vacances refusées */}
-            <div style={s.carte}>
-              <div style={s.titre}>Semaines où je ne veux surtout PAS de vacances</div>
+            <SectionRepliable titre="Semaines où je ne veux surtout PAS de vacances" resume={resumeSemaines(data.vacancesRefusees)}>
               <div style={s.aide}>Contrainte négative. Les semaines déjà souhaitées (et les vacances scolaires) ne sont pas sélectionnables ici.</div>
               <SelecteurSemaines
                 semaines={semaines}
@@ -346,13 +364,18 @@ export default function PlanningDesiderata() {
                 desactivees={data.vacancesSouhaitees}
                 semainesScolaires={semainesScolaires}
               />
-            </div>
+            </SectionRepliable>
 
             {/* Jours off souhaités (sans objet l'été) */}
             {!estEte && (
               <div style={s.carte}>
                 <div style={s.titre}>Jours off souhaités</div>
-                <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
+                <div style={s.aide}>
+                  Ajoutez les journées précises où vous souhaitez ne pas travailler.
+                  Une <strong>attention particulière</strong> est portée aux jours off demandés
+                  <strong> autour d'un jour férié</strong> (la veille, le jour même ou le lendemain) :
+                  ces « ponts » peuvent créer un déséquilibre et sont signalés au faiseur.
+                </div>
                 <SelecteurDates
                   dates={data.joursOffSouhaites}
                   onChange={v => maj('joursOffSouhaites', v)}
@@ -362,73 +385,79 @@ export default function PlanningDesiderata() {
               </div>
             )}
 
-            {/* Préférence vacances scolaires + Toussaint */}
+            {/* Préférence vacances scolaires + Toussaint — seulement les périodes du recueil */}
+            {voirCarteScol && (
             <div style={s.carte}>
-              <div style={s.titre}>Préférence vacances scolaires : Pâques ou Février</div>
-              <div style={s.aide}>
-                On ne peut pas avoir les deux — choisissez l'une ou l'autre.
-                {vacScol.aConfirmer && ' (dates indicatives, à confirmer)'}
-              </div>
-              <div style={s.radioLigne}>
-                {[
-                  { val: 'fevrier', lib: vacScol.fevrier.label },
-                  { val: 'paques', lib: vacScol.paques.label },
-                  { val: null, lib: 'Sans préférence' },
-                ].map(opt => (
-                  <label key={String(opt.val)} style={s.radio}>
-                    <input
-                      type="radio"
-                      name="pref-vac"
-                      checked={prefVac === opt.val}
-                      onChange={() => {
-                        maj('preferenceVacancesScolaires', opt.val)
-                        if (opt.val === null) maj('prefVacancesSemaine', null)
-                      }}
-                      style={{ accentColor: 'var(--color-primary)' }}
+              {voirPrefScol && (
+                <>
+                  <div style={s.titre}>{titrePrefScol}</div>
+                  <div style={s.aide}>
+                    {voirFevrier && voirPaques ? "On ne peut pas avoir les deux — choisissez l'une ou l'autre." : 'Indiquez votre préférence pour cette période.'}
+                    {vacScol.aConfirmer && ' (dates indicatives, à confirmer)'}
+                  </div>
+                  <div style={s.radioLigne}>
+                    {optionsPrefScol.map(opt => (
+                      <label key={String(opt.val)} style={s.radio}>
+                        <input
+                          type="radio"
+                          name="pref-vac"
+                          checked={prefVac === opt.val}
+                          onChange={() => {
+                            maj('preferenceVacancesScolaires', opt.val)
+                            if (opt.val === null) maj('prefVacancesSemaine', null)
+                          }}
+                          style={{ accentColor: 'var(--color-primary)' }}
+                        />
+                        {opt.lib}
+                      </label>
+                    ))}
+                  </div>
+                  {(prefVac === 'fevrier' || prefVac === 'paques') && (
+                    <SousSemaine
+                      nom="pref-vac-semaine"
+                      valeur={data.prefVacancesSemaine}
+                      onChange={v => maj('prefVacancesSemaine', v)}
                     />
-                    {opt.lib}
-                  </label>
-                ))}
-              </div>
-              {(prefVac === 'fevrier' || prefVac === 'paques') && (
-                <SousSemaine
-                  nom="pref-vac-semaine"
-                  valeur={data.prefVacancesSemaine}
-                  onChange={v => maj('prefVacancesSemaine', v)}
-                />
+                  )}
+                </>
               )}
 
-              <div style={{ ...s.titre, marginTop: 18 }}>Toussaint</div>
-              <div style={s.aide}>Conditionnel selon les remplaçants trouvés.</div>
-              <div style={s.radioLigne}>
-                {[
-                  { val: true, lib: 'Souhaitée' },
-                  { val: false, lib: 'Non souhaitée' },
-                  { val: null, lib: 'Non renseigné' },
-                ].map(opt => (
-                  <label key={String(opt.val)} style={s.radio}>
-                    <input
-                      type="radio"
-                      name="toussaint"
-                      checked={data.toussaintSouhaitee === opt.val}
-                      onChange={() => {
-                        maj('toussaintSouhaitee', opt.val)
-                        if (opt.val !== true) maj('toussaintSemaine', null)
-                      }}
-                      style={{ accentColor: 'var(--color-primary)' }}
+              {voirToussaint && (
+                <>
+                  <div style={{ ...s.titre, marginTop: voirPrefScol ? 18 : 0 }}>Toussaint</div>
+                  <div style={s.aide}>Conditionnel selon les remplaçants trouvés.</div>
+                  <div style={s.radioLigne}>
+                    {[
+                      { val: true, lib: 'Souhaitée' },
+                      { val: false, lib: 'Non souhaitée' },
+                      { val: null, lib: 'Non renseigné' },
+                    ].map(opt => (
+                      <label key={String(opt.val)} style={s.radio}>
+                        <input
+                          type="radio"
+                          name="toussaint"
+                          checked={data.toussaintSouhaitee === opt.val}
+                          onChange={() => {
+                            maj('toussaintSouhaitee', opt.val)
+                            if (opt.val !== true) maj('toussaintSemaine', null)
+                          }}
+                          style={{ accentColor: 'var(--color-primary)' }}
+                        />
+                        {opt.lib}
+                      </label>
+                    ))}
+                  </div>
+                  {data.toussaintSouhaitee === true && (
+                    <SousSemaine
+                      nom="toussaint-semaine"
+                      valeur={data.toussaintSemaine}
+                      onChange={v => maj('toussaintSemaine', v)}
                     />
-                    {opt.lib}
-                  </label>
-                ))}
-              </div>
-              {data.toussaintSouhaitee === true && (
-                <SousSemaine
-                  nom="toussaint-semaine"
-                  valeur={data.toussaintSemaine}
-                  onChange={v => maj('toussaintSemaine', v)}
-                />
+                  )}
+                </>
               )}
             </div>
+            )}
 
             {/* Fêtes de fin d'année — réparties à la main (sans objet l'été) */}
             {!estEte && (
@@ -451,15 +480,19 @@ export default function PlanningDesiderata() {
 
             {/* Week-ends indisponibles (sans objet l'été) */}
             {!estEte && (
-              <div style={s.carte}>
-                <div style={s.titre}>Week-ends indisponibles</div>
-                <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
+              <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
+                <div style={s.aide}>
+                  Cochez les week-ends où vous n'êtes pas disponible.
+                  Une <strong>attention particulière</strong> est portée aux week-ends indisponibles
+                  <strong> accolés à un jour férié</strong> (férié un vendredi ou un lundi) : ils
+                  forment un « pont » et sont signalés au faiseur.
+                </div>
                 <WeekendsIndispo
                   weekends={weekends}
                   selection={data.weekendsIndispo}
                   onChange={v => maj('weekendsIndispo', v)}
                 />
-              </div>
+              </SectionRepliable>
             )}
 
             {/* Trame principale — souhaits de colonne par semaine (sans objet l'été) */}
@@ -467,18 +500,14 @@ export default function PlanningDesiderata() {
               <div style={s.carte}>
                 <div style={s.titre}>Trame principale — souhaits de colonne</div>
                 <div style={s.aide}>
-                  Voici la semaine type principale. Pour les semaines qui comptent pour vous, indiquez la
-                  colonne souhaitée (facultatif). Les colonnes Réa, Vacances et Remplaçant sont gérées
-                  automatiquement et ne sont pas proposées au choix.
+                  Voici la semaine type principale. Seules les colonnes <strong>au choix</strong> sont
+                  affichées : Réa, Vacances, Remplaçant et les colonnes avant/après week-end sont gérées
+                  automatiquement. Pour les semaines qui comptent pour vous, indiquez la colonne souhaitée (facultatif).
                 </div>
                 <div style={{ overflowX: 'auto', marginBottom: 14 }}>
                   <TrameGrille
                     colonnes={tramePrincipale.colonnes}
-                    roles={{
-                      rea: tramePrincipale.rea, vacances: tramePrincipale.vacances,
-                      avantWE: tramePrincipale.avantWE, apresWE: tramePrincipale.apresWE,
-                      remplacants: tramePrincipale.remplacants,
-                    }}
+                    colonnesVisibles={colonnesDispo}
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -520,18 +549,6 @@ export default function PlanningDesiderata() {
                 )}
               </div>
             )}
-
-            {/* Demande de colonne (texte libre, complément) */}
-            <div style={s.carte}>
-              <div style={s.titre}>Demande de colonne (texte libre)</div>
-              <div style={s.aide}>Optionnel — toute précision sur un poste-type que vous souhaitez sur certaines semaines.</div>
-              <textarea
-                style={s.textarea}
-                value={data.demandeColonneSemaineType}
-                onChange={e => maj('demandeColonneSemaineType', e.target.value)}
-                placeholder="Ex. : colonne Réa la semaine de…"
-              />
-            </div>
 
             {/* Commentaire libre */}
             <div style={s.carte}>
