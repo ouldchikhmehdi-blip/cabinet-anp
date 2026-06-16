@@ -68,6 +68,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [vueContinue, setVueContinue] = useState(false)
   // Validation définitive : { etat:'cours'|'ok', message } ou null.
   const [validation, setValidation] = useState(null)
+  // Échange de colonnes (vue continue) : associé sélectionné en attente d'un 2e clic, { num, ini } ou null.
+  const [selEchange, setSelEchange] = useState(null)
 
   // Recueils « normaux » (l'été se gère par colonnes, hors de cette étape).
   useEffect(() => {
@@ -348,6 +350,47 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     })
   }
 
+  // Échange (mouvement final, vue continue) : permute les colonnes occupées par deux associés d'UNE semaine.
+  // Réutilise le mécanisme override + verrou (affectationResolue superpose data.affectations) → fonctionne
+  // pour n'importe quelle colonne (réa, vacances, gardes, travail). On verrouille les deux colonnes pour que
+  // « Proposer » / « Améliorer » ne défassent pas l'ajustement.
+  function echangerColonnes(num, iniA, iniB) {
+    if (!iniA || !iniB || iniA === iniB) return
+    const trame = trameDe(num)
+    if (!trame) return
+    const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
+    let colA = null, colB = null
+    for (const [col, ini] of Object.entries(affR)) {
+      if (ini === iniA) colA = Number(col)
+      else if (ini === iniB) colB = Number(col)
+    }
+    if (colA == null || colB == null) return // un associé non placé : pas d'échange possible
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const aff = { ...(prev.affectations ?? {}) }
+      const cols = { ...(aff[num] ?? {}) }
+      cols[colA] = iniB; cols[colB] = iniA
+      aff[num] = cols
+      const ver = { ...(prev.verrous ?? {}) }
+      const vcols = new Set(ver[num] ?? [])
+      vcols.add(colA); vcols.add(colB)
+      ver[num] = [...vcols].sort((a, b) => a - b)
+      return { ...prev, affectations: aff, verrous: ver }
+    })
+  }
+
+  // Clic sur l'en-tête d'un associé (vue continue) : 1er clic = sélection ; 2e clic même semaine = échange ;
+  // re-clic sur le même = désélection ; clic sur une autre semaine = nouvelle sélection.
+  function clicEnteteColonne(num, ini) {
+    if (selEchange && selEchange.num === num) {
+      if (selEchange.ini === ini) { setSelEchange(null); return }
+      echangerColonnes(num, selEchange.ini, ini)
+      setSelEchange(null)
+      return
+    }
+    setSelEchange({ num, ini })
+  }
+
   // Monte les entrées communes aux moteurs (trameInfo + socle d'équilibre annuel + verrous) à partir du state.
   function monterEntreesMoteur(prev) {
     const debut = recueil.semaine_debut, fin = recueil.semaine_fin
@@ -502,6 +545,30 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return { total, parSemaine }
   }, [allNums, feriesParSemaine, trameDe, contexteAmont, affectationsLibres, calendrier])
 
+  // Réa / vacanciers EFFECTIFS par semaine : qui occupe RÉELLEMENT la colonne réa / les colonnes vacances
+  // dans l'affectation résolue (overrides compris). Permet aux échanges manuels (réa/vacances inclus) de se
+  // répercuter sur le bilan, les compteurs, la grille et l'export. Les données amont (contexteAmont.rea,
+  // vacancesParSemaine) restent la vérité pour la logique de planning (choix de trame, capacité, seed du
+  // moteur). Le week-end (samedi/dimanche) n'est PAS concerné (hors périmètre des échanges).
+  const effectifs = useMemo(() => {
+    const rea = {}; const vacanciers = {}
+    if (!calendrier) return { rea, vacanciers }
+    for (const num of allNums) {
+      const trame = trameDe(num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
+      const rIni = trame.rea != null ? affR[trame.rea] : null
+      if (rIni != null && ASSOCIES.includes(rIni)) rea[num] = rIni
+      const vacs = []
+      for (const col of (trame.vacances ?? [])) {
+        const ini = affR[col]
+        if (ini != null && ASSOCIES.includes(ini)) vacs.push(ini)
+      }
+      if (vacs.length) vacanciers[num] = vacs
+    }
+    return { rea, vacanciers }
+  }, [allNums, trameDe, contexteAmont, affectationsLibres, calendrier])
+
   // Compteurs CUMULÉS par associé (export), dans l'ordre chronologique : on mémorise, à chaque
   // occurrence, le n° courant (pour l'afficher dans la case : « G1 », « NC G 3 », « Réa2 », n° de vacances…).
   //   weekend:{num:n} · gardeSem:{num:{offset:n}} · vendredi:{num:n} · rea:{num:n} · vac:{num:{ini:n}}
@@ -509,11 +576,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     const cWE = {}, cGS = {}, cAV = {}, cGV = {}, cRea = {}, cVac = {}
     for (const ini of ASSOCIES) { cWE[ini] = 0; cGS[ini] = 0; cAV[ini] = 0; cGV[ini] = 0; cRea[ini] = 0; cVac[ini] = 0 }
     const weekend = {}, gardeSem = {}, vendredi = {}, rea = {}, vac = {}
-    const { weekendAff = {}, rea: reaAff = {}, vacances: vacAff = {} } = contexteAmont
+    const { weekendAff = {} } = contexteAmont
     for (const num of [...allNums].sort((a, b) => a - b)) {
       const wk = weekendAff[num]; if (wk && cWE[wk] != null) { cWE[wk]++; weekend[num] = cWE[wk] }
-      const r = reaAff[num]; if (r && cRea[r] != null) { cRea[r]++; rea[num] = cRea[r] }
-      for (const ini of (vacAff[num] ?? [])) if (cVac[ini] != null) { cVac[ini]++; (vac[num] ??= {})[ini] = cVac[ini] }
+      const r = effectifs.rea[num]; if (r && cRea[r] != null) { cRea[r]++; rea[num] = cRea[r] }
+      for (const ini of (effectifs.vacanciers[num] ?? [])) if (cVac[ini] != null) { cVac[ini]++; (vac[num] ??= {})[ini] = cVac[ini] }
       if (!calendrier) continue
       const trame = trameDe(num)
       if (!trame) continue
@@ -535,7 +602,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       }
     }
     return { weekend, gardeSem, vendredi, rea, vac }
-  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier])
+  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, effectifs])
 
   // Bilan CUMULÉ sur l'année par associé (export, comparaison aux objectifs annuels) :
   // G week-end, A/G vendredi, semaines de réa, gardes de semaine (mardi+jeudi), semaines de vacances.
@@ -544,11 +611,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     for (const ini of ASSOCIES) {
       b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: gardesAnnee.comptes[ini] ?? 0, vacances: 0, recupJF: recup.total[ini] ?? 0 }
     }
-    const { weekendAff = {}, rea: reaAff = {}, vacances: vac = {} } = contexteAmont
+    const { weekendAff = {} } = contexteAmont
     for (const num of allNums) {
       const wk = weekendAff[num]; if (wk && b[wk]) b[wk].gWeekend++
-      const r = reaAff[num]; if (r && b[r]) b[r].rea++
-      for (const ini of (vac[num] ?? [])) if (b[ini]) b[ini].vacances++
+      const r = effectifs.rea[num]; if (r && b[r]) b[r].rea++
+      for (const ini of (effectifs.vacanciers[num] ?? [])) if (b[ini]) b[ini].vacances++
       if (!calendrier) continue
       const trame = trameDe(num)
       if (!trame) continue
@@ -561,7 +628,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       }
     }
     return b
-  }, [allNums, contexteAmont, gardesAnnee, trameDe, affectationsLibres, calendrier, recup])
+  }, [allNums, contexteAmont, gardesAnnee, trameDe, affectationsLibres, calendrier, recup, effectifs])
 
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
@@ -582,7 +649,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     setErreur(null); setExportEnCours(true)
     try {
       await exporterCalendrierExcel(
-        annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
+        annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
         recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs,
       )
@@ -609,7 +676,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     setErreur(null); setValidation({ etat: 'cours', message: 'Archivage en cours…' })
     try {
       const { buffer } = await genererClasseurBuffer(
-        annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
+        annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
         recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs,
       )
@@ -846,6 +913,17 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             >
               {vueContinue ? '▦ Vue continue : activée' : '▦ Vue continue'}
             </button>
+            {vueContinue && (
+              <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                ⇄ Cliquez deux en-têtes d'associés d'une même semaine pour les échanger.
+                {selEchange && (
+                  <>
+                    <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sélection : {selEchange.ini} (S{selEchange.num})</span>
+                    <button type="button" onClick={() => setSelEchange(null)} style={{ ...s.lienApercu, color: 'var(--color-danger)' }}>Annuler la sélection</button>
+                  </>
+                )}
+              </span>
+            )}
           </div>
 
           <div style={s.carte}>
@@ -959,13 +1037,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         calendrier={calendrier}
                         affectationsSemaine={affectationsSemaine}
                         weekendAff={contexteAmont.weekendAff}
-                        reaAff={contexteAmont.rea}
-                        congesParSemaine={vacancesParSemaine}
+                        reaAff={effectifs.rea}
+                        congesParSemaine={effectifs.vacanciers}
                         recupParSemaine={recup.parSemaine}
                         compteurs={compteurs}
                         remplacantsSemaine={remplacantsSemaine}
                         nbRemplForce={nbRemplMax}
                         compact={vueContinue}
+                        onSelectColonne={vueContinue ? (ini) => clicEnteteColonne(sem.num, ini) : undefined}
+                        iniSelectionne={vueContinue && selEchange?.num === sem.num ? selEchange.ini : null}
                       />
                       {!vueContinue && (<>
                       <div style={s.colonnesEdit}>

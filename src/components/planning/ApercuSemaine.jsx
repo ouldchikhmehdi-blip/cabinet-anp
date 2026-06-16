@@ -61,7 +61,7 @@ const s = {
 export default function ApercuSemaine({
   annee, sem, calendrier, affectationsSemaine, weekendAff = {}, reaAff = {},
   congesParSemaine = {}, recupParSemaine = {}, compteurs = null, remplacantsSemaine = {}, compact = false,
-  nbRemplForce = 0,
+  nbRemplForce = 0, onSelectColonne = null, iniSelectionne = null,
 }) {
   const feries = useMemo(() => {
     const m = {}
@@ -124,7 +124,24 @@ export default function ApercuSemaine({
         <thead>
           <tr>
             <th style={s.thJour}>Jour</th>
-            {ASSOCIES.map(a => <th key={a} style={s.th}>{a}</th>)}
+            {ASSOCIES.map(a => {
+              const cliquable = !!onSelectColonne
+              const actif = a === iniSelectionne
+              return (
+                <th
+                  key={a}
+                  style={{
+                    ...s.th,
+                    ...(cliquable ? { cursor: 'pointer' } : {}),
+                    ...(actif ? { background: 'var(--color-primary)', color: '#fff' } : {}),
+                  }}
+                  onClick={cliquable ? () => onSelectColonne(a) : undefined}
+                  title={cliquable ? `Échanger la colonne ${a} (cliquez un 2ᵉ associé)` : undefined}
+                >
+                  {a}
+                </th>
+              )
+            })}
             <th style={s.th}>G/A</th>
             {enteteRempl.map((lbl, k) => <th key={k} style={s.th}>{lbl}</th>)}
           </tr>
