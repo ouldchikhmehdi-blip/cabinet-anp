@@ -15,6 +15,7 @@ import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleE
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import PanneauConflits from '../components/planning/PanneauConflits'
 import PanneauPonts from '../components/planning/PanneauPonts'
+import BoutonVerrou from '../components/planning/BoutonVerrou'
 
 // getUTCDay() → clé de jour de semaine (lun→ven) ; samedi/dimanche ignorés ici.
 const JOUR_SEMAINE = { 1: 'lun', 2: 'mar', 3: 'mer', 4: 'jeu', 5: 'ven' }
@@ -212,6 +213,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   )
 
   const affectations = useMemo(() => data?.affectations ?? {}, [data])
+  const verrous = useMemo(() => new Set(data?.verrous ?? []), [data])
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
 
   // Objectif « G week-end » par associé (étape 2), si renseigné.
@@ -266,13 +268,25 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [weekends, affectations])
 
+  // Placer un associé à la main VERROUILLE le week-end (forcé) ; « — » le remet en automatique.
   function majAffectation(num, ini) {
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const aff = { ...prev.affectations }
-      if (ini) aff[num] = ini
-      else delete aff[num]
-      return { ...prev, affectations: aff }
+      const ver = new Set(prev.verrous ?? [])
+      if (ini) { aff[num] = ini; ver.add(num) }
+      else { delete aff[num]; ver.delete(num) }
+      return { ...prev, affectations: aff, verrous: [...ver] }
+    })
+  }
+
+  function basculerVerrou(num) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      if (!prev.affectations[num]) return prev // rien à verrouiller sur une case vide
+      const ver = new Set(prev.verrous ?? [])
+      if (ver.has(num)) ver.delete(num); else ver.add(num)
+      return { ...prev, verrous: [...ver] }
     })
   }
 
@@ -281,13 +295,16 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const debut = recueil.semaine_debut, fin = recueil.semaine_fin
-      const horsPlage = {}
+      const ver = new Set(prev.verrous ?? [])
+      // Fixes = affectations hors plage + week-ends verrouillés (préservés, comptés dans l'équilibrage).
+      const fixes = {}
       for (const [num, ini] of Object.entries(prev.affectations)) {
         const n = Number(num)
-        if (n < debut || n > fin) horsPlage[n] = ini
+        if (n < debut || n > fin || ver.has(n)) fixes[n] = ini
       }
-      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours)
-      return { ...prev, affectations: { ...horsPlage, ...proposees } }
+      const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]))
+      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, fixes, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours)
+      return { ...prev, affectations: { ...fixes, ...proposees } }
     })
   }
 
@@ -462,6 +479,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const sep = idx === 0 || mois !== moisPrec
               const roles = calendrier.semaines?.[w.num] ?? { sam: 'A', dim: 'G' }
               const ini = affectations[w.num] ?? ''
+              const verrou = verrous.has(w.num)
               const a = analyses[w.num]
               const impact = ini ? impactJourOffWE(w.num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours) : { bloque: false }
               const alerte = (a?.indispo || a?.jourOffWE) ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee || a?.souhaitColonne != null || impact.bloque ? 'orange' : null)
@@ -509,15 +527,23 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                       <option value="">{dispo.length}/{ASSOCIES.length} dispo</option>
                       {dispo.map(x => <option key={x} value={x}>{x}</option>)}
                     </select>
-                    <select value={ini} onChange={e => majAffectation(w.num, e.target.value)} style={s.selWE(alerte)}>
-                      <option value="">—</option>
-                      {ASSOCIES.map(x => {
-                        const ind = indispoParAssocie[x]?.has(w.num)
-                        const offWE = joursOffWeekendParAssocie[x]?.has(w.num)
-                        const marque = ind ? ' ⚠ indispo' : offWE ? ' ⚠ jour off' : ''
-                        return <option key={x} value={x}>{x}{marque}</option>
-                      })}
-                    </select>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <select
+                        value={ini}
+                        onChange={e => majAffectation(w.num, e.target.value)}
+                        style={{ ...s.selWE(alerte), flex: 1, ...(verrou ? { borderColor: 'var(--color-primary)', borderWidth: 1 } : {}) }}
+                        title={verrou ? 'Forcé (verrouillé) — non modifié par « Proposer »' : undefined}
+                      >
+                        <option value="">—</option>
+                        {ASSOCIES.map(x => {
+                          const ind = indispoParAssocie[x]?.has(w.num)
+                          const offWE = joursOffWeekendParAssocie[x]?.has(w.num)
+                          const marque = ind ? ' ⚠ indispo' : offWE ? ' ⚠ jour off' : ''
+                          return <option key={x} value={x}>{x}{marque}</option>
+                        })}
+                      </select>
+                      {ini && <BoutonVerrou verrouille={verrou} onToggle={() => basculerVerrou(w.num)} />}
+                    </span>
                   </div>
                 </Fragment>
               )

@@ -3,7 +3,8 @@
 // 1 associé par week-end (astreinte samedi + garde dimanche). Persistance dans
 // weekendsApi.js. Un week-end est identifié par son numéro de semaine ISO.
 //
-// data = { v, affectations: { <numSemaineISO>: <initiales> } }
+// data = { v, affectations: { <numSemaineISO>: <initiales> }, verrous: [<numSemaineISO>] }
+// `verrous` = week-ends FORCÉS à la main par le faiseur : « Proposer automatiquement » les préserve.
 // ============================================================
 import { ASSOCIES } from '../data/associes'
 
@@ -13,7 +14,7 @@ export const VERSION_WE = 1
 export const ESPACEMENT_MIN = 4
 
 export function weekendsVide() {
-  return { v: VERSION_WE, affectations: {} }
+  return { v: VERSION_WE, affectations: {}, verrous: [] }
 }
 
 export function normaliserWeekends(data) {
@@ -23,7 +24,10 @@ export function normaliserWeekends(data) {
   for (const [num, ini] of Object.entries(aff)) {
     if (ini) affectations[Number(num)] = ini
   }
-  return { v: VERSION_WE, affectations }
+  // Verrous : uniquement des semaines réellement affectées.
+  const verrous = (Array.isArray(data?.verrous) ? data.verrous : [])
+    .map(Number).filter(n => affectations[n])
+  return { v: VERSION_WE, affectations, verrous }
 }
 
 // Numéros de week-ends (semaines) déjà attribués à `ini`, hors `numExclu`.

@@ -3,14 +3,15 @@
 // Un associé en réa par semaine, réparti équitablement. Persistance dans reaApi.js.
 // Une semaine est identifiée par son numéro de semaine ISO.
 //
-// data = { v, rea: { <numSemaineISO>: <initiales> } }
+// data = { v, rea: { <numSemaineISO>: <initiales> }, verrous: [<numSemaineISO>] }
+// `verrous` = semaines de réa FORCÉES à la main : « Proposer automatiquement » les préserve.
 // ============================================================
 import { ASSOCIES } from '../data/associes'
 
 export const VERSION_REA = 1
 
 export function reaVide() {
-  return { v: VERSION_REA, rea: {} }
+  return { v: VERSION_REA, rea: {}, verrous: [] }
 }
 
 export function normaliserRea(data) {
@@ -19,7 +20,9 @@ export function normaliserRea(data) {
   for (const [num, ini] of Object.entries(src)) {
     if (ini) rea[Number(num)] = ini
   }
-  return { v: VERSION_REA, rea }
+  const verrous = (Array.isArray(data?.verrous) ? data.verrous : [])
+    .map(Number).filter(n => rea[n])
+  return { v: VERSION_REA, rea, verrous }
 }
 
 // Analyse l'affectation réa (ini sur la semaine num) → conflits.

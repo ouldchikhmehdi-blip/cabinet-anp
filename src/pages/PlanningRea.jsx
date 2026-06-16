@@ -12,6 +12,7 @@ import { chargerRea, sauverRea } from '../utils/reaApi'
 import { proposerRea, analyserRea } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import PanneauConflits from '../components/planning/PanneauConflits'
+import BoutonVerrou from '../components/planning/BoutonVerrou'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -119,6 +120,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const rea = useMemo(() => data?.rea ?? {}, [data])
+  const verrous = useMemo(() => new Set(data?.verrous ?? []), [data])
 
   const objectifRea = useMemo(() => {
     const m = {}
@@ -173,13 +175,25 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
     return m
   }, [semaines, rea])
 
+  // Placer un associé à la main VERROUILLE la semaine de réa (forcée) ; « — » la remet en automatique.
   function majRea(num, ini) {
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const r = { ...prev.rea }
-      if (ini) r[num] = ini
-      else delete r[num]
-      return { ...prev, rea: r }
+      const ver = new Set(prev.verrous ?? [])
+      if (ini) { r[num] = ini; ver.add(num) }
+      else { delete r[num]; ver.delete(num) }
+      return { ...prev, rea: r, verrous: [...ver] }
+    })
+  }
+
+  function basculerVerrou(num) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      if (!prev.rea[num]) return prev
+      const ver = new Set(prev.verrous ?? [])
+      if (ver.has(num)) ver.delete(num); else ver.add(num)
+      return { ...prev, verrous: [...ver] }
     })
   }
 
@@ -188,13 +202,16 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const debut = recueil.semaine_debut, fin = recueil.semaine_fin
-      const horsPlage = {}
+      const ver = new Set(prev.verrous ?? [])
+      // Fixes = réa hors plage + semaines verrouillées (préservées, comptées dans l'équilibrage).
+      const fixes = {}
       for (const [num, ini] of Object.entries(prev.rea)) {
         const n = Number(num)
-        if (n < debut || n > fin) horsPlage[n] = ini
+        if (n < debut || n > fin || ver.has(n)) fixes[n] = ini
       }
-      const proposees = proposerRea(semaines, joursOffParAssocie, weekendAff, objectifRea, horsPlage, vacancesParSemaine, colonnesSouhaiteesParAssocie)
-      return { ...prev, rea: { ...horsPlage, ...proposees } }
+      const aProposer = semaines.filter(s => !(ver.has(s.num) && prev.rea[s.num]))
+      const proposees = proposerRea(aProposer, joursOffParAssocie, weekendAff, objectifRea, fixes, vacancesParSemaine, colonnesSouhaiteesParAssocie)
+      return { ...prev, rea: { ...fixes, ...proposees } }
     })
   }
 
@@ -358,6 +375,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
               const moisPrec = idx > 0 ? new Date(semaines[idx - 1].lundi.getTime() + 3 * JOUR_MS).getUTCMonth() : null
               const sep = idx === 0 || jeudi.getUTCMonth() !== moisPrec
               const ini = rea[sem.num] ?? ''
+              const verrou = verrous.has(sem.num)
               const a = analyses[sem.num]
               const alerte = (a?.vacances || a?.jourOff) ? 'rouge' : (a?.garde || a?.souhaitColonne != null ? 'orange' : null)
               const dispo = ASSOCIES.filter(x =>
@@ -394,17 +412,25 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
                     >
                       {dispo.length ? dispo.join(' · ') : 'aucun'}
                     </span>
-                    <select value={ini} onChange={e => majRea(sem.num, e.target.value)} style={s.selRea(alerte)}>
-                      <option value="">—</option>
-                      {ASSOCIES.map(x => {
-                        const vac = vacancesParSemaine[sem.num]?.includes(x)
-                        const off = joursOffParAssocie[x]?.has(sem.num)
-                        const garde = weekendAff[sem.num] === x || weekendAff[sem.num - 1] === x
-                        const marque = vac ? ' ⚠ vacances' : off ? ' ⚠ jour off' : garde ? ' ⚠ WE garde' : ''
-                        // Vacances = poste exclusif : option bloquée (on ne peut pas recréer le conflit).
-                        return <option key={x} value={x} disabled={vac}>{x}{marque}</option>
-                      })}
-                    </select>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <select
+                        value={ini}
+                        onChange={e => majRea(sem.num, e.target.value)}
+                        style={{ ...s.selRea(alerte), flex: 1, ...(verrou ? { borderColor: 'var(--color-primary)', borderWidth: 1 } : {}) }}
+                        title={verrou ? 'Forcé (verrouillé) — non modifié par « Proposer »' : undefined}
+                      >
+                        <option value="">—</option>
+                        {ASSOCIES.map(x => {
+                          const vac = vacancesParSemaine[sem.num]?.includes(x)
+                          const off = joursOffParAssocie[x]?.has(sem.num)
+                          const garde = weekendAff[sem.num] === x || weekendAff[sem.num - 1] === x
+                          const marque = vac ? ' ⚠ vacances' : off ? ' ⚠ jour off' : garde ? ' ⚠ WE garde' : ''
+                          // Vacances = poste exclusif : option bloquée (on ne peut pas recréer le conflit).
+                          return <option key={x} value={x} disabled={vac}>{x}{marque}</option>
+                        })}
+                      </select>
+                      {ini && <BoutonVerrou verrouille={verrou} onToggle={() => basculerVerrou(sem.num)} />}
+                    </span>
                   </div>
                 </Fragment>
               )
