@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerTrames, sauverTrames } from '../utils/tramesApi'
-import { parserCollage, prochainIdTrame, suggererRoles } from '../utils/trames'
+import { parserCollageAvecCouleurs, prochainIdTrame, suggererRoles } from '../utils/trames'
 import TrameGrille from '../components/planning/TrameGrille'
 
 export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStatut, sansEntete = false } = {}) {
@@ -32,9 +32,22 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
   }, [annee, estFaiseur, onStatut])
 
   // ── Collage : on (re)parse le bloc → colonnes de la trame candidate ──
+  // Saisie clavier / collage sans couleurs : pas de HTML → aucune cellule de service.
   function majTexteCollage(valeur) {
     setTexteCollage(valeur)
-    setCandidatColonnes(parserCollage(valeur))
+    setCandidatColonnes(parserCollageAvecCouleurs(valeur, ''))
+  }
+
+  // Collage depuis Excel : on capte le HTML du presse-papiers (fonds de couleur jaune/orange) pour
+  // marquer les cellules « de service ». Sans HTML, on laisse onChange gérer le texte brut (aucune
+  // régression).
+  function collerDepuisExcel(e) {
+    const html = e.clipboardData?.getData('text/html') ?? ''
+    if (!html) return
+    e.preventDefault()
+    const texte = e.clipboardData.getData('text/plain')
+    setTexteCollage(texte)
+    setCandidatColonnes(parserCollageAvecCouleurs(texte, html))
   }
 
   function ajouterAuCatalogue() {
@@ -43,7 +56,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     setData(prev => {
       const id = prochainIdTrame(prev.trames)
       const nom = candidatNom.trim() || `Trame ${id}`
-      const colonnes = candidatColonnes.map(c => ({ ...c }))
+      const colonnes = candidatColonnes.map(c => ({ ...c, service: { ...c.service } }))
       const trame = { id, nom, colonnes, ...suggererRoles(colonnes), remplacants: [] }
       return { ...prev, trames: [...prev.trames, trame] }
     })
@@ -81,6 +94,23 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     setData(prev => ({
       ...prev,
       trames: prev.trames.map(t => (t.id === idTrame ? { ...t, [role]: index } : t)),
+    }))
+  }
+
+  // Bascule le marqueur « de service » d'une cellule (de service ↔ pas de service). Le type
+  // garde/astreinte est dérivé (jour fixe lun/mar/mer, base calendrier pour jeu/ven), pas saisi ici.
+  function majServiceCellule(idTrame, colIndex, jour) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({
+      ...prev,
+      trames: prev.trames.map(t => (t.id === idTrame
+        ? {
+            ...t,
+            colonnes: t.colonnes.map((c, i) => (i === colIndex
+              ? { ...c, service: { ...c.service, [jour]: !(c.service?.[jour]) } }
+              : c)),
+          }
+        : t)),
     }))
   }
 
@@ -272,11 +302,16 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
             <p style={s.aide}>
               Dans Excel, sélectionnez le bloc de la semaine type : <strong>5 lignes (lundi → vendredi)</strong> et
               toutes ses <strong>colonnes</strong> (sans la colonne des dates), puis collez-le ci-dessous (Ctrl+V).
-              Vérifiez l'aperçu, nommez la trame, puis ajoutez-la au catalogue. Une cellule vide = repos.
+              Les <strong>fonds de couleur</strong> (jaune/orange) sont lus automatiquement : ils marquent la
+              <strong> colonne de service</strong> ce jour-là. Le type <strong>garde ou astreinte du jeudi et du
+              vendredi</strong> est déterminé par la <strong>base calendrier</strong> (semaine par semaine), pas par la
+              couleur ; vous pourrez corriger en cliquant une cellule dans le catalogue. Vérifiez l'aperçu, nommez la
+              trame, puis ajoutez-la au catalogue. Une cellule vide = repos.
             </p>
             <textarea
               value={texteCollage}
               onChange={e => majTexteCollage(e.target.value)}
+              onPaste={collerDepuisExcel}
               placeholder="Collez ici les cellules copiées depuis Excel…"
               style={s.textarea}
             />
@@ -376,7 +411,11 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                       </button>
                     </div>
 
-                    <TrameGrille colonnes={t.colonnes} roles={{ rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE, remplacants: t.remplacants }} />
+                    <TrameGrille
+                      colonnes={t.colonnes}
+                      roles={{ rea: t.rea, vacances: t.vacances, avantWE: t.avantWE, apresWE: t.apresWE, remplacants: t.remplacants }}
+                      onToggleService={(ci, j) => majServiceCellule(t.id, ci, j)}
+                    />
                   </div>
                 ))}
               </div>
