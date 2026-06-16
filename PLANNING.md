@@ -89,8 +89,11 @@ Composant partagé : `src/components/planning/TrameGrille.jsx`.
 **Trame principale → desiderata.** Le faiseur désigne **une trame principale** (`data.principaleId`).
 Elle est affichée aux associés dans leurs desiderata (recueils **hors été**) : ils peuvent demander,
 **par semaine, une colonne** (`colonnesSouhaitees: { <numSemaine>: <colIndex> }` dans les desiderata).
-Seules les **colonnes normales** sont proposées (Réa, Vacances et Remplaçant exclues — affectées
-automatiquement). Helper : `colonnesSelectionnables()` dans `src/utils/trames.js`.
+Seules les **colonnes au choix** sont proposées **et affichées** dans la grille montrée à l'associé
+(Réa, Vacances, Remplaçant **et les colonnes avant/après week-end** sont exclues — affectées
+automatiquement). Helper : `colonnesSelectionnables()` dans `src/utils/trames.js` ; la grille
+([TrameGrille](src/components/planning/TrameGrille.jsx)) reçoit alors `colonnesVisibles`. Le champ
+texte libre « demande de colonne » a été **supprimé** (redondant avec ce choix par semaine).
 
 **Catalogue annuel de trames (en place).** Le faiseur apporte ses semaines type par **collage depuis
 Excel** : un bloc de 5 lignes lun→ven × N colonnes = **une trame**, nommée une seule fois et
@@ -191,13 +194,17 @@ Helper : `impactJourOffWE()` dans `src/utils/weekends.js`.
 
 - semaines de vacances souhaitées ;
 - semaines où il ne veut surtout PAS de vacances (contrainte négative) ;
-- jours off souhaités ;
+- jours off souhaités — saisis sur un **calendrier multi-mois** (les mois de la période sont empilés, un clic sur un jour l'ajoute/le retire) ;
 - jours où il ne veut pas poser son repos ;
-- préférence Pâques ou février (+ Toussaint souhaitée ou non) ;
+- préférence Pâques ou février (+ Toussaint souhaitée ou non) — **chaque période scolaire n'est proposée que si ses semaines tombent dans la période du recueil** (sinon masquée, ce qui allège l'écran) ;
 - week-ends dispo / pas dispo pour astreinte ou garde ;
 - éventuellement, demande d'une colonne particulière de la semaine type (ex. associé prenant des remplaçants qui veut un poste-type précis).
 
 Tous ces champs sont **facultatifs** : certains associés n'auront rien à remplir, et c'est un cas normal à gérer.
+
+> **Allègement visuel.** Les encarts volumineux (Vacances souhaitées, Vacances refusées, Week-ends
+> indisponibles) sont **repliables** (`SectionRepliable`), **fermés par défaut** avec une ligne de
+> résumé ; on déplie pour modifier. La trame principale n'affiche que les colonnes au choix.
 
 ### 12. Déroulé étape par étape (validation successive, retours en arrière possibles)
 
@@ -207,15 +214,41 @@ Tous ces champs sont **facultatifs** : certains associés n'auront rien à rempl
 - les semaines de vacances scolaires (la suite en dépend : remplaçants, version « avec remplaçant », couverture vacances) ;
 - les jours fériés, avec leur statut garde ou astreinte selon le jour où ils tombent.
 
+> **Un jour férié = garde/astreinte uniquement ; le bloc opératoire ne tourne pas.** Il n'y a donc
+> pas d'activité de bloc à couvrir un férié. Les fériés sont **calculés automatiquement**
+> (`joursFeriesFR(annee)` dans `src/utils/calendrier.js`, Pâques/Ascension/Pentecôte mobiles inclus) ;
+> aucune saisie n'est requise.
+
 > **Cadence — l'Étape 0 est annuelle, posée une seule fois.** Elle se fait en **début d'année**, au moment d'initier le planning. Elle couvre toute l'année civile, donc les deux phases de planning suivantes (**été** et **sept-déc**, cf. §1) **réutilisent la même base** : on n'a **pas besoin** de refaire l'Étape 0 en y revenant (sauf ajustement ponctuel). Le découpage par phases concerne la **construction** du planning, pas la base de calendrier.
 
 Puis, sur cette base :
 
 1. **Caler les week-ends** de tout le monde (placement des A/G entre nos associés, selon desiderata) → affiché dans l'Excel → validation → étape suivante.
+   - **Ponts / jours fériés (alerte précoce).** Avant cette étape, l'outil signale les **jours off
+     posés autour d'un férié** (la veille, le jour même, le lendemain, ou des plages plus longues
+     enchaînées) — c'est « faire le pont », source possible de déséquilibre. Détection par segments de
+     jours calendaires consécutifs (sam/dim + fériés + jours off) contenant ≥1 férié ET ≥1 jour off
+     (`src/utils/ponts.js`). L'alerte est visible dans le **Suivi des desiderata** (édition) et en tête
+     de l'étape **Week-ends** (rappel). Le faiseur peut **écarter** un jour off de pont (bascule) :
+     écarté ⇒ ce jour off est **ignoré** par l'attribution automatique des week-ends ; conservé
+     (défaut) ⇒ respecté. Écartement persisté dans `data.pontsEcartes` (clés `"INI|YYYY-MM-DD"`) de
+     `planning_calendrier` — pas de table dédiée. Alerte **non bloquante** : le faiseur arbitre (§13).
+   - **Indispos week-end accolées à un férié.** La détection couvre aussi les **week-ends
+     indisponibles accolés à un férié** : un férié un **vendredi** rend accolé le week-end de sa
+     semaine, un férié un **lundi** celui de la semaine précédente (un férié **samedi/dimanche est
+     ignoré** : le week-end est déjà non travaillé au bloc). Ces indispos sont **écartables** comme
+     les jours off (clés `"INI|WE|<semaine>"` ; écartée ⇒ l'associé redevient plaçable ce week-end),
+     et la ligne du week-end concerné porte un badge **« 🌉 »** dans l'étape Week-ends. Les associés
+     en sont prévenus dès la saisie des desiderata (jours off **et** week-ends indisponibles).
 2. **Positionner les vacances** de chacun (avec vérification Pâques/février).
 3. **Remplir le planning en semaine** selon les desiderata.
 
 Chaque étape est un point de contrôle validé avant de continuer.
+
+> **Export borné à la période.** L'export Excel des étapes **Week-ends / Vacances / Réa** se limite
+> strictement à la **période du recueil sélectionné** (paramètre `periode` de `exporterCalendrierExcel`,
+> filtrage via `semainesDansPlage`) — aucune semaine au-delà n'apparaît, en cohérence avec les écrans
+> qui sont déjà bornés. Seules la **Base calendrier** et les **Objectifs** s'exportent sur l'année entière.
 
 > **Distinction utile** : l'Étape 0 fixe le **rôle du groupe** (sommes-nous garde ou astreinte ce jour-là). L'Étape 1 décide **quelle personne** parmi nous prend chaque créneau.
 

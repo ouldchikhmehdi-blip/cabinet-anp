@@ -53,6 +53,8 @@ export default function AdminUsers() {
     }
   }, [])
 
+  // Chargement initial des données (asynchrone : les setState arrivent après les requêtes).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { charger() }, [charger])
 
   // ── Flash message ─────────────────────────────────────────────────

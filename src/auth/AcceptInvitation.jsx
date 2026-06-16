@@ -41,6 +41,8 @@ export default function AcceptInvitation({ token, onTokenInvalide }) {
       }
     }
     valider()
+    // Revalidation uniquement au changement de token ; onTokenInvalide n'est qu'un callback de notification.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   // ── 2. Créer le compte ──────────────────────────────────────────────

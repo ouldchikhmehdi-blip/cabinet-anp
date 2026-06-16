@@ -75,6 +75,8 @@ export function AuthProvider({ children }) {
   )
 }
 
+// Hook d'accès co-localisé avec le Provider (pattern Context courant).
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth() doit être utilisé dans un AuthProvider')

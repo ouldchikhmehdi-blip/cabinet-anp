@@ -179,6 +179,7 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - **Réutiliser les composants existants** (`KpiCard`, `PeriodeFilter`, `Sidebar`…) plutôt que d'en recréer.
 - Jamais de secret dans le code front ou un commit ; `service_role` et `RESEND_API_KEY` restent côté serveur (`/api`).
 - Changements **incrémentaux et testables** ; fournir une **doc claire** (étapes, env, commandes).
+- **Qualité du code — lint toujours propre.** `npm run lint` doit rester **à zéro problème** (zéro erreur, zéro avertissement). Toute intervention laisse le lint vert : corriger ses propres signalements avant de livrer, et ne jamais introduire de nouvelle erreur/avertissement. Si un cas est intentionnel et légitime, le neutraliser par un `// eslint-disable-next-line <règle>` **ciblé et commenté** (jamais de désactivation globale). `npm run build` doit aussi passer.
 
 ---
 
@@ -208,3 +209,4 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - Lire `AUTH.md` et `supabase/schema.sql` avant de toucher à l'auth ou à la DB.
 - Rôles : `admin` (accès complet) / `user` (lecture seule).
 - Rester dans la stack figée ; toute déviation se propose et se valide, ne s'impose pas.
+- **Laisser le lint vert** : `npm run lint` à **0 problème** après chaque intervention (cf. §8).

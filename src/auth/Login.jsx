@@ -44,7 +44,7 @@ export default function Login() {
       // Stocke l'id du facteur et du challenge pour l'étape 2
       setFactorId({ id: totp.id, challengeId: ch.id })
       setEtape('totp')
-    } catch (err) {
+    } catch {
       // Message générique pour ne pas aider un attaquant
       setErreur('E-mail ou mot de passe incorrect.')
     } finally {

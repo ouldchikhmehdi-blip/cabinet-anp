@@ -13,9 +13,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return sendError(res, 405, 'Méthode non autorisée.')
 
-  let appelant
   try {
-    appelant = await requireAdmin(req)
+    await requireAdmin(req)
   } catch (err) {
     return sendError(res, err.status ?? 403, err.message)
   }
