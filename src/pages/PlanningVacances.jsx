@@ -372,7 +372,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                       {a.sousScolaire && <span style={s.etat('var(--color-amber)')} title="Semaine scolaire : moins de 2 associés en congé">🟠 scol&lt;2</span>}
                       {a.gardeCollee.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Vacances accolées à un week-end de garde : ${a.gardeCollee.join(', ')}`}>🟠 garde</span>}
                       {a.souhaitColonne.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Souhait de colonne (veulent travailler) cette semaine : ${a.souhaitColonne.join(', ')}`}>🟠 colonne</span>}
-                      {a.rapprochees.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Deux semaines de congé à moins de 4 semaines d'écart : ${a.rapprochees.join(', ')}`}>🟠 rapprochées</span>}
+                      {a.rapprochees.length > 0 && <span style={s.etat('var(--color-amber)')} title={`${a.rapprochees.join(', ')} : deux semaines de congé à moins de 4 semaines d'écart. Si c'est un souhait de l'associé (voir colonne Souhaité), c'est volontaire — l'alerte sert seulement à vous en informer.`}>🟠 rapprochées</span>}
                       {!a.sansVacance && a.refus.length === 0 && !a.sousScolaire && a.gardeCollee.length === 0 && a.souhaitColonne.length === 0 && a.rapprochees.length === 0 && <span style={s.etat('var(--color-success)')}>✓</span>}
                     </span>
                     <select value="" onChange={() => {}} style={s.selPetit} title="Associés ayant souhaité cette semaine (desiderata)">
