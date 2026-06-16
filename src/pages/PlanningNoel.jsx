@@ -329,19 +329,22 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
               placeholder="Collez ici la grille (en-tête + dates + cases colorées) copiée depuis Excel…"
               style={s.textarea}
             />
-            {joursCandidat.length > 0 && (
-              <>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '12px 0' }}>
-                  <button type="button" onClick={ajouterGrille} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13 }}>
-                    + Ajouter la grille
-                  </button>
-                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                    {joursCandidat.length} jour{joursCandidat.length > 1 ? 's' : ''} détecté{joursCandidat.length > 1 ? 's' : ''}
-                  </span>
-                </div>
-                {apercuTable(joursCandidat)}
-              </>
-            )}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '12px 0' }}>
+              <button
+                type="button"
+                onClick={ajouterGrille}
+                disabled={joursCandidat.length === 0}
+                style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: joursCandidat.length === 0 ? 0.5 : 1, cursor: joursCandidat.length === 0 ? 'default' : 'pointer' }}
+              >
+                + Ajouter la grille
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                {joursCandidat.length > 0
+                  ? `${joursCandidat.length} jour${joursCandidat.length > 1 ? 's' : ''} détecté${joursCandidat.length > 1 ? 's' : ''}`
+                  : 'Collez une grille ci-dessus pour activer l’ajout.'}
+              </span>
+            </div>
+            {joursCandidat.length > 0 && apercuTable(joursCandidat)}
           </div>
 
           {/* Grille de Noël committée (au format Excel) */}
