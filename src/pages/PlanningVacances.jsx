@@ -10,6 +10,7 @@ import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import BoutonVerrou from '../components/planning/BoutonVerrou'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -110,6 +111,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   )
 
   const vacances = useMemo(() => data?.vacances ?? {}, [data])
+  const places = useMemo(() => data?.places ?? {}, [data])
+  const verrous = useMemo(() => data?.verrous ?? {}, [data])
 
   const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
 
@@ -149,23 +152,79 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [semaines, vacances])
 
-  function modifierSemaine(num, inis) {
-    setEnregistre(false); onStatut?.('modifie')
-    setData(prev => {
-      const v = { ...prev.vacances }
-      if (inis.length) v[num] = inis
-      else delete v[num]
-      return { ...prev, vacances: v }
-    })
-  }
+  // Postes de vacances ouverts mais non encore pourvus (cases libres) sur la période.
+  const postesOuverts = useMemo(() => {
+    let n = 0
+    for (const s of semaines) {
+      const cap = places[s.num] ?? (scolairesSet.has(s.num) ? 2 : 1)
+      n += Math.max(cap - (vacances[s.num]?.length ?? 0), 0)
+    }
+    return n
+  }, [semaines, places, vacances, scolairesSet])
+
+  // Placer un associé à la main le VERROUILLE (forcé) : « Proposer automatiquement » le préserve.
   function ajouter(num, ini) {
     if (!ini) return
-    const actuels = vacances[num] ?? []
-    if (actuels.includes(ini)) return
-    modifierSemaine(num, [...actuels, ini].sort((a, b) => ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const actuels = prev.vacances[num] ?? []
+      if (actuels.includes(ini)) return prev
+      const v = { ...prev.vacances, [num]: [...actuels, ini].sort((a, b) => ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)) }
+      const ver = { ...(prev.verrous ?? {}) }
+      ver[num] = [...new Set([...(ver[num] ?? []), ini])]
+      return { ...prev, vacances: v, verrous: ver }
+    })
   }
+  function basculerVerrou(num, ini) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      if (!prev.vacances[num]?.includes(ini)) return prev
+      const ver = { ...(prev.verrous ?? {}) }
+      const cur = ver[num] ?? []
+      if (cur.includes(ini)) { const left = cur.filter(x => x !== ini); if (left.length) ver[num] = left; else delete ver[num] }
+      else ver[num] = [...cur, ini]
+      return { ...prev, verrous: ver }
+    })
+  }
+  // Retirer un associé FERME le poste : la capacité baisse d'un cran (et c'est persisté), sinon
+  // « Proposer automatiquement » repourvoirait aussitôt la case. Une suppression doit rester.
   function retirer(num, ini) {
-    modifierSemaine(num, (vacances[num] ?? []).filter(x => x !== ini))
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const avant = prev.vacances[num] ?? []
+      const restants = avant.filter(x => x !== ini)
+      const v = { ...prev.vacances }
+      if (restants.length) v[num] = restants; else delete v[num]
+      const defaut = scolairesSet.has(num) ? 2 : 1
+      const capAvant = Math.max(prev.places?.[num] ?? defaut, avant.length)
+      const cible = Math.max(capAvant - 1, 0)
+      const p = { ...(prev.places ?? {}) }
+      if (cible === defaut) delete p[num]; else p[num] = cible
+      // Retirer lève aussi le verrou éventuel de cet associé.
+      const ver = { ...(prev.verrous ?? {}) }
+      if (ver[num]) { const left = ver[num].filter(x => x !== ini); if (left.length) ver[num] = left; else delete ver[num] }
+      return { ...prev, vacances: v, places: p, verrous: ver }
+    })
+  }
+
+  // ── Postes de vacances ouverts (capacité par semaine) ──
+  // Défaut = couverture minimale (2 en vacances scolaires, 1 sinon). La capacité effective ne
+  // descend jamais sous le nombre d'associés déjà placés.
+  const defautCapacite = (num) => (scolairesSet.has(num) ? 2 : 1)
+  const capacite = (num) => Math.max(places[num] ?? defautCapacite(num), vacances[num]?.length ?? 0)
+  function majPlaces(num, n) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const p = { ...(prev.places ?? {}) }
+      if (n === defautCapacite(num)) delete p[num] // retour au défaut → pas d'override stocké
+      else p[num] = n
+      return { ...prev, places: p }
+    })
+  }
+  function ouvrirPoste(num) { majPlaces(num, capacite(num) + 1) }
+  function fermerPoste(num) {
+    const filled = vacances[num]?.length ?? 0 // on ne ferme que des postes vides (jamais sous les placés)
+    if (capacite(num) > filled) majPlaces(num, capacite(num) - 1)
   }
 
   function proposer() {
@@ -178,7 +237,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = inis
       }
-      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie)
+      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {})
       return { ...prev, vacances: { ...horsPlage, ...proposees } }
     })
   }
@@ -247,6 +306,15 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       padding: '4px 6px', fontSize: 12, borderRadius: 'var(--radius-md)',
       border: '0.5px dashed var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-secondary)', outline: 'none', width: 120,
     },
+    posteLibre: {
+      display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600,
+      padding: '3px 6px 3px 8px', borderRadius: 'var(--radius-md)',
+      border: '0.5px dashed var(--color-amber)', background: 'var(--color-amber-light)', color: 'var(--color-amber)',
+    },
+    boutonPoste: {
+      border: '0.5px dashed var(--color-primary)', background: 'transparent', color: 'var(--color-primary)',
+      borderRadius: 'var(--radius-md)', fontSize: 12, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
+    },
     compteurs: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 },
     pastilleChip: { fontSize: 12, padding: '6px 10px', borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-surface)' },
   }
@@ -271,7 +339,10 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         Au moins un associé en congé par semaine (deux en vacances scolaires). Choisissez une
         période, laissez l'outil <strong>proposer</strong> en respectant les souhaits puis ajustez :
         il vous alerte si une semaine est vide, si un associé a refusé cette semaine, ou si une
-        semaine scolaire a moins de deux congés. Vous gardez le dernier mot.
+        semaine scolaire a moins de deux congés. Vous pouvez <strong>ouvrir un poste</strong>
+        supplémentaire sur n'importe quelle semaine (bouton « + poste ») : la case libre se remplit
+        à la main ou via « Proposer automatiquement ». À l'inverse, <strong>retirer</strong> un associé
+        (✕) ferme le poste : la semaine n'est pas re-pourvue au prochain « Proposer ». Vous gardez le dernier mot.
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -330,6 +401,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
             <span style={{ color: recap.sous ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.sous} scolaire &lt; 2</span>
             <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} garde collée</span>
             <span style={{ color: recap.rappr ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.rappr} rapprochée(s)</span>
+            <span style={{ color: postesOuverts ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }} title="Postes de vacances ouverts non encore pourvus (à remplir à la main ou via « Proposer automatiquement »)">🟠 {postesOuverts} à pourvoir</span>
           </div>
 
           {/* Compteurs par associé */}
@@ -384,10 +456,20 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                       {dispo.map(x => <option key={x} value={x}>{x}</option>)}
                     </select>
                     <span style={s.chips}>
-                      {inis.map(x => (
-                        <span key={x} style={s.chip(refusParAssocie[x]?.has(sem.num))}>
-                          {x}
-                          <button type="button" onClick={() => retirer(sem.num, x)} style={s.croix} title="Retirer">✕</button>
+                      {inis.map(x => {
+                        const verrou = verrous[sem.num]?.includes(x)
+                        return (
+                          <span key={x} style={{ ...s.chip(refusParAssocie[x]?.has(sem.num)), ...(verrou ? { borderWidth: 1, fontWeight: 700 } : {}) }}>
+                            {x}
+                            <BoutonVerrou verrouille={!!verrou} onToggle={() => basculerVerrou(sem.num, x)} />
+                            <button type="button" onClick={() => retirer(sem.num, x)} style={s.croix} title="Retirer et fermer le poste (reste supprimé après « Proposer »)">✕</button>
+                          </span>
+                        )
+                      })}
+                      {Array.from({ length: Math.max(capacite(sem.num) - inis.length, 0) }).map((_, k) => (
+                        <span key={`libre-${k}`} style={s.posteLibre} title="Poste de vacances ouvert, à pourvoir (à la main ou via « Proposer automatiquement »)">
+                          poste libre
+                          <button type="button" onClick={() => fermerPoste(sem.num)} style={s.croix} title="Fermer ce poste">✕</button>
                         </span>
                       ))}
                       <select value="" onChange={e => { ajouter(sem.num, e.target.value); e.target.value = '' }} style={s.ajout}>
@@ -398,6 +480,9 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                           </option>
                         ))}
                       </select>
+                      <button type="button" onClick={() => ouvrirPoste(sem.num)} style={s.boutonPoste} title="Ouvrir un poste de vacances supplémentaire sur cette semaine">
+                        + poste
+                      </button>
                     </span>
                   </div>
                 </Fragment>
