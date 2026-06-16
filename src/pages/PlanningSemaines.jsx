@@ -239,7 +239,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       if (enVac.has(contexteAmont.rea[num])) incoherents.add(contexteAmont.rea[num])
       if (incoherents.size) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
       // — À surveiller (non bloquant) —
-      if (a?.pont) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — pont : ${a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')} (couverture à vérifier).` })
+      if (a?.pont) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — pont : ${a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')} — jour férié en semaine : vérifie qui travaille et la garde/astreinte ce jour-là (l'outil ne l'ajuste pas automatiquement).` })
       if (al?.tropProche && Object.keys(al.tropProche).length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — gardes rapprochées (< 1 sem.) : ${Object.entries(al.tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}.` })
       if (al?.souhaitsIgnoresTrame?.length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — souhait de colonne ignoré (trame ≠ principale) : ${al.souhaitsIgnoresTrame.join(', ')}.` })
     }
