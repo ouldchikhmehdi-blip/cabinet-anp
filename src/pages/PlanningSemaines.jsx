@@ -12,7 +12,7 @@ import { chargerRea } from '../utils/reaApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import {
-  proposerSemaines, affectationResolue, analyserSemaineColonnes,
+  proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie, resoudreTrame,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
@@ -50,6 +50,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [exportEnCours, setExportEnCours] = useState(false)
   const [filtreArbitrer, setFiltreArbitrer] = useState(false)
   const [apercus, setApercus] = useState(() => new Set())
+  // Résultat de la dernière amélioration d'espacement : { avant, apres } (gardes rapprochées).
+  const [espacementInfo, setEspacementInfo] = useState(null)
 
   // Recueils « normaux » (l'été se gère par colonnes, hors de cette étape).
   useEffect(() => {
@@ -309,42 +311,69 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     })
   }
 
+  // Monte les entrées communes aux moteurs (trameInfo + socle d'équilibre annuel + verrous) à partir du state.
+  function monterEntreesMoteur(prev) {
+    const debut = recueil.semaine_debut, fin = recueil.semaine_fin
+    const trameInfo = (num) => {
+      const { trame, estPrincipale } = resoudreTrame({
+        trames, tramesById, principaleId,
+        choisiId: prev.trameParSemaine?.[num] ?? null,
+        nbVacanciers: (contexteAmont.vacances[num] ?? []).length,
+      })
+      return trame ? { trame, estPrincipale } : null
+    }
+    // Socle d'équilibre annuel : gardes hors-plage (week-ends toute l'année + gardes de semaine hors-plage).
+    const horsNums = allNums.filter(n => n < debut || n > fin)
+    const gWE = gardesWeekendParAssocie(allNums, annee, contexteAmont.weekendAff)
+    const gSemHors = gardesSemaineParAssocie(horsNums, annee, calendrier, (n) => trameInfo(n)?.trame ?? null, contexteAmont, prev.affectations ?? {})
+    const gardesInitiales = {}
+    for (const ini of ASSOCIES) gardesInitiales[ini] = [...(gWE[ini] ?? []), ...(gSemHors.dates[ini] ?? [])]
+    // Verrous de la plage = colonnes forcées à préserver.
+    const fixes = {}
+    for (const sem of semaines) {
+      const cols = prev.verrous?.[sem.num] ?? []
+      if (!cols.length) continue
+      const m = {}
+      for (const c of cols) if (prev.affectations?.[sem.num]?.[c] != null) m[c] = prev.affectations[sem.num][c]
+      if (Object.keys(m).length) fixes[sem.num] = m
+    }
+    return { trameInfo, gardesInitiales, compteAnneeInitial: gSemHors.comptes, fixes }
+  }
+
   function proposer() {
     if (!recueil) return
-    setEnregistre(false); onStatut?.('modifie')
+    setEnregistre(false); setEspacementInfo(null); onStatut?.('modifie')
     setData(prev => {
-      const debut = recueil.semaine_debut, fin = recueil.semaine_fin
-      const trameInfo = (num) => {
-        const { trame, estPrincipale } = resoudreTrame({
-          trames, tramesById, principaleId,
-          choisiId: prev.trameParSemaine?.[num] ?? null,
-          nbVacanciers: (contexteAmont.vacances[num] ?? []).length,
-        })
-        return trame ? { trame, estPrincipale } : null
-      }
-      // Socle d'équilibre annuel : gardes hors-plage (week-ends toute l'année + gardes de semaine hors-plage).
-      const horsNums = allNums.filter(n => n < debut || n > fin)
-      const gWE = gardesWeekendParAssocie(allNums, annee, contexteAmont.weekendAff)
-      const gSemHors = gardesSemaineParAssocie(horsNums, annee, calendrier, (n) => trameInfo(n)?.trame ?? null, contexteAmont, prev.affectations ?? {})
-      const gardesInitiales = {}
-      for (const ini of ASSOCIES) gardesInitiales[ini] = [...(gWE[ini] ?? []), ...(gSemHors.dates[ini] ?? [])]
-      // Verrous de la plage = colonnes forcées à préserver.
-      const fixes = {}
-      for (const sem of semaines) {
-        const cols = prev.verrous?.[sem.num] ?? []
-        if (!cols.length) continue
-        const m = {}
-        for (const c of cols) if (prev.affectations?.[sem.num]?.[c] != null) m[c] = prev.affectations[sem.num][c]
-        if (Object.keys(m).length) fixes[sem.num] = m
-      }
+      const { trameInfo, gardesInitiales, compteAnneeInitial, fixes } = monterEntreesMoteur(prev)
       const proposees = proposerSemaines({
         semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
         desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
-        gardesInitiales, compteAnneeInitial: gSemHors.comptes, fixes,
+        gardesInitiales, compteAnneeInitial, fixes,
       })
       const aff = { ...(prev.affectations ?? {}) }
       for (const sem of semaines) {
         const m = proposees[sem.num] ?? {}
+        if (Object.keys(m).length) aff[sem.num] = m; else delete aff[sem.num]
+      }
+      return { ...prev, affectations: aff }
+    })
+  }
+
+  // 2e passage : recherche locale par échanges pour réduire les gardes rapprochées (équilibre préservé).
+  function ameliorer() {
+    if (!recueil || !data) return
+    const { trameInfo, gardesInitiales, compteAnneeInitial, fixes } = monterEntreesMoteur(data)
+    const { affectations: ameliorees, avant, apres } = ameliorerEspacementSemaines({
+      semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
+      desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
+      gardesInitiales, compteAnneeInitial, fixes, affectations: data.affectations ?? {},
+    })
+    setEspacementInfo({ avant, apres })
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const aff = { ...(prev.affectations ?? {}) }
+      for (const sem of semaines) {
+        const m = ameliorees[sem.num] ?? {}
         if (Object.keys(m).length) aff[sem.num] = m; else delete aff[sem.num]
       }
       return { ...prev, affectations: aff }
@@ -583,6 +612,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   }
 
   const pret = data !== null && tramesData !== null && calendrier !== null
+  const aDesAffectations = Object.keys(data?.affectations ?? {}).length > 0
 
   return (
     <div style={{ maxWidth: 1180 }}>
@@ -612,6 +642,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         <button type="button" onClick={proposer} disabled={!pret || !recueil || principaleId == null} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil || principaleId == null) ? 0.5 : 1 }}>
           Proposer automatiquement
         </button>
+        <button
+          type="button"
+          onClick={ameliorer}
+          disabled={!pret || !recueil || !aDesAffectations}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || !recueil || !aDesAffectations) ? 0.5 : 1 }}
+          title="2e passage : échange des colonnes pour réduire les gardes rapprochées, sans dégrader l'équilibre ni toucher aux cases verrouillées"
+        >
+          Améliorer l’espacement
+        </button>
         <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
           Enregistrer
         </button>
@@ -625,6 +664,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
           {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
         </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
+        {espacementInfo && (
+          <span style={{ fontSize: 13, alignSelf: 'center', color: espacementInfo.apres < espacementInfo.avant ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
+            Gardes rapprochées : {espacementInfo.avant} → {espacementInfo.apres}
+            {espacementInfo.apres === espacementInfo.avant ? ' (aucune amélioration possible sans déséquilibrer)' : ''}
+          </span>
+        )}
       </div>
 
       {erreur && (

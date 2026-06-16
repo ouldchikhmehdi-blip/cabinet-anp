@@ -307,6 +307,177 @@ export function proposerSemaines({
   return out
 }
 
+// ── Amélioration de l'ESPACEMENT des gardes (réduire les « gardes rapprochées ») ──
+// Recherche locale DÉTERMINISTE par échanges, à partir d'une proposition existante. « Équilibre d'abord » :
+// un échange n'est retenu que s'il réduit STRICTEMENT le nombre de gardes rapprochées SANS dégrader
+// l'équilibre annuel des gardes de semaine, ni créer de souhait de colonne non satisfait.
+//   Les colonnes spéciales (réa/vacances/avant-après-WE) et les colonnes VERROUILLÉES sont figées.
+// Mêmes entrées que proposerSemaines, plus `affectations` (état de départ). Renvoie
+//   { affectations:{<num>:{<col>:ini}}, avant:n, apres:n } (n = nb de couples (semaine, associé) rapprochés).
+export function ameliorerEspacementSemaines({
+  semainesPlage, annee, calendrier, trameInfo, contexteAmont, desiderata = {},
+  gardesInitiales = {}, compteAnneeInitial = {}, fixes = {}, affectations = {},
+}) {
+  const { vacances = {} } = contexteAmont
+  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {} } = desiderata
+  const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
+
+  // Copie mutable des affectations de la plage (colonnes libres + colonnes de travail pourvues).
+  const aff = {}
+  for (const num of nums) aff[num] = { ...(affectations[num] ?? {}) }
+
+  // Parties FIXES des gardes (jamais modifiées) : socle hors-plage + colonnes spéciales + colonnes verrouillées.
+  const weekInfo = {}
+  const fixedDates = {}; const fixedEvents = {}; const countFixe = {}
+  for (const ini of ASSOCIES) {
+    fixedDates[ini] = [...(gardesInitiales[ini] ?? [])]
+    fixedEvents[ini] = []
+    countFixe[ini] = compteAnneeInitial[ini] ?? 0
+  }
+  for (const num of nums) {
+    const info = trameInfo(num)
+    if (!info?.trame) { weekInfo[num] = null; continue }
+    const spec = colonnesSpeciales(info.trame, num, contexteAmont)
+    const verrou = fixes[num] ?? {}
+    weekInfo[num] = { trame: info.trame, estPrincipale: info.estPrincipale, spec, verrou, vacanciers: new Set(vacances[num] ?? []) }
+    const ajoutFixe = (col, ini) => {
+      if (!ASSOCIES.includes(ini)) return
+      const ds = datesGardeSemaine(info.trame, Number(col), annee, num, calendrier)
+      if (ds.length) { fixedDates[ini].push(...ds); fixedEvents[ini].push(ds); countFixe[ini] += ds.length }
+    }
+    for (const [col, ini] of Object.entries(spec)) ajoutFixe(col, ini)
+    for (const [col, ini] of Object.entries(verrou)) if (aff[num][col] != null) ajoutFixe(col, ini)
+  }
+
+  // Cellules ÉCHANGEABLES : colonnes de aff hors verrous. occ = occupant courant (mutable).
+  const cells = []
+  const cellsByAssoc = {}; for (const ini of ASSOCIES) cellsByAssoc[ini] = new Set()
+  const compteAnnee = {}; for (const ini of ASSOCIES) compteAnnee[ini] = countFixe[ini]
+  for (const num of nums) {
+    const wi = weekInfo[num]; if (!wi) continue
+    for (const [colStr, ini] of Object.entries(aff[num])) {
+      const col = Number(colStr)
+      if (wi.verrou[col] != null || !ASSOCIES.includes(ini)) continue
+      const ds = datesGardeSemaine(wi.trame, col, annee, num, calendrier)
+      const cell = { id: cells.length, num, col, dates: ds, count: ds.length, occ: ini }
+      cells.push(cell); cellsByAssoc[ini].add(cell.id); compteAnnee[ini] += ds.length
+    }
+  }
+
+  // ── Métriques ──
+  const allGardesDe = (ini) => {
+    const arr = [...fixedDates[ini]]
+    for (const id of cellsByAssoc[ini]) arr.push(...cells[id].dates)
+    return arr
+  }
+  // Pénalité d'un associé = nb de ses semaines (de la plage) où une garde est à < 7 j d'une AUTRE garde.
+  const penaltyAssoc = (ini) => {
+    const all = allGardesDe(ini)
+    let p = 0
+    const evs = [...fixedEvents[ini]]
+    for (const id of cellsByAssoc[ini]) if (cells[id].dates.length) evs.push(cells[id].dates)
+    for (const ds of evs) {
+      const autres = all.filter(g => !ds.some(d => d.getTime() === g.getTime()))
+      if (ecartMinJours(ds, autres) < ESPACEMENT_GARDE_JOURS) p++
+    }
+    return p
+  }
+  const penaltyTotale = () => { let p = 0; for (const ini of ASSOCIES) p += penaltyAssoc(ini); return p }
+  const ecartEquilibre = () => {
+    let mn = Infinity, mx = -Infinity
+    for (const ini of ASSOCIES) { const v = compteAnnee[ini]; if (v < mn) mn = v; if (v > mx) mx = v }
+    return mx - mn
+  }
+  // Souhaits de colonne non satisfaits référençant une cellule (semaine principale uniquement).
+  const souhaitsCell = {}
+  for (const num of nums) {
+    const wi = weekInfo[num]; if (!wi || !wi.estPrincipale) continue
+    for (const ini of ASSOCIES) {
+      const c = colonnesSouhaiteesParAssocie?.[ini]?.[num]
+      if (Number.isInteger(c)) (souhaitsCell[`${num}:${c}`] ??= []).push(ini)
+    }
+  }
+  const souhaitInsatCell = (num, col, occ) => {
+    const list = souhaitsCell[`${num}:${col}`]; if (!list) return 0
+    let n = 0; for (const ini of list) if (ini !== occ) n++; return n
+  }
+  const reposCouvreCell = (num, col, occ) => {
+    const off = joursOffDetailParAssocie?.[occ]?.[num]
+    if (!off || off.size === 0) return 0
+    const r = reposJours(weekInfo[num].trame.colonnes[col])
+    let n = 0; for (const j of off) if (r.has(j)) n++; return n
+  }
+
+  // Échange (involution) des occupants de deux cellules + maj des compteurs.
+  const echanger = (A, B) => {
+    const X = A.occ, Y = B.occ
+    cellsByAssoc[X].delete(A.id); cellsByAssoc[Y].delete(B.id)
+    A.occ = Y; B.occ = X
+    cellsByAssoc[Y].add(A.id); cellsByAssoc[X].add(B.id)
+    compteAnnee[X] += (B.count - A.count); compteAnnee[Y] += (A.count - B.count)
+  }
+  // Un associé occupe-t-il déjà une colonne de la semaine (hors la cellule `exceptId`) ?
+  const occupeSemaine = (ini, num, exceptId) => {
+    const wi = weekInfo[num]; if (!wi) return true
+    if (wi.vacanciers.has(ini)) return true
+    for (const v of Object.values(wi.spec)) if (v === ini) return true
+    for (const v of Object.values(wi.verrou)) if (v === ini) return true
+    for (const id of cellsByAssoc[ini]) if (cells[id].num === num && id !== exceptId) return true
+    return false
+  }
+
+  const avant = penaltyTotale()
+
+  // ── Recherche locale : à chaque balayage, appliquer le meilleur échange améliorant ; s'arrêter à l'optimum. ──
+  const MAX_BALAYAGES = cells.length * 4 + 50
+  for (let pass = 0; pass < MAX_BALAYAGES; pass++) {
+    // Associés actuellement en garde rapprochée (sinon un échange ne peut pas réduire la pénalité).
+    const enRapproche = new Set()
+    for (const ini of ASSOCIES) if (penaltyAssoc(ini) > 0) enRapproche.add(ini)
+    if (enRapproche.size === 0) break
+
+    let meilleur = null // { A, B, dP, dEq, dRepos }
+    for (let i = 0; i < cells.length; i++) {
+      for (let j = i + 1; j < cells.length; j++) {
+        const A = cells[i], B = cells[j]
+        const X = A.occ, Y = B.occ
+        if (X === Y) continue
+        if (A.count === 0 && B.count === 0) continue
+        if (!enRapproche.has(X) && !enRapproche.has(Y)) continue
+        // Validité : pas de doublon d'un associé dans une semaine (sauf échange intra-semaine).
+        if (A.num !== B.num) {
+          if (occupeSemaine(X, B.num, B.id) || occupeSemaine(Y, A.num, A.id)) continue
+        }
+        const pBefore = penaltyAssoc(X) + penaltyAssoc(Y)
+        const eqBefore = ecartEquilibre()
+        const souhaitBefore = souhaitInsatCell(A.num, A.col, X) + souhaitInsatCell(B.num, B.col, Y)
+        const reposBefore = reposCouvreCell(A.num, A.col, X) + reposCouvreCell(B.num, B.col, Y)
+        echanger(A, B)
+        const pAfter = penaltyAssoc(X) + penaltyAssoc(Y)
+        const eqAfter = ecartEquilibre()
+        const souhaitAfter = souhaitInsatCell(A.num, A.col, A.occ) + souhaitInsatCell(B.num, B.col, B.occ)
+        const reposAfter = reposCouvreCell(A.num, A.col, A.occ) + reposCouvreCell(B.num, B.col, B.occ)
+        echanger(A, B) // revert
+        const dP = pAfter - pBefore
+        const dEq = eqAfter - eqBefore
+        const dSouhait = souhaitAfter - souhaitBefore
+        const dRepos = reposAfter - reposBefore
+        if (dP < 0 && dEq <= 0 && dSouhait <= 0) {
+          if (!meilleur || dP < meilleur.dP || (dP === meilleur.dP && (dEq < meilleur.dEq || (dEq === meilleur.dEq && dRepos > meilleur.dRepos)))) {
+            meilleur = { A, B, dP, dEq, dRepos }
+          }
+        }
+      }
+    }
+    if (!meilleur) break
+    echanger(meilleur.A, meilleur.B)
+  }
+
+  // Réécriture des occupants modifiés dans aff (colonnes spéciales/verrouillées inchangées).
+  for (const cell of cells) aff[cell.num][cell.col] = cell.occ
+  return { affectations: aff, avant, apres: penaltyTotale() }
+}
+
 // Analyse d'une semaine pour les alertes (calque analyserAffectation).
 //   affResolue            → { col: ini } (spéciales + libres)
 //   gardesParAssocie      → { ini: [Date] } (toutes gardes connues, pour la proximité)
