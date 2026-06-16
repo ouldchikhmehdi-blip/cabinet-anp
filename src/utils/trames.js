@@ -135,13 +135,21 @@ function normaliserPoste(v) {
 
 // Suggestions de désignation à la création (le faiseur reste libre de corriger) :
 //   - vacances : 1ʳᵉ colonne entièrement vide ;
-//   - rea      : 1ʳᵉ colonne dont les 5 jours contiennent « rea ».
+//   - rea      : 1ʳᵉ colonne dont les 5 jours contiennent « rea » ;
+//   - apresWE  : 1ʳᵉ colonne avec lundi ET vendredi au repos (cases vides) mais pas entièrement
+//                vide — retour de garde de week-end → repos le lundi (et le vendredi), §7. C'est
+//                forcément la colonne « après le week-end » ; le faiseur n'a plus qu'à désigner
+//                l'« avant le week-end ».
+function estRepos(col, j) { return !(col?.[j] ?? '').trim() }
 export function suggererRoles(colonnes) {
   let vacances = colonnes.findIndex(colonneVide)
   if (vacances === -1) vacances = null
   let rea = colonnes.findIndex(col => JOURS.every(j => normaliserPoste(col[j]).includes('rea')))
   if (rea === -1) rea = null
-  return { rea, vacances, avantWE: null, apresWE: null }
+  let apresWE = colonnes.findIndex((col, i) =>
+    i !== rea && !colonneVide(col) && estRepos(col, 'lun') && estRepos(col, 'ven'))
+  if (apresWE === -1) apresWE = null
+  return { rea, vacances, avantWE: null, apresWE }
 }
 
 // Construit les colonnes brutes d'un bloc collé (texte tabulé : tabulations entre colonnes,
