@@ -702,6 +702,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
   const pret = data !== null && tramesData !== null && calendrier !== null
   const aDesAffectations = Object.keys(data?.affectations ?? {}).length > 0
+  // Nombre max de colonnes remplaçant sur la période — pour aligner les colonnes entre semaines (vue continue).
+  const nbRemplMax = semaines.reduce((m, s) => Math.max(m, remplacantsSemaine[s.num]?.length ?? 0), 0)
 
   return (
     <div style={{ maxWidth: vueContinue ? '100%' : 1180 }}>
@@ -962,6 +964,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         recupParSemaine={recup.parSemaine}
                         compteurs={compteurs}
                         remplacantsSemaine={remplacantsSemaine}
+                        nbRemplForce={nbRemplMax}
                         compact={vueContinue}
                       />
                       {!vueContinue && (<>

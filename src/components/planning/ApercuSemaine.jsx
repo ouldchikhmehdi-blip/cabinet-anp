@@ -61,6 +61,7 @@ const s = {
 export default function ApercuSemaine({
   annee, sem, calendrier, affectationsSemaine, weekendAff = {}, reaAff = {},
   congesParSemaine = {}, recupParSemaine = {}, compteurs = null, remplacantsSemaine = {}, compact = false,
+  nbRemplForce = 0,
 }) {
   const feries = useMemo(() => {
     const m = {}
@@ -72,7 +73,9 @@ export default function ApercuSemaine({
   if (!sem || !calendrier) return null
 
   const remplSem = remplacantsSemaine?.[sem.num] ?? []
-  const nbRempl = remplSem.length
+  // Nombre de colonnes remplaçant IDENTIQUE sur toutes les semaines (max de la période) pour que les
+  // colonnes s'alignent verticalement en vue continue ; les semaines sans remplaçant ont des cases vides.
+  const nbRempl = Math.max(nbRemplForce, remplSem.length)
   const enteteRempl = Array.from({ length: nbRempl }, (_, k) => (nbRempl > 1 ? `Remplaçant ${k + 1}` : 'Remplaçant'))
 
   const iniWEapres = weekendAff?.[sem.num] ?? null
