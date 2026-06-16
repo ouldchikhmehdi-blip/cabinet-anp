@@ -92,13 +92,15 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
   const semaines = periode ? semainesDansPlage(annee, periode.debut, periode.fin) : listerSemaines(annee)
   let moisPrec = null
   for (const sem of semaines) {
+    // Ligne d'en-tête (initiales) à la FRONTIÈRE de semaine : juste avant le lundi, quand le mois du lundi
+    // change (≈ toutes les 4 semaines). Jamais au milieu d'une semaine ni d'un week-end.
+    const moisLundi = sem.lundi.getUTCMonth()
+    if (moisLundi !== moisPrec) {
+      ligneEntete(sem.lundi)
+      moisPrec = moisLundi
+    }
     for (let offset = 0; offset < 7; offset++) {
       const date = new Date(sem.lundi.getTime() + offset * JOUR_MS)
-      const mois = date.getUTCMonth()
-      if (mois !== moisPrec) {
-        ligneEntete(date)
-        moisPrec = mois
-      }
 
       // Modèle de cellule (texte + couleur + gras) calculé par la logique PARTAGÉE (grilleSemaine.js),
       // pour que l'aperçu à l'écran soit strictement identique à cet export.
