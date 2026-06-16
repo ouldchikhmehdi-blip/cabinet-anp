@@ -43,8 +43,21 @@ export default function InfoPlanning() {
           <div style={s.sousTitre}>Ce que l'outil fait automatiquement</div>
           <ul style={s.liste}>
             <li>rassemble les desiderata de tous les associés ;</li>
-            <li>tient à jour les compteurs (gardes, astreintes, réa, week-ends…) par personne et par période ;</li>
-            <li>signale les déséquilibres (quota dépassé, écart trop grand entre associés, gardes trop rapprochées, repos non respecté).</li>
+            <li>choisit la <strong>trame</strong> de chaque semaine (repli automatique vers une trame à plus de colonnes vacances quand plusieurs associés sont en congé la même semaine) ;</li>
+            <li>répartit les associés sur les colonnes (les rôles Réa, Vacances et avant/après week-end sont déjà fixés par les étapes précédentes) ;</li>
+            <li>tient à jour les compteurs (gardes de semaine, astreinte / garde du vendredi, réa, week-ends, récup jours fériés…) par personne et par période ;</li>
+            <li>signale les déséquilibres et les points à <strong>arbitrer</strong> (bloquants) ou à <strong>surveiller</strong> (gardes rapprochées, ponts, souhait non appliqué…).</li>
+          </ul>
+
+          <div style={s.sousTitre}>Les règles d'équilibre et d'équité (étape « En semaine »)</div>
+          <ul style={s.liste}>
+            <li><strong>Gardes de semaine d'abord</strong> : les gardes de semaine (mardi, et jeudi s'il est de garde) sont réparties au plus juste entre tous — c'est la priorité n°1.</li>
+            <li>L'outil équilibre <strong>aussi</strong>, à <strong>±1 près</strong> : l'<strong>astreinte du vendredi</strong>, la <strong>garde du vendredi</strong> et les <strong>récup de jours fériés</strong>.</li>
+            <li><strong>Espacement</strong> : il vise au moins <strong>une semaine</strong> entre deux gardes d'une même personne et évite les gardes rapprochées.</li>
+            <li><strong>Équité des demandes</strong> : quand une garde rapprochée est inévitable et qu'il faut trancher, elle est attribuée en priorité à celui qui a formulé le <strong>plus de souhaits</strong> (jours off, vacances, week-ends indisponibles, colonnes) — pour protéger ceux qui n'ont rien demandé de particulier.</li>
+            <li>il respecte les <strong>souhaits de colonne</strong> (sur la trame principale) et favorise les <strong>jours off</strong> demandés quand c'est possible ;</li>
+            <li>le bouton <strong>« Améliorer l'espacement »</strong> lance un 2ᵉ passage qui réduit encore les gardes rapprochées <em>sans</em> dégrader les équilibres ci-dessus ni toucher aux cases verrouillées ;</li>
+            <li>le calcul est <strong>déterministe</strong> (mêmes données → même proposition) et les cases <strong>verrouillées (cadenas)</strong> sont toujours conservées telles quelles.</li>
           </ul>
 
           <div style={s.sousTitre}>Ce que fait le faiseur de planning (un humain)</div>
