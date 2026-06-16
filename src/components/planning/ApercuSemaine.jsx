@@ -24,6 +24,13 @@ const W_REMPL = 122
 
 const fondCss = (fond) => (fond ? '#' + COULEURS_GRILLE[fond] : 'transparent')
 
+// La grille est une prévisualisation FIDÈLE de l'export Excel (toujours sur fond blanc). On force donc des
+// couleurs FIXES (encre sombre, bordures grises, fond blanc) INDÉPENDANTES du thème de l'app : sinon, en
+// mode sombre, le texte clair des cases sans fond (réa, travail) devient illisible et les dates sur fond
+// jaune/gris (vacances/week-end) disparaissent. Le bandeau/légende hors tableau gardent les couleurs du thème.
+const ENCRE = 'rgba(0,0,0,0.85)'
+const BORD = 'rgba(0,0,0,0.18)'
+
 const s = {
   wrap: { marginTop: 4 },
   bandeau: {
@@ -31,24 +38,24 @@ const s = {
     display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
   },
   bandeauVal: { color: 'var(--color-text)' },
-  table: { borderCollapse: 'collapse', fontSize: 12.5, tableLayout: 'fixed' },
+  table: { borderCollapse: 'collapse', fontSize: 12.5, tableLayout: 'fixed', background: '#fff', color: ENCRE },
   thJour: {
-    padding: '5px 8px', fontSize: 12, fontWeight: 700, color: 'var(--color-text)',
-    textAlign: 'left', border: '0.5px solid var(--color-border)', background: '#' + COULEURS_GRILLE.header,
+    padding: '5px 8px', fontSize: 12, fontWeight: 700, color: ENCRE,
+    textAlign: 'left', border: `0.5px solid ${BORD}`, background: '#' + COULEURS_GRILLE.header,
     whiteSpace: 'nowrap',
   },
   th: {
     padding: '5px 6px', fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.8)',
-    textAlign: 'center', border: '0.5px solid var(--color-border)', background: '#' + COULEURS_GRILLE.header,
+    textAlign: 'center', border: `0.5px solid ${BORD}`, background: '#' + COULEURS_GRILLE.header,
     whiteSpace: 'nowrap',
   },
   tdJour: {
-    padding: '5px 8px', fontSize: 12, fontWeight: 600, color: 'var(--color-text)',
-    border: '0.5px solid var(--color-border)', whiteSpace: 'nowrap',
+    padding: '5px 8px', fontSize: 12, fontWeight: 600, color: ENCRE,
+    border: `0.5px solid ${BORD}`, whiteSpace: 'nowrap',
   },
   td: {
-    padding: '4px 5px', textAlign: 'center', color: 'rgba(0,0,0,0.85)',
-    border: '0.5px solid var(--color-border)', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2,
+    padding: '4px 5px', textAlign: 'center', color: ENCRE,
+    border: `0.5px solid ${BORD}`, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2,
   },
   ferieNom: { fontSize: 11, fontWeight: 700, color: '#1b5e20', display: 'block' },
   legende: { display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 11, color: 'var(--color-text-tertiary)' },

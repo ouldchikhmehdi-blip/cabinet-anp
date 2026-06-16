@@ -70,6 +70,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [validation, setValidation] = useState(null)
   // Échange de colonnes (vue continue) : associé sélectionné en attente d'un 2e clic, { num, ini } ou null.
   const [selEchange, setSelEchange] = useState(null)
+  // Pile d'annulation : états `data` mémorisés AVANT chaque modification (échange, override, trame,
+  // proposer, améliorer, effacer) → permet un « Retour en arrière » pas à pas.
+  const [historique, setHistorique] = useState([])
 
   // Recueils « normaux » (l'été se gère par colonnes, hors de cette étape).
   useEffect(() => {
@@ -106,6 +109,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         if (annule) return
         setTramesData(tr); setVacancesData(vac); setCalendrier(cal); setData(sem)
         setObjectifs(obj); setWeekends(we); setReaData(rea)
+        setHistorique([]); setSelEchange(null)
         onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
@@ -304,7 +308,36 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   )
 
   // ── Handlers ──
+  // Mémorise l'état courant AVANT une modification (max 100 niveaux d'annulation).
+  function instantane() {
+    setHistorique(h => [...h.slice(-99), data])
+  }
+
+  // Retour en arrière : restaure l'état précédent (un cran par clic).
+  function annuler() {
+    if (!historique.length) return
+    const precedent = historique[historique.length - 1]
+    setHistorique(historique.slice(0, -1))
+    setData(precedent)
+    setEnregistre(false); onStatut?.('modifie'); setSelEchange(null); setEspacementInfo(null)
+  }
+
+  // Effacer tout : vide les affectations « En semaine » (proposition + ajustements) pour repartir de zéro.
+  // Les trames choisies par semaine sont conservées. Annulable via « Retour en arrière ».
+  function effacerTout() {
+    if (!Object.keys(data?.affectations ?? {}).length) return
+    if (!window.confirm(
+      'Effacer toutes les affectations « En semaine » de cette année (proposition automatique + ajustements) ?\n\n' +
+      '• Les trames choisies par semaine sont CONSERVÉES.\n' +
+      '• Action annulable avec « Retour en arrière ».'
+    )) return
+    instantane()
+    setEnregistre(false); onStatut?.('modifie'); setSelEchange(null); setEspacementInfo(null)
+    setData(prev => ({ ...prev, affectations: {}, verrous: {} }))
+  }
+
   function majTrameSemaine(num, trameId) {
+    instantane()
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const map = { ...(prev?.trameParSemaine ?? {}) }
@@ -316,6 +349,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
   // Placer un associé sur une colonne libre VERROUILLE la case ; « — » la remet en automatique.
   function majAffectationColonne(num, col, ini) {
+    instantane()
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const aff = { ...(prev.affectations ?? {}) }
@@ -331,6 +365,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   }
 
   function basculerVerrouColonne(num, col) {
+    if (data?.affectations?.[num]?.[col] == null) return // rien à verrouiller
+    instantane()
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       if (prev.affectations?.[num]?.[col] == null) return prev
@@ -365,6 +401,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       else if (ini === iniB) colB = Number(col)
     }
     if (colA == null || colB == null) return // un associé non placé : pas d'échange possible
+    instantane()
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const aff = { ...(prev.affectations ?? {}) }
@@ -427,6 +464,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
   function proposer() {
     if (!recueil) return
+    instantane()
     setEnregistre(false); setEspacementInfo(null); onStatut?.('modifie')
     setData(prev => {
       const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(prev)
@@ -448,6 +486,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   // 2e passage : recherche locale par échanges pour réduire les gardes rapprochées (équilibre préservé).
   function ameliorer() {
     if (!recueil || !data) return
+    instantane()
     const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(data)
     const { affectations: ameliorees, avant, apres, avantVR, apresVR } = ameliorerEspacementSemaines({
       semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
@@ -912,6 +951,34 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               title="Enchaîne les grilles sans marges (façon tableur). Recliquer pour revenir à la vue normale."
             >
               {vueContinue ? '▦ Vue continue : activée' : '▦ Vue continue'}
+            </button>
+            <button
+              type="button"
+              onClick={annuler}
+              disabled={historique.length === 0}
+              style={{
+                padding: '4px 10px', fontSize: 12, borderRadius: 'var(--radius-md)',
+                cursor: historique.length ? 'pointer' : 'default', border: '0.5px solid var(--color-border)',
+                background: 'var(--color-bg)',
+                color: historique.length ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)',
+                opacity: historique.length ? 1 : 0.5,
+              }}
+              title="Annuler la dernière modification (échange, override, proposition, amélioration…). Cliquez plusieurs fois pour remonter pas à pas."
+            >
+              ↩ Retour en arrière{historique.length ? ` (${historique.length})` : ''}
+            </button>
+            <button
+              type="button"
+              onClick={effacerTout}
+              disabled={!aDesAffectations}
+              style={{
+                padding: '4px 10px', fontSize: 12, borderRadius: 'var(--radius-md)',
+                cursor: aDesAffectations ? 'pointer' : 'default', border: '0.5px solid var(--color-danger)',
+                background: 'var(--color-bg)', color: 'var(--color-danger)', opacity: aDesAffectations ? 1 : 0.5,
+              }}
+              title="Efface toutes les affectations En semaine (proposition automatique + ajustements) pour repartir de zéro. Les trames choisies sont conservées. Annulable."
+            >
+              🗑 Effacer tout
             </button>
             {vueContinue && (
               <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

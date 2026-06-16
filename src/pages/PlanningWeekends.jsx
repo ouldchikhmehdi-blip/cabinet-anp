@@ -320,18 +320,21 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
-  // Bloque les desiderata de la période en cours : le recueil passe « fermé » → les associés ne
-  // peuvent plus modifier leurs choix (UI + base, cf. trigger planning_archives.sql).
-  async function bloquerDesiderata() {
-    if (!recueil || recueil.statut !== 'ouvert') return
+  // Bascule le blocage des desiderata de la période : « ouvert » ↔ « fermé ». Fermé → les associés ne
+  // peuvent plus modifier leurs choix (UI + base, cf. trigger planning_archives.sql) ; re-clic → réouvre.
+  async function basculerBlocage() {
+    if (!recueil) return
+    const versFerme = recueil.statut === 'ouvert'
     setErreur(null)
     try {
-      await definirStatutRecueil(recueil.id, 'ferme')
-      setRecueils(prev => prev.map(r => (r.id === recueil.id ? { ...r, statut: 'ferme' } : r)))
-      setBlocage('Desiderata bloqués — les associés ne peuvent plus modifier leurs choix.')
+      await definirStatutRecueil(recueil.id, versFerme ? 'ferme' : 'ouvert')
+      setRecueils(prev => prev.map(r => (r.id === recueil.id ? { ...r, statut: versFerme ? 'ferme' : 'ouvert' } : r)))
+      setBlocage(versFerme
+        ? 'Desiderata bloqués — les associés ne peuvent plus modifier leurs choix.'
+        : 'Desiderata débloqués — les associés peuvent de nouveau modifier leurs choix.')
       setTimeout(() => setBlocage(null), 4000)
     } catch {
-      setErreur('Blocage impossible (réservé au faiseur).')
+      setErreur(versFerme ? 'Blocage impossible (réservé au faiseur).' : 'Déblocage impossible (réservé au faiseur).')
     }
   }
 
@@ -442,12 +445,19 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         </div>
         <button
           type="button"
-          onClick={bloquerDesiderata}
-          disabled={!recueil || recueil.statut !== 'ouvert'}
-          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-amber)', border: '0.5px solid var(--color-amber)', opacity: (!recueil || recueil.statut !== 'ouvert') ? 0.6 : 1 }}
-          title="Ferme le recueil de desiderata de cette période : les associés ne peuvent plus modifier leurs choix. Réouverture possible dans Suivi desiderata."
+          onClick={basculerBlocage}
+          disabled={!recueil}
+          style={{
+            ...s.bouton, padding: '8px 14px', fontSize: 13, border: '0.5px solid var(--color-amber)',
+            background: recueil?.statut === 'ferme' ? 'var(--color-amber)' : 'transparent',
+            color: recueil?.statut === 'ferme' ? '#fff' : 'var(--color-amber)',
+            opacity: !recueil ? 0.6 : 1,
+          }}
+          title={recueil?.statut === 'ferme'
+            ? 'Desiderata bloqués : cliquez pour rouvrir le recueil (les associés pourront de nouveau modifier leurs choix).'
+            : 'Ferme le recueil de desiderata de cette période : les associés ne peuvent plus modifier leurs choix. Cliquez de nouveau pour rouvrir.'}
         >
-          {recueil?.statut === 'ferme' ? '🔒 Desiderata bloqués' : '🔒 Bloquer les desiderata'}
+          {recueil?.statut === 'ferme' ? '🔓 Débloquer les desiderata' : '🔒 Bloquer les desiderata'}
         </button>
         {blocage && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{blocage}</span>}
       </div>
