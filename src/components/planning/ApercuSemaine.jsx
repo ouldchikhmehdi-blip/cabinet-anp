@@ -104,11 +104,13 @@ export default function ApercuSemaine({
 
   return (
     <div style={compact ? { marginTop: 0 } : s.wrap}>
-      <div style={compact ? { ...s.bandeau, fontSize: 12, marginBottom: 3 } : s.bandeau}>
-        <span>🛏️ Garde week-end —</span>
-        <span>avant (S{sem.num - 1}) : <span style={s.bandeauVal}>{iniWEavant ?? '—'}</span></span>
-        <span>après (S{sem.num}) : <span style={s.bandeauVal}>{iniWEapres ?? '—'}</span></span>
-      </div>
+      {!compact && (
+        <div style={s.bandeau}>
+          <span>🛏️ Garde week-end —</span>
+          <span>avant (S{sem.num - 1}) : <span style={s.bandeauVal}>{iniWEavant ?? '—'}</span></span>
+          <span>après (S{sem.num}) : <span style={s.bandeauVal}>{iniWEapres ?? '—'}</span></span>
+        </div>
+      )}
       <table style={{ ...s.table, width: largeurTable }}>
         <colgroup>
           <col style={{ width: W_JOUR }} />
