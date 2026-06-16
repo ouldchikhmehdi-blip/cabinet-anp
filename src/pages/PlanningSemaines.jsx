@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
@@ -363,6 +363,52 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
+  // Affectation quotidienne par semaine (période) pour l'export : { num: { ini: colObject } }.
+  // colObject = la colonne de la trame attribuée à l'associé (porte lun..ven + service).
+  const affectationsSemaine = useMemo(() => {
+    if (!calendrier) return {}
+    const m = {}
+    for (const sem of semaines) {
+      const trame = trameDe(sem.num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, sem.num, contexteAmont, affectationsLibres)
+      const parIni = {}
+      for (const [col, ini] of Object.entries(affR)) {
+        if (ASSOCIES.includes(ini) && trame.colonnes[Number(col)]) parIni[ini] = trame.colonnes[Number(col)]
+      }
+      m[sem.num] = parIni
+    }
+    return m
+  }, [semaines, trameDe, contexteAmont, affectationsLibres, calendrier])
+
+  // Bilan CUMULÉ sur l'année par associé (export, comparaison aux objectifs annuels) :
+  // G week-end, A/G vendredi, semaines de réa, gardes de semaine (mardi+jeudi), semaines de vacances.
+  const bilan = useMemo(() => {
+    const b = {}
+    for (const ini of ASSOCIES) {
+      b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: gardesAnnee.comptes[ini] ?? 0, vacances: 0 }
+    }
+    const { weekendAff = {}, rea: reaAff = {}, vacances: vac = {} } = contexteAmont
+    for (const num of allNums) {
+      const wk = weekendAff[num]; if (wk && b[wk]) b[wk].gWeekend++
+      const r = reaAff[num]; if (r && b[r]) b[r].rea++
+      for (const ini of (vac[num] ?? [])) if (b[ini]) b[ini].vacances++
+      if (!calendrier) continue
+      const trame = trameDe(num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
+      for (const [col, ini] of Object.entries(affR)) {
+        if (!ASSOCIES.includes(ini)) continue
+        if (trame.colonnes[Number(col)]?.service?.ven) {
+          const t = typeDuJour(calendrier, num, 4)
+          if (t === 'A') b[ini].aVendredi++
+          else if (t === 'G') b[ini].gVendredi++
+        }
+      }
+    }
+    return b
+  }, [allNums, contexteAmont, gardesAnnee, trameDe, affectationsLibres, calendrier])
+
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
     const a = analyses[sem.num]
@@ -384,7 +430,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames,
+        recapTrames, affectationsSemaine, bilan,
       )
     } catch {
       setErreur('Export Excel impossible.')

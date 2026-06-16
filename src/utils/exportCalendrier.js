@@ -6,6 +6,7 @@
 import ExcelJS from 'exceljs'
 import { listerSemaines, semainesDansPlage, joursFeriesFR, formatISO, formatDateLongueFR, moisAnneeFR, typeDuJour } from './calendrier'
 import { ASSOCIES } from '../data/associes'
+import { JOURS } from './trames'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -41,7 +42,7 @@ async function telecharger(workbook, nomFichier) {
 
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -115,6 +116,11 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
       const iniRea = (!estWeekend && offset <= 4) ? (rea?.[sem.num] ?? null) : null
       const cellulesAssocies = ASSOCIES.map(a => {
         if (iniWE && a === iniWE) return role
+        // Export « En semaine » : contenu quotidien de la colonne attribuée à l'associé (lun→ven).
+        if (affectationsSemaine && !estWeekend) {
+          const col = affectationsSemaine[sem.num]?.[a]
+          return col ? (col[JOURS[offset]] ?? '') : ''
+        }
         if (iniRea && a === iniRea && !congesSemaine.includes(a)) return 'Réa'
         return ''
       })
@@ -140,12 +146,23 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
           else if (estWeekend) cell.fill = solid(ARGB.weekend)
           else if (enVac) cell.fill = solid(ARGB.vacances)
         } else if (estAssocie) {
-          // Priorité : rôle de week-end (G jaune / A orange) > congé (bleu) > grisé du week-end.
           const assoc = ASSOCIES[col - 2]
-          if (cell.value === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
-          else if (cell.value === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
-          else if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
-          else if (estWeekend) cell.fill = solid(ARGB.weekend)
+          if (affectationsSemaine && !estWeekend) {
+            // Jour ouvré (En semaine) : congé bleu > garde/astreinte si la colonne est de service > poste simple.
+            const colObj = affectationsSemaine[sem.num]?.[assoc]
+            if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
+            else if (colObj?.service?.[JOURS[offset]]) {
+              const t = typeDuJour(data, sem.num, offset)
+              if (t === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
+              else if (t === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+            }
+          } else {
+            // Priorité : rôle de week-end (G jaune / A orange) > congé (bleu) > grisé du week-end.
+            if (cell.value === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
+            else if (cell.value === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+            else if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
+            else if (estWeekend) cell.fill = solid(ARGB.weekend)
+          }
         } else if (estGroupe) {
           if (groupeAffiche === 'G') cell.fill = solid(ARGB.garde)
           else if (groupeAffiche === 'A') cell.fill = solid(ARGB.astreinte)
@@ -182,6 +199,38 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
         return v == null ? '' : v
       })
       const row = ws.addRow([ligne.label, ...valeurs, ligne.label])
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = bordures()
+        cell.alignment = centre
+        cell.font = { name: 'Calibri', size: 11 }
+      })
+    }
+  }
+
+  // ── Bloc « Réalisé à ce stade » (étape En semaine) : cumul annuel par associé, en regard des objectifs ──
+  if (bilan) {
+    ws.addRow([])
+    ws.addRow([])
+    const libBilan = `Réalisé à ce stade (année ${annee})`
+    const entete = ws.addRow([libBilan, ...ASSOCIES, libBilan])
+    entete.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.border = bordures()
+      cell.alignment = centre
+      cell.font = { name: 'Calibri', bold: true, size: 11 }
+      if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
+      else cell.fill = solid('FFF2F2F2')
+    })
+    const lignesBilan = [
+      { cle: 'gWeekend', label: 'G week-end' },
+      { cle: 'aVendredi', label: 'A vendredi' },
+      { cle: 'gVendredi', label: 'G vendredi' },
+      { cle: 'rea', label: 'Réa' },
+      { cle: 'gardeSemaine', label: 'Gardes de semaine' },
+      { cle: 'vacances', label: 'Semaines de vacances' },
+    ]
+    for (const lg of lignesBilan) {
+      const valeurs = ASSOCIES.map(a => bilan[a]?.[lg.cle] ?? 0)
+      const row = ws.addRow([lg.label, ...valeurs, lg.label])
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = bordures()
         cell.alignment = centre
