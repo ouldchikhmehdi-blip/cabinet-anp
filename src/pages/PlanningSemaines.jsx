@@ -14,7 +14,7 @@ import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import {
   proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
-  gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, resoudreTrame,
+  gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel, genererClasseurBuffer } from '../utils/exportCalendrier'
@@ -245,6 +245,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       m[sem.num] = analyserSemaineColonnes(trame, sem.num, annee, calendrier, affR, gardesAnnee.dates, {
         souhaitsParAssocie: colonnesSouhaiteesParAssocie,
         vacanciers: contexteAmont.vacances[sem.num] ?? [],
+        vacanciersSuivante: contexteAmont.vacances[sem.num + 1] ?? [],
         estPrincipale: estPrincipaleSem(sem.num),
       })
     }
@@ -274,6 +275,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       if (enVac.has(contexteAmont.weekendAff[num - 1])) incoherents.add(contexteAmont.weekendAff[num - 1])
       if (enVac.has(contexteAmont.rea[num])) incoherents.add(contexteAmont.rea[num])
       if (incoherents.size) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
+      if (al?.vendrediAvantVacances?.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${al.vendrediAvantVacances.join(', ')} de service le vendredi alors qu'il(s) part(ent) en vacances la semaine suivante (interdit) : à réaffecter.` })
       // — À surveiller (non bloquant) —
       if (a?.pont) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — pont : ${a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')} — jour férié en semaine : vérifie qui travaille et la garde/astreinte ce jour-là (l'outil ne l'ajuste pas automatiquement).` })
       if (al?.tropProche && Object.keys(al.tropProche).length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — gardes rapprochées (< 1 sem.) : ${Object.entries(al.tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}.` })
@@ -404,13 +406,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   function ameliorer() {
     if (!recueil || !data) return
     const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(data)
-    const { affectations: ameliorees, avant, apres } = ameliorerEspacementSemaines({
+    const { affectations: ameliorees, avant, apres, avantVR, apresVR } = ameliorerEspacementSemaines({
       semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
       desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
       gardesInitiales, compteAnneeInitial, fixes, affectations: data.affectations ?? {},
       aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
     })
-    setEspacementInfo({ avant, apres })
+    setEspacementInfo({ avant, apres, avantVR, apresVR })
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const aff = { ...(prev.affectations ?? {}) }
@@ -489,7 +491,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         for (const [col, ini] of Object.entries(affR)) {
           if (!ASSOCIES.includes(ini)) continue
           const colObj = trame.colonnes[Number(col)]
-          if (!colObj || colObj.service?.[jour]) continue // de-service → travaille la garde, pas de récup
+          const estRea = Number(col) === trame.rea
+          if (!colObj || (!estRea && colObj.service?.[jour])) continue // de-service → pas de récup (réa : jamais de service)
           if (!(colObj[jour] ?? '').trim()) continue       // repos → pas de récup
           total[ini]++
           ;(parSemaine[num] ??= {})[ini] = total[ini]
@@ -517,7 +520,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
       const deService = (jour) => {
         for (const [col, a] of Object.entries(affR)) {
-          if (ASSOCIES.includes(a) && trame.colonnes[Number(col)]?.service?.[jour]) return a
+          // La réa n'est jamais de service (ni garde ni astreinte).
+          if (ASSOCIES.includes(a) && Number(col) !== trame.rea && trame.colonnes[Number(col)]?.service?.[jour]) return a
         }
         return null
       }
@@ -551,11 +555,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
       for (const [col, ini] of Object.entries(affR)) {
         if (!ASSOCIES.includes(ini)) continue
-        if (trame.colonnes[Number(col)]?.service?.ven) {
-          const t = typeDuJour(calendrier, num, 4)
-          if (t === 'A') b[ini].aVendredi++
-          else if (t === 'G') b[ini].gVendredi++
-        }
+        const rv = roleVendrediCol(trame, Number(col), num, calendrier) // exclut la réa
+        if (rv === 'A') b[ini].aVendredi++
+        else if (rv === 'G') b[ini].gVendredi++
       }
     }
     return b
@@ -761,12 +763,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         {validation?.etat === 'ok' && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{validation.message}</span>}
-        {espacementInfo && (
-          <span style={{ fontSize: 13, alignSelf: 'center', color: espacementInfo.apres < espacementInfo.avant ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
-            Gardes rapprochées : {espacementInfo.avant} → {espacementInfo.apres}
-            {espacementInfo.apres === espacementInfo.avant ? ' (aucune amélioration possible sans déséquilibrer)' : ''}
-          </span>
-        )}
+        {espacementInfo && (() => {
+          const ameliore = espacementInfo.apres < espacementInfo.avant || espacementInfo.apresVR < espacementInfo.avantVR
+          return (
+            <span style={{ fontSize: 13, alignSelf: 'center', color: ameliore ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
+              Gardes rapprochées : {espacementInfo.avant} → {espacementInfo.apres} · écart vendredi/récup : {espacementInfo.avantVR} → {espacementInfo.apresVR}
+              {!ameliore ? ' (rien à améliorer sans déséquilibrer)' : ''}
+            </span>
+          )
+        })()}
       </div>
 
       {erreur && (

@@ -85,6 +85,16 @@ export function celluleAssocieJour(a, ctx) {
       const texte = offset === 0 ? String(compteurs?.vac?.[sem.num]?.[a] ?? '') : ''
       return { texte, fond: 'conge', gras: false }
     }
+    // Réa : JAMAIS de garde/astreinte. Férié travaillé → récup (vert) ; repos → bleu ; sinon « RéaN ».
+    if (iniRea && a === iniRea) {
+      const poste = col?.[jour] ?? ''
+      if (estFerie && col) {
+        if (poste.trim()) return { texte: `Récup JF-${recupParSemaine?.[sem.num]?.[a] ?? ''}`, fond: 'ferie', gras: false }
+        return { texte: '', fond: 'conge', gras: false }
+      }
+      if (!col || !poste.trim()) return { texte: '', fond: 'conge', gras: false }
+      return { texte: `Réa${compteurs?.rea?.[sem.num] ?? ''}`, fond: null, gras: false }
+    }
     // Jour férié : de-service → Garde/Astreinte (+ n°) ; sinon qui travaillait → Récup JF-N (vert) ; repos → bleu.
     if (estFerie && col) {
       if (col.service?.[jour]) {
@@ -96,12 +106,6 @@ export function celluleAssocieJour(a, ctx) {
     }
     if (!col) return { texte: '', fond: null, gras: false }
     const poste = col[jour] ?? ''
-    // Réa : « RéaN » sur les jours travaillés de la semaine de réa.
-    if (iniRea && a === iniRea && poste.trim()) {
-      const texte = `Réa${compteurs?.rea?.[sem.num] ?? ''}`
-      if (col.service?.[jour]) return { texte, fond: role === 'G' ? 'garde' : 'astreinte', gras: true }
-      return { texte, fond: null, gras: false }
-    }
     if (!poste.trim()) return { texte: '', fond: 'conge', gras: false } // repos → bleu
     // Jour de service travaillé : poste + n° (garde de semaine mardi/jeudi, ou vendredi A/G).
     if (col.service?.[jour]) {

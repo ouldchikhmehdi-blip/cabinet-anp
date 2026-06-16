@@ -128,7 +128,9 @@ export function colonnesAPourvoir(trame, spec = {}) {
 }
 
 // Dates des gardes de SEMAINE qu'une colonne génère cette semaine-là (0, 1 ou 2 dates).
+// La colonne RÉA n'est jamais « de service » : en réa, on n'est ni de garde ni d'astreinte.
 export function datesGardeSemaine(trame, colIndex, annee, num, calendrier) {
+  if (colIndex === trame?.rea) return []
   const col = trame?.colonnes?.[colIndex]
   if (!col) return []
   const lundi = lundiDeSemaineISO(annee, num)
@@ -190,7 +192,9 @@ export function gardesSemaineParAssocie(weeks, annee, calendrier, trameDe, conte
 }
 
 // Rôle du vendredi d'une colonne SI elle est de service le vendredi → 'A' | 'G' | null.
+// La colonne RÉA n'est jamais de service (ni garde ni astreinte) → null.
 export function roleVendrediCol(trame, colIndex, num, calendrier) {
+  if (colIndex === trame?.rea) return null
   const col = trame?.colonnes?.[colIndex]
   if (!col?.service?.ven) return null
   return typeDuJour(calendrier, num, 4) // 'A' (astreinte) ou 'G' (garde)
@@ -198,14 +202,16 @@ export function roleVendrediCol(trame, colIndex, num, calendrier) {
 
 // Nb de récup « jour férié » qu'une colonne génère cette semaine : +1 par jour férié ouvré (offset 0–4) où la
 // colonne TRAVAILLE (col[jour] non vide) SANS être de service (de service → garde/astreinte, pas de récup).
+// La RÉA n'étant jamais de service, un férié travaillé en réa donne toujours droit à une récup.
 export function recupColCount(trame, colIndex, feriesOffsets = []) {
   const col = trame?.colonnes?.[colIndex]
   if (!col || !feriesOffsets.length) return 0
+  const estRea = colIndex === trame?.rea
   let n = 0
   for (const off of feriesOffsets) {
     if (off < 0 || off > 4) continue
     const jour = JOURS[off]
-    if (col.service?.[jour]) continue
+    if (!estRea && col.service?.[jour]) continue
     if ((col[jour] ?? '').trim()) n++
   }
   return n
@@ -272,6 +278,15 @@ export function proposerSemaines({
     const spec = colonnesSpeciales(trame, num, contexteAmont)
     const verrou = fixes[num] ?? {}
     const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
+    // Règle DURE : pas de garde/astreinte le vendredi avant une semaine de vacances. L'occupant d'une colonne
+    // de service le vendredi ne peut pas être en vacances la semaine SUIVANTE (num+1).
+    const interditsVendredi = new Set(vacances[num + 1] ?? [])
+    const colServiceVendredi = (c) => roleVendrediCol(trame, c, num, calendrier) !== null
+    const filtrerVendredi = (c, liste) => {
+      if (!colServiceVendredi(c)) return liste
+      const ok = liste.filter(x => !interditsVendredi.has(x))
+      return ok.length ? ok : liste // repli : ne pas laisser la colonne vide (incohérence signalée en alerte)
+    }
 
     // Comptabilise ce qu'une colonne fait gagner à un associé : gardes de semaine + A/G vendredi + récup JF.
     const placer = (col, ini) => {
@@ -317,7 +332,7 @@ export function proposerSemaines({
       }
       for (const c of Object.keys(parCol).map(Number).sort((a, b) => a - b)) {
         if (out[num][c] != null) continue
-        const cands = parCol[c].filter(a => assocLibres.includes(a))
+        const cands = filtrerVendredi(c, parCol[c].filter(a => assocLibres.includes(a)))
         if (!cands.length) continue
         // Collision (deux associés veulent la même colonne) : un seul l'obtient (le moins chargé).
         const rvCol = roleVendrediCol(trame, c, num, calendrier)
@@ -342,6 +357,7 @@ export function proposerSemaines({
       if (!off || off.size === 0) continue
       let best = null, bestN = 0
       for (const c of restantes) {
+        if (colServiceVendredi(c) && interditsVendredi.has(ini)) continue // règle dure vendredi-avant-vacances
         const n = reposCouvre(c, ini)
         if (n > bestN) { bestN = n; best = c }
       }
@@ -366,7 +382,7 @@ export function proposerSemaines({
       const gardeCol = nbGardesCol(c) > 0
       const demande = (x) => demandeParAssocie[x] ?? 0
       const creeRapproche = (x) => (ecart(c, x) < ESPACEMENT_GARDE_JOURS ? 1 : 0)
-      const cands = [...assocLibres]
+      const cands = filtrerVendredi(c, [...assocLibres])
       cands.sort((a, b) =>
         (compteAnnee[a] - compteAnnee[b]) ||                 // gardes de semaine — priorité n°1
         (venRel(a) - venRel(b)) ||                           // A ou G vendredi (selon le type du vendredi)
@@ -421,7 +437,7 @@ export function ameliorerEspacementSemaines({
     const spec = colonnesSpeciales(info.trame, num, contexteAmont)
     const verrou = fixes[num] ?? {}
     const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
-    weekInfo[num] = { trame: info.trame, estPrincipale: info.estPrincipale, spec, verrou, vacanciers: new Set(vacances[num] ?? []) }
+    weekInfo[num] = { trame: info.trame, estPrincipale: info.estPrincipale, spec, verrou, vacanciers: new Set(vacances[num] ?? []), interdits: new Set(vacances[num + 1] ?? []) }
     const ajoutFixe = (col, ini) => {
       if (!ASSOCIES.includes(ini)) return
       const ds = datesGardeSemaine(info.trame, Number(col), annee, num, calendrier)
@@ -521,49 +537,51 @@ export function ameliorerEspacementSemaines({
   }
 
   const avant = penaltyTotale()
+  const ecartVR = () => Math.max(ecartDe(compteAV), ecartDe(compteGV), ecartDe(compteRJ))
+  const avantVR = ecartVR()
 
-  // ── Recherche locale : à chaque balayage, appliquer le meilleur échange améliorant ; s'arrêter à l'optimum. ──
+  // Règle DURE : un interdit (vacancier de la semaine suivante) ne peut pas occuper une colonne de service vendredi.
+  const placementInterdit = (cell, occ) => (cell.av || cell.gv) && weekInfo[cell.num]?.interdits?.has(occ)
+
+  // ── Recherche locale : objectifs = gardes rapprochées + équilibres A/G vendredi + récup JF. Amélioration de
+  // Pareto (n'aggrave aucun objectif, en améliore ≥ 1), SANS dégrader l'équilibre des gardes de semaine ni les
+  // souhaits, et en respectant la règle dure du vendredi-avant-vacances. Déterministe. ──
   const MAX_BALAYAGES = cells.length * 4 + 50
   for (let pass = 0; pass < MAX_BALAYAGES; pass++) {
-    // Associés actuellement en garde rapprochée (sinon un échange ne peut pas réduire la pénalité).
-    const enRapproche = new Set()
-    for (const ini of ASSOCIES) if (penaltyAssoc(ini) > 0) enRapproche.add(ini)
-    if (enRapproche.size === 0) break
-
-    let meilleur = null // { A, B, dP, dEq, dRepos }
+    let meilleur = null // { A, B, gain, dRepos }
     for (let i = 0; i < cells.length; i++) {
       for (let j = i + 1; j < cells.length; j++) {
         const A = cells[i], B = cells[j]
         const X = A.occ, Y = B.occ
         if (X === Y) continue
-        if (A.count === 0 && B.count === 0) continue
-        if (!enRapproche.has(X) && !enRapproche.has(Y)) continue
+        // Cellules inertes (aucune contribution) : un échange ne changerait aucun objectif.
+        if (!A.count && !A.av && !A.gv && !A.rj && !B.count && !B.av && !B.gv && !B.rj) continue
         // Validité : pas de doublon d'un associé dans une semaine (sauf échange intra-semaine).
-        if (A.num !== B.num) {
-          if (occupeSemaine(X, B.num, B.id) || occupeSemaine(Y, A.num, A.id)) continue
-        }
+        if (A.num !== B.num && (occupeSemaine(X, B.num, B.id) || occupeSemaine(Y, A.num, A.id))) continue
+        // Règle dure : l'échange ne doit pas créer un vendredi-avant-vacances interdit.
+        if (placementInterdit(A, Y) || placementInterdit(B, X)) continue
+
         const pBefore = penaltyAssoc(X) + penaltyAssoc(Y)
-        const eqBefore = ecartDe(compteAnnee)
-        const eqAVBefore = ecartDe(compteAV), eqGVBefore = ecartDe(compteGV), eqRJBefore = ecartDe(compteRJ)
+        const eqB = ecartDe(compteAnnee), avB = ecartDe(compteAV), gvB = ecartDe(compteGV), rjB = ecartDe(compteRJ)
         const souhaitBefore = souhaitInsatCell(A.num, A.col, X) + souhaitInsatCell(B.num, B.col, Y)
         const reposBefore = reposCouvreCell(A.num, A.col, X) + reposCouvreCell(B.num, B.col, Y)
         echanger(A, B)
         const pAfter = penaltyAssoc(X) + penaltyAssoc(Y)
-        const eqAfter = ecartDe(compteAnnee)
-        const eqAVAfter = ecartDe(compteAV), eqGVAfter = ecartDe(compteGV), eqRJAfter = ecartDe(compteRJ)
+        const eqA = ecartDe(compteAnnee), avA = ecartDe(compteAV), gvA = ecartDe(compteGV), rjA = ecartDe(compteRJ)
         const souhaitAfter = souhaitInsatCell(A.num, A.col, A.occ) + souhaitInsatCell(B.num, B.col, B.occ)
         const reposAfter = reposCouvreCell(A.num, A.col, A.occ) + reposCouvreCell(B.num, B.col, B.occ)
         echanger(A, B) // revert
-        const dP = pAfter - pBefore
-        const dEq = eqAfter - eqBefore
-        const dSouhait = souhaitAfter - souhaitBefore
+
+        // Contraintes dures : ne pas dégrader l'équilibre des gardes de semaine ni les souhaits.
+        if ((eqA - eqB) > 0 || (souhaitAfter - souhaitBefore) > 0) continue
+        // Objectifs (à ne jamais aggraver) : gardes rapprochées, écarts A vendredi / G vendredi / récup JF.
+        const dP = pAfter - pBefore, dAV = avA - avB, dGV = gvA - gvB, dRJ = rjA - rjB
+        if (dP > 0 || dAV > 0 || dGV > 0 || dRJ > 0) continue
+        const gain = -(dP + dAV + dGV + dRJ) // amélioration totale (> 0 requis)
+        if (gain <= 0) continue
         const dRepos = reposAfter - reposBefore
-        // Équilibre d'abord : ne pas dégrader gardes de semaine, ni A/G vendredi, ni récup JF, ni souhaits.
-        const equilibresOk = dEq <= 0 && (eqAVAfter - eqAVBefore) <= 0 && (eqGVAfter - eqGVBefore) <= 0 && (eqRJAfter - eqRJBefore) <= 0
-        if (dP < 0 && equilibresOk && dSouhait <= 0) {
-          if (!meilleur || dP < meilleur.dP || (dP === meilleur.dP && (dEq < meilleur.dEq || (dEq === meilleur.dEq && dRepos > meilleur.dRepos)))) {
-            meilleur = { A, B, dP, dEq, dRepos }
-          }
+        if (!meilleur || gain > meilleur.gain || (gain === meilleur.gain && dRepos > meilleur.dRepos)) {
+          meilleur = { A, B, gain, dRepos }
         }
       }
     }
@@ -573,7 +591,7 @@ export function ameliorerEspacementSemaines({
 
   // Réécriture des occupants modifiés dans aff (colonnes spéciales/verrouillées inchangées).
   for (const cell of cells) aff[cell.num][cell.col] = cell.occ
-  return { affectations: aff, avant, apres: penaltyTotale() }
+  return { affectations: aff, avant, apres: penaltyTotale(), avantVR, apresVR: ecartVR() }
 }
 
 // Analyse d'une semaine pour les alertes (calque analyserAffectation).
@@ -582,12 +600,16 @@ export function ameliorerEspacementSemaines({
 //   souhaitsParAssocie    → { ini: { num: col } }
 // Renvoie { tropProche:{ini:ecartJours}, souhaitNonSatisfait:[ini], nonPlaces:[ini], colonnesVides:[col], multiVacances:bool }
 export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolue, gardesParAssocie, {
-  souhaitsParAssocie = {}, vacanciers = [], estPrincipale = true,
+  souhaitsParAssocie = {}, vacanciers = [], estPrincipale = true, vacanciersSuivante = [],
 } = {}) {
   const tropProche = {}
+  // Règle dure : associés de service le vendredi alors qu'ils sont en vacances la semaine SUIVANTE.
+  const vendrediAvantVacances = []
+  const enVacancesSuivante = new Set(vacanciersSuivante)
   // Pour chaque associé placé qui génère une garde cette semaine, écart à ses AUTRES gardes.
   for (const [col, ini] of Object.entries(affResolue)) {
     if (!ASSOCIES.includes(ini)) continue
+    if (roleVendrediCol(trame, Number(col), num, calendrier) && enVacancesSuivante.has(ini)) vendrediAvantVacances.push(ini)
     const ds = datesGardeSemaine(trame, Number(col), annee, num, calendrier)
     if (!ds.length) continue
     const autres = (gardesParAssocie[ini] ?? []).filter(g => !ds.some(d => d.getTime() === g.getTime()))
@@ -620,5 +642,5 @@ export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolu
     }
   }
 
-  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, multiVacances: (vacanciers?.length ?? 0) > 1 }
+  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, vendrediAvantVacances, multiVacances: (vacanciers?.length ?? 0) > 1 }
 }
