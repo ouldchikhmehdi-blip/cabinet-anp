@@ -230,7 +230,7 @@ export function classifierCouleur(css) {
 // ou null si pas de table exploitable. Excel pose la couleur en style inline OU via des classes
 // CSS d'un bloc <style> ; pour résoudre les deux, on injecte le fragment dans un conteneur
 // hors-écran ATTACHÉ au document (getComputedStyle ne résout les classes que dans le document).
-function extraireCouleursHTML(html) {
+export function extraireCouleursHTML(html) {
   if (typeof html !== 'string' || html === '' || typeof document === 'undefined') return null
   const hote = document.createElement('div')
   hote.style.cssText = 'position:absolute;left:-99999px;top:0;width:0;height:0;overflow:hidden'

@@ -12,6 +12,8 @@ import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea } from '../utils/reaApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
+import { chargerNoel } from '../utils/noelApi'
+import { bilanNoel } from '../utils/noel'
 import {
   proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame,
@@ -56,6 +58,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [objectifs, setObjectifs] = useState(null)
   const [weekends, setWeekends] = useState(null)
   const [reaData, setReaData] = useState(null)
+  const [noelData, setNoelData] = useState(null) // grille de Noël (15 jours fournis tels quels)
   const [data, setData] = useState(null)        // { v, trameParSemaine, affectations, verrous }
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -103,12 +106,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     let annule = false
     Promise.all([
       chargerTrames(annee), chargerVacances(annee), chargerCalendrier(annee), chargerSemaines(annee),
-      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee),
+      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee),
     ])
-      .then(([tr, vac, cal, sem, obj, we, rea]) => {
+      .then(([tr, vac, cal, sem, obj, we, rea, noel]) => {
         if (annule) return
         setTramesData(tr); setVacancesData(vac); setCalendrier(cal); setData(sem)
-        setObjectifs(obj); setWeekends(we); setReaData(rea)
+        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel)
         setHistorique([]); setSelEchange(null)
         onStatut?.('vierge')
       })
@@ -556,11 +559,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   // travailler (vrai poste, ≠ de-service) un jour férié ouvré gagne une récup. La personne de service
   // (garde/astreinte) ce jour-là travaille → pas de récup ; un repos ne donne pas de récup.
   //   total : { ini: nb } · parSemaine : { num: { ini: indexCumulé } } (pour le libellé « Récup JF-N »).
-  const recup = useMemo(() => {
+  const calculerRecup = useCallback((nums) => {
     const total = {}; for (const ini of ASSOCIES) total[ini] = 0
     const parSemaine = {}
     if (!calendrier) return { total, parSemaine }
-    for (const num of [...allNums].sort((a, b) => a - b)) {
+    for (const num of [...nums].sort((a, b) => a - b)) {
       const feries = feriesParSemaine[num]
       if (!feries?.length) continue
       const trame = trameDe(num)
@@ -582,7 +585,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       }
     }
     return { total, parSemaine }
-  }, [allNums, feriesParSemaine, trameDe, contexteAmont, affectationsLibres, calendrier])
+  }, [feriesParSemaine, trameDe, contexteAmont, affectationsLibres, calendrier])
+
+  const recup = useMemo(() => calculerRecup(allNums), [calculerRecup, allNums])
+
+  // Contribution de la période de Noël (15 jours fournis tels quels) au bilan annuel + semaines ISO
+  // couvertes (qu'on exclura des agrégations normales pour éviter le double comptage).
+  const noel = useMemo(() => bilanNoel(noelData, annee), [noelData, annee])
 
   // Réa / vacanciers EFFECTIFS par semaine : qui occupe RÉELLEMENT la colonne réa / les colonnes vacances
   // dans l'affectation résolue (overrides compris). Permet aux échanges manuels (réa/vacances inclus) de se
@@ -646,12 +655,21 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   // Bilan CUMULÉ sur l'année par associé (export, comparaison aux objectifs annuels) :
   // G week-end, A/G vendredi, semaines de réa, gardes de semaine (mardi+jeudi), semaines de vacances.
   const bilan = useMemo(() => {
+    // Les semaines couvertes par la grille de Noël sont EXCLUES des agrégations normales (gardes,
+    // vendredi, réa, vacances, récup) : la grille de Noël fait autorité sur ces semaines. Ses comptes
+    // sont AJOUTÉS ensuite → total annuel correct, sans double comptage.
+    const exclu = noel.semaines
+    const numsHN = allNums.filter(n => !exclu.has(n))
+    const gSemHN = calendrier
+      ? gardesSemaineParAssocie(numsHN, annee, calendrier, trameDe, contexteAmont, affectationsLibres)
+      : { comptes: {} }
+    const recupHN = calculerRecup(numsHN)
     const b = {}
     for (const ini of ASSOCIES) {
-      b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: gardesAnnee.comptes[ini] ?? 0, vacances: 0, recupJF: recup.total[ini] ?? 0 }
+      b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: gSemHN.comptes[ini] ?? 0, vacances: 0, recupJF: recupHN.total[ini] ?? 0 }
     }
     const { weekendAff = {} } = contexteAmont
-    for (const num of allNums) {
+    for (const num of numsHN) {
       const wk = weekendAff[num]; if (wk && b[wk]) b[wk].gWeekend++
       const r = effectifs.rea[num]; if (r && b[r]) b[r].rea++
       for (const ini of (effectifs.vacanciers[num] ?? [])) if (b[ini]) b[ini].vacances++
@@ -666,8 +684,19 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         else if (rv === 'G') b[ini].gVendredi++
       }
     }
+    // Ajout des comptes de Noël (sur les semaines exclues ci-dessus).
+    for (const ini of ASSOCIES) {
+      const n = noel.parAssocie[ini]
+      if (!n) continue
+      b[ini].gWeekend += n.gWeekend
+      b[ini].aVendredi += n.aVendredi
+      b[ini].gVendredi += n.gVendredi
+      b[ini].gardeSemaine += n.gardeSemaine
+      b[ini].rea += n.rea
+      b[ini].recupJF += n.recupJF
+    }
     return b
-  }, [allNums, contexteAmont, gardesAnnee, trameDe, affectationsLibres, calendrier, recup, effectifs])
+  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, annee, effectifs, noel, calculerRecup])
 
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
