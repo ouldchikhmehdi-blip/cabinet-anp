@@ -18,6 +18,7 @@ import {
 import { colonnesSelectionnables, capaciteVacances } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import TrameGrille from '../components/planning/TrameGrille'
+import AffectationAssocies from '../components/planning/AffectationAssocies'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauConflits from '../components/planning/PanneauConflits'
 
@@ -531,7 +532,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               return (
                 <div key={sem.num} style={s.ligne(a.aArbitrer)}>
                   <div style={s.haut}>
-                    <span style={s.libSemaine}>S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}</span>
+                    <span
+                      style={{ ...s.libSemaine, cursor: trame ? 'pointer' : 'default' }}
+                      onClick={trame ? () => toggleApercu(sem.num) : undefined}
+                      title={trame ? 'Cliquer pour voir/masquer l’affectation de la semaine' : undefined}
+                    >
+                      S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
+                    </span>
                     <span style={s.badges}>
                       {a.multiVacances && (
                         <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Au moins deux associés en vacances cette semaine">
@@ -598,6 +605,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                   </div>
                   {ouvert && trame && (
                     <div style={s.apercu}>
+                      <AffectationAssocies trame={trame} affResolue={affR} annee={annee} num={sem.num} calendrier={calendrier} />
                       <TrameGrille
                         colonnes={trame.colonnes}
                         roles={{ rea: trame.rea, vacances: trame.vacances, avantWE: trame.avantWE, apresWE: trame.apresWE, remplacants: trame.remplacants }}
