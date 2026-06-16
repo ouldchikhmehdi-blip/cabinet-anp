@@ -186,15 +186,14 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return gardesSemaineParAssocie(nums, annee, calendrier, trameDe, contexteAmont, affectationsLibres).comptes
   }, [semaines, annee, calendrier, trameDe, contexteAmont, affectationsLibres])
 
-  // Analyse par semaine : repères « à arbitrer » (2+ vacances, pont) + repère scolaire.
+  // Analyse par semaine : repères informatifs (2+ vacances, pont, scolaire). La catégorie
+  // « à arbitrer » / « à surveiller » est calculée séparément (cf. categorieSem).
   const analyses = useMemo(() => {
     const m = {}
     for (const sem of semaines) {
       const vacanciers = vacancesParSemaine[sem.num] ?? []
       const feries = feriesParSemaine[sem.num] ?? []
-      const multiVacances = vacanciers.length >= 2
-      const pont = feries.length > 0
-      m[sem.num] = { vacanciers, feries, multiVacances, pont, scolaire: scolairesSet.has(sem.num), aArbitrer: multiVacances || pont }
+      m[sem.num] = { vacanciers, feries, multiVacances: vacanciers.length >= 2, pont: feries.length > 0, scolaire: scolairesSet.has(sem.num) }
     }
     return m
   }, [semaines, vacancesParSemaine, feriesParSemaine, scolairesSet])
@@ -216,33 +215,52 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [semaines, trameDe, contexteAmont, affectationsLibres, annee, calendrier, gardesAnnee, colonnesSouhaiteesParAssocie, estPrincipaleSem])
 
-  const conflits = useMemo(() => {
-    const out = []
+  // Deux catégories distinctes :
+  //  - BLOQUANT (« À arbitrer ») : planning invalide tant que non résolu (non placé, colonne de travail
+  //    vide, capacité vacances dépassée, vacancier désigné au week-end/réa).
+  //  - SURVEILLER (non bloquant) : planning valide mais à vérifier (pont, gardes rapprochées, souhait ignoré).
+  const { conflitsBloquants, conflitsSurveiller, semainesBloquantes, semainesSurveiller } = useMemo(() => {
+    const bloquants = []
+    const surveiller = []
     for (const sem of semaines) {
-      const al = alertesColonnes[sem.num]
-      if (!al) continue
-      if (al.nonPlaces.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — associé(s) non placé(s) : ${al.nonPlaces.join(', ')} (pas assez de colonnes libres).` })
-      if (al.colonnesVides.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — colonne(s) libre(s) non pourvue(s) : ${al.colonnesVides.map(c => `C${c + 1}`).join(', ')}.` })
-      // Conflit vacances uniquement si le nombre de congés DÉPASSE la capacité de la trame effective.
-      const nbVac = analyses[sem.num]?.vacanciers.length ?? 0
-      const capVac = capaciteVacances(trameDe(sem.num))
-      if (nbVac > capVac) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${nbVac} associés en vacances mais la trame n'a que ${capVac} colonne(s) vacances : placez le(s) congé(s) en trop à la main ou choisissez une autre trame.` })
-      if (al.souhaitsIgnoresTrame?.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${al.souhaitsIgnoresTrame.join(', ')} avai(en)t demandé une colonne (trame principale) ; cette semaine utilise une trame spécifique → souhait non applicable.` })
-      // Incohérence amont : un vacancier de la semaine est désigné au week-end (avant/après-WE) ou à la réa.
-      const enVac = new Set(contexteAmont.vacances[sem.num] ?? [])
+      const num = sem.num
+      const al = alertesColonnes[num]
+      const a = analyses[num]
+      // — Bloquants —
+      if (al?.nonPlaces.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — associé(s) non placé(s) : ${al.nonPlaces.join(', ')} (pas assez de colonnes de travail).` })
+      if (al?.colonnesVides.length) bloquants.push({ severite: 'amber', semaine: num, message: `S${num} — colonne(s) de travail non pourvue(s) : ${al.colonnesVides.map(c => `C${c + 1}`).join(', ')}.` })
+      const nbVac = a?.vacanciers.length ?? 0
+      const capVac = capaciteVacances(trameDe(num))
+      if (nbVac > capVac) bloquants.push({ severite: 'amber', semaine: num, message: `S${num} — ${nbVac} associés en vacances mais la trame n'a que ${capVac} colonne(s) vacances : placez le(s) congé(s) en trop à la main ou choisissez une autre trame.` })
+      const enVac = new Set(contexteAmont.vacances[num] ?? [])
       const incoherents = new Set()
-      if (enVac.has(contexteAmont.weekendAff[sem.num])) incoherents.add(contexteAmont.weekendAff[sem.num])
-      if (enVac.has(contexteAmont.weekendAff[sem.num - 1])) incoherents.add(contexteAmont.weekendAff[sem.num - 1])
-      if (enVac.has(contexteAmont.rea[sem.num])) incoherents.add(contexteAmont.rea[sem.num])
-      if (incoherents.size) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
+      if (enVac.has(contexteAmont.weekendAff[num])) incoherents.add(contexteAmont.weekendAff[num])
+      if (enVac.has(contexteAmont.weekendAff[num - 1])) incoherents.add(contexteAmont.weekendAff[num - 1])
+      if (enVac.has(contexteAmont.rea[num])) incoherents.add(contexteAmont.rea[num])
+      if (incoherents.size) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
+      // — À surveiller (non bloquant) —
+      if (a?.pont) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — pont : ${a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')} (couverture à vérifier).` })
+      if (al?.tropProche && Object.keys(al.tropProche).length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — gardes rapprochées (< 1 sem.) : ${Object.entries(al.tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}.` })
+      if (al?.souhaitsIgnoresTrame?.length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — souhait de colonne ignoré (trame ≠ principale) : ${al.souhaitsIgnoresTrame.join(', ')}.` })
     }
-    return out
+    return {
+      conflitsBloquants: bloquants,
+      conflitsSurveiller: surveiller,
+      semainesBloquantes: new Set(bloquants.map(c => c.semaine)),
+      semainesSurveiller: new Set(surveiller.map(c => c.semaine)),
+    }
   }, [semaines, alertesColonnes, analyses, trameDe, contexteAmont])
 
-  const nbArbitrer = useMemo(() => semaines.filter(s => analyses[s.num]?.aArbitrer).length, [semaines, analyses])
+  // Catégorie d'une semaine : 'bloquant' (orange) > 'surveiller' (bleu) > null (neutre).
+  const categorieSem = useCallback((num) => (
+    semainesBloquantes.has(num) ? 'bloquant' : (semainesSurveiller.has(num) ? 'surveiller' : null)
+  ), [semainesBloquantes, semainesSurveiller])
+
+  const nbArbitrer = semainesBloquantes.size
+  const nbSurveiller = semainesSurveiller.size
   const semainesAffichees = useMemo(
-    () => (filtreArbitrer ? semaines.filter(s => analyses[s.num]?.aArbitrer) : semaines),
-    [semaines, analyses, filtreArbitrer]
+    () => (filtreArbitrer ? semaines.filter(s => semainesBloquantes.has(s.num)) : semaines),
+    [semaines, semainesBloquantes, filtreArbitrer]
   )
 
   // ── Handlers ──
@@ -355,10 +373,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       trame: trame ? trame.nom : '—',
       specifique: trame != null && !estPrincipale,
       repli: !!repli,
-      arbitrer: !!a?.aArbitrer,
+      arbitrer: semainesBloquantes.has(sem.num),
       motif,
     }
-  }), [semaines, analyses, resoudreSem])
+  }), [semaines, analyses, resoudreSem, semainesBloquantes])
 
   async function exporter() {
     setErreur(null); setExportEnCours(true)
@@ -389,10 +407,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)', padding: '8px 14px', marginBottom: 24,
     },
-    ligne: (arbitrer) => ({
+    // Couleur de carte par catégorie : 'bloquant' (orange) > 'surveiller' (bleu) > neutre.
+    ligne: (categorie) => ({
       padding: '8px 10px', marginBottom: 6, borderRadius: 'var(--radius-md)',
-      border: `0.5px solid ${arbitrer ? 'var(--color-amber)' : 'var(--color-border)'}`,
-      background: arbitrer ? 'var(--color-amber-light)' : 'var(--color-bg)',
+      border: `0.5px solid ${categorie === 'bloquant' ? 'var(--color-amber)' : categorie === 'surveiller' ? 'var(--color-primary)' : 'var(--color-border)'}`,
+      background: categorie === 'bloquant' ? 'var(--color-amber-light)' : categorie === 'surveiller' ? 'var(--color-primary-light)' : 'var(--color-bg)',
     }),
     haut: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
     libSemaine: { fontSize: 13, fontWeight: 600, color: 'var(--color-text)', minWidth: 168 },
@@ -508,11 +527,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             ))}
           </div>
 
-          <PanneauConflits conflits={conflits} />
+          <PanneauConflits conflits={conflitsBloquants} titre="⚠ À arbitrer" couleurBordure="var(--color-danger)" messageVide="Rien à arbitrer ✓" />
+          <PanneauConflits conflits={conflitsSurveiller} titre="👁 À surveiller" couleurBordure="var(--color-primary)" messageVide="Rien à surveiller ✓" />
 
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ color: nbArbitrer ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>
-              {nbArbitrer ? `🌉 ${nbArbitrer} semaine${nbArbitrer > 1 ? 's' : ''} à arbitrer` : '✓ Aucune semaine à arbitrer'}
+              {nbArbitrer ? `⚠ ${nbArbitrer} à arbitrer` : '✓ Aucune semaine à arbitrer'}
+            </span>
+            <span style={{ color: nbSurveiller ? 'var(--color-primary)' : 'var(--color-text-tertiary)' }}>
+              {nbSurveiller ? `👁 ${nbSurveiller} à surveiller` : '✓ Rien à surveiller'}
             </span>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', cursor: 'pointer' }}>
               <input type="checkbox" checked={filtreArbitrer} onChange={e => setFiltreArbitrer(e.target.checked)} />
@@ -538,7 +561,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               const tramesOptions = trames.filter(t => vReq < 2 || capaciteVacances(t) >= vReq || t.id === effectiveId)
               const nbMasquees = trames.length - tramesOptions.length
               return (
-                <div key={sem.num} style={s.ligne(a.aArbitrer)}>
+                <div key={sem.num} style={s.ligne(categorieSem(sem.num))}>
                   <div style={s.haut}>
                     <span
                       style={{ ...s.libSemaine, cursor: trame ? 'pointer' : 'default' }}
@@ -549,12 +572,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                     </span>
                     <span style={s.badges}>
                       {a.multiVacances && (
-                        <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Au moins deux associés en vacances cette semaine">
+                        <span style={s.badge('var(--color-text-secondary)', 'transparent')} title="Au moins deux associés en vacances cette semaine (information)">
                           🏖️ {a.vacanciers.length} en vacances : {a.vacanciers.join(', ')}
                         </span>
                       )}
                       {a.pont && (
-                        <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Jour férié tombant un jour ouvré">
+                        <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — jour férié tombant un jour ouvré">
                           🌉 Pont : {a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')}
                         </span>
                       )}
@@ -562,13 +585,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.badge('var(--color-text-tertiary)', 'transparent')} title="Semaine de vacances scolaires">🎒 Vacances scolaires</span>
                       )}
                       {Object.keys(tropProche).length > 0 && (
-                        <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Gardes trop rapprochées (< 1 semaine)">
-                          🟠 Gardes rapprochées : {Object.entries(tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}
+                        <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — gardes trop rapprochées (< 1 semaine)">
+                          🔵 Gardes rapprochées : {Object.entries(tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}
                         </span>
                       )}
                       {al?.souhaitsIgnoresTrame?.length > 0 && (
-                        <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Trame spécifique : la colonne demandée (sur la trame principale) ne s'applique pas">
-                          🟠 Souhait colonne ignoré (trame ≠ principale) : {al.souhaitsIgnoresTrame.join(', ')}
+                        <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — trame spécifique : la colonne demandée (sur la trame principale) ne s'applique pas">
+                          🔵 Souhait colonne ignoré (trame ≠ principale) : {al.souhaitsIgnoresTrame.join(', ')}
                         </span>
                       )}
                     </span>
