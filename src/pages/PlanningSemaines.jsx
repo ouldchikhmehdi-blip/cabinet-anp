@@ -773,11 +773,40 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               const vReq = a.vacanciers.length
               const tramesOptions = trames.filter(t => vReq < 2 || capaciteVacances(t) >= vReq || t.id === effectiveId)
               const nbMasquees = trames.length - tramesOptions.length
+              // Badges pertinents (à arbitrer / à surveiller) — réutilisés en vue normale ET en vue continue.
+              const badgesEl = (
+                <>
+                  {a.multiVacances && (
+                    <span style={s.badge('var(--color-text-secondary)', 'transparent')} title="Au moins deux associés en vacances cette semaine (information)">
+                      🏖️ {a.vacanciers.length} en vacances : {a.vacanciers.join(', ')}
+                    </span>
+                  )}
+                  {a.pont && (
+                    <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — jour férié tombant un jour ouvré">
+                      🌉 Pont : {a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')}
+                    </span>
+                  )}
+                  {a.scolaire && (
+                    <span style={s.badge('var(--color-text-tertiary)', 'transparent')} title="Semaine de vacances scolaires">🎒 Vacances scolaires</span>
+                  )}
+                  {Object.keys(tropProche).length > 0 && (
+                    <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — gardes trop rapprochées (< 1 semaine)">
+                      🔵 Gardes rapprochées : {Object.entries(tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}
+                    </span>
+                  )}
+                  {al?.souhaitsIgnoresTrame?.length > 0 && (
+                    <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — trame spécifique : la colonne demandée (sur la trame principale) ne s'applique pas">
+                      🔵 Souhait colonne ignoré (trame ≠ principale) : {al.souhaitsIgnoresTrame.join(', ')}
+                    </span>
+                  )}
+                </>
+              )
               return (
                 <div key={sem.num} style={vueContinue ? s.ligneCompact(categorieSem(sem.num)) : s.ligne(categorieSem(sem.num))}>
                   {vueContinue && (
-                    <div style={s.labelCompact(categorieSem(sem.num))}>
-                      S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}{trame ? ` · ${trame.nom}` : ' · Aucune trame'}
+                    <div style={{ ...s.labelCompact(categorieSem(sem.num)), display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span>S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}{trame ? ` · ${trame.nom}` : ' · Aucune trame'}</span>
+                      {badgesEl}
                     </div>
                   )}
                   {!vueContinue && (<>
@@ -790,31 +819,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       <span style={s.libSemaine}>
                         S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
                       </span>
-                      <span style={s.badges}>
-                      {a.multiVacances && (
-                        <span style={s.badge('var(--color-text-secondary)', 'transparent')} title="Au moins deux associés en vacances cette semaine (information)">
-                          🏖️ {a.vacanciers.length} en vacances : {a.vacanciers.join(', ')}
-                        </span>
-                      )}
-                      {a.pont && (
-                        <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — jour férié tombant un jour ouvré">
-                          🌉 Pont : {a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')}
-                        </span>
-                      )}
-                      {a.scolaire && (
-                        <span style={s.badge('var(--color-text-tertiary)', 'transparent')} title="Semaine de vacances scolaires">🎒 Vacances scolaires</span>
-                      )}
-                      {Object.keys(tropProche).length > 0 && (
-                        <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — gardes trop rapprochées (< 1 semaine)">
-                          🔵 Gardes rapprochées : {Object.entries(tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}
-                        </span>
-                      )}
-                      {al?.souhaitsIgnoresTrame?.length > 0 && (
-                        <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="À surveiller — trame spécifique : la colonne demandée (sur la trame principale) ne s'applique pas">
-                          🔵 Souhait colonne ignoré (trame ≠ principale) : {al.souhaitsIgnoresTrame.join(', ')}
-                        </span>
-                      )}
-                      </span>
+                      <span style={s.badges}>{badgesEl}</span>
                     </div>
                     <select
                       value={trameParSemaine[sem.num] != null ? String(trameParSemaine[sem.num]) : ''}
