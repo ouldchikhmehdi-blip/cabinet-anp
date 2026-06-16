@@ -113,14 +113,23 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   const weekendAff = useMemo(() => weekends?.affectations ?? {}, [weekends])
 
+  // Semaines de congé par associé (toute l'année, pour l'espacement souple) : { ini: [nums] }.
+  const semainesVacancesParAssocie = useMemo(() => {
+    const m = {}
+    for (const [num, inis] of Object.entries(vacances)) {
+      for (const i of (inis ?? [])) (m[i] ??= []).push(Number(num))
+    }
+    return m
+  }, [vacances])
+
   const analyses = useMemo(() => {
     const m = {}
-    for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num), weekendAff, colonnesSouhaiteesParAssocie)
+    for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num), weekendAff, colonnesSouhaiteesParAssocie, semainesVacancesParAssocie)
     return m
-  }, [semaines, vacances, refusParAssocie, scolairesSet, weekendAff, colonnesSouhaiteesParAssocie])
+  }, [semaines, vacances, refusParAssocie, scolairesSet, weekendAff, colonnesSouhaiteesParAssocie, semainesVacancesParAssocie])
 
   const recap = useMemo(() => {
-    let couvertes = 0, sans = 0, refus = 0, sous = 0, garde = 0
+    let couvertes = 0, sans = 0, refus = 0, sous = 0, garde = 0, rappr = 0
     for (const s of semaines) {
       const a = analyses[s.num]
       if ((vacances[s.num]?.length ?? 0) > 0) couvertes++
@@ -128,8 +137,9 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       if (a?.refus?.length) refus++
       if (a?.sousScolaire) sous++
       if (a?.gardeCollee?.length) garde++
+      if (a?.rapprochees?.length) rappr++
     }
-    return { total: semaines.length, couvertes, sans, refus, sous, garde }
+    return { total: semaines.length, couvertes, sans, refus, sous, garde, rappr }
   }, [semaines, vacances, analyses])
 
   const compteParAssocie = useMemo(() => {
@@ -319,6 +329,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
             <span style={{ color: recap.refus ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.refus} refus</span>
             <span style={{ color: recap.sous ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.sous} scolaire &lt; 2</span>
             <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} garde collée</span>
+            <span style={{ color: recap.rappr ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.rappr} rapprochée(s)</span>
           </div>
 
           {/* Compteurs par associé */}
@@ -361,7 +372,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                       {a.sousScolaire && <span style={s.etat('var(--color-amber)')} title="Semaine scolaire : moins de 2 associés en congé">🟠 scol&lt;2</span>}
                       {a.gardeCollee.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Vacances accolées à un week-end de garde : ${a.gardeCollee.join(', ')}`}>🟠 garde</span>}
                       {a.souhaitColonne.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Souhait de colonne (veulent travailler) cette semaine : ${a.souhaitColonne.join(', ')}`}>🟠 colonne</span>}
-                      {!a.sansVacance && a.refus.length === 0 && !a.sousScolaire && a.gardeCollee.length === 0 && a.souhaitColonne.length === 0 && <span style={s.etat('var(--color-success)')}>✓</span>}
+                      {a.rapprochees.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Deux semaines de congé à moins de 4 semaines d'écart : ${a.rapprochees.join(', ')}`}>🟠 rapprochées</span>}
+                      {!a.sansVacance && a.refus.length === 0 && !a.sousScolaire && a.gardeCollee.length === 0 && a.souhaitColonne.length === 0 && a.rapprochees.length === 0 && <span style={s.etat('var(--color-success)')}>✓</span>}
                     </span>
                     <select value="" onChange={() => {}} style={s.selPetit} title="Associés ayant souhaité cette semaine (desiderata)">
                       <option value="">{souhaits.length} souhait{souhaits.length > 1 ? 's' : ''}</option>

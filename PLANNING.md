@@ -132,6 +132,7 @@ Chaîne logique :
 ### 6. Règles molles (à viser, ajustables)
 
 - **Espacement des gardes** : idéalement ≥ 10 jours entre deux gardes (au minimum une semaine).
+- **Espacement des vacances** : éviter deux semaines de congé d'un même associé à **moins de 4 semaines** d'écart (« deux sur quatre »). Règle molle : l'attribution auto l'évite au maximum mais le fait si nécessaire ; sinon **pastille orange « rapprochées »** (et compteur), le faiseur arbitre. Jamais bloquant. (`ESPACEMENT_VAC_MIN`, `src/utils/vacances.js`.)
 - **Astreintes** : plus de tolérance, peuvent être plus rapprochées.
 - **Au bloc** (viscéral ou Bloc A) : souvent off le lendemain (pas systématique).
 - Ces règles se relâchent en situation dégradée (été, sous-effectif), où gardes/astreintes peuvent être rapprochées.

@@ -9,6 +9,10 @@ import { ASSOCIES } from '../data/associes'
 
 export const VERSION_VAC = 1
 
+// Espacement souhaité entre deux semaines de vacances d'un même associé (règle MOLLE) :
+// on évite d'avoir deux congés à moins de 4 semaines d'écart (« deux sur quatre »).
+export const ESPACEMENT_VAC_MIN = 4
+
 export function vacancesVide() {
   return { v: VERSION_VAC, vacances: {} }
 }
@@ -31,7 +35,9 @@ export function normaliserVacances(data) {
 //                 à un week-end de garde (avant comme après).
 //   souhaitColonne : associés mis en congé qui avaient souhaité une colonne (travailler) cette
 //                    semaine — le congé contredit ce souhait.
-export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}, colonnesSouhaiteesParAssocie = {}) {
+//   rapprochees : associés ayant une AUTRE semaine de congé à moins de ESPACEMENT_VAC_MIN
+//                 (règle molle : on évite deux congés trop rapprochés ; alerte seulement).
+export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, semainesVacancesParAssocie = {}) {
   const liste = inis ?? []
   return {
     sansVacance: liste.length === 0,
@@ -39,6 +45,7 @@ export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekend
     sousScolaire: !!estScolaire && liste.length < 2,
     gardeCollee: liste.filter(i => weekendAff?.[num] === i || weekendAff?.[num - 1] === i),
     souhaitColonne: liste.filter(i => Number.isInteger(colonnesSouhaiteesParAssocie?.[i]?.[num])),
+    rapprochees: liste.filter(i => (semainesVacancesParAssocie?.[i] ?? []).some(w => w !== num && Math.abs(w - num) < ESPACEMENT_VAC_MIN)),
   }
 }
 
@@ -60,11 +67,18 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
 
   const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
 
-  // 1) Souhaits d'abord (hors refus, par cohérence).
+  // Semaines de congé déjà connues par associé (hors-plage), pour l'espacement souple.
+  const semParAssocie = {}
+  for (const ini of ASSOCIES) semParAssocie[ini] = []
+  for (const [num, inis] of Object.entries(vacancesHorsPlage)) {
+    for (const ini of inis) if (semParAssocie[ini]) semParAssocie[ini].push(Number(num))
+  }
+
+  // 1) Souhaits d'abord (hors refus, par cohérence) — on respecte le souhait même rapproché.
   for (const num of nums) {
     const souhaits = ASSOCIES.filter(ini => souhaitParAssocie?.[ini]?.has(num) && !refusParAssocie?.[ini]?.has(num))
     resultat[num] = [...souhaits]
-    for (const ini of souhaits) compte[ini]++
+    for (const ini of souhaits) { compte[ini]++; semParAssocie[ini].push(num) }
   }
 
   // 2) Couverture minimale (1, ou 2 en semaine scolaire) avec les moins chargés, hors refus.
@@ -72,11 +86,14 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
     const min = scolairesSet?.has(num) ? 2 : 1
     const gardeCollee = (ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
     const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
+    // Règle molle : éviter deux congés du même associé à moins de ESPACEMENT_VAC_MIN.
+    const rapproche = (ini) => semParAssocie[ini].some(w => Math.abs(w - num) < ESPACEMENT_VAC_MIN)
     while (resultat[num].length < min) {
       const base = ASSOCIES.filter(ini => !resultat[num].includes(ini) && !refusParAssocie?.[ini]?.has(num))
-      // Éviter une garde collée ; à défaut (sinon couverture impossible), on relâche.
-      let candidats = base.filter(ini => !gardeCollee(ini))
-      if (candidats.length === 0) candidats = base
+      // Éviter garde collée ET congés rapprochés ; on relâche progressivement si la couverture l'exige.
+      let candidats = base.filter(ini => !gardeCollee(ini) && !rapproche(ini))
+      if (candidats.length === 0) candidats = base.filter(ini => !gardeCollee(ini)) // relâche l'espacement
+      if (candidats.length === 0) candidats = base                                  // relâche la garde collée
       if (candidats.length === 0) break
       // Moins chargé d'abord ; on déprioritise un souhait de colonne (le congé le contredirait).
       candidats.sort((a, b) =>
@@ -87,6 +104,7 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
       const choisi = candidats[0]
       resultat[num].push(choisi)
       compte[choisi]++
+      semParAssocie[choisi].push(num)
     }
   }
   return resultat
