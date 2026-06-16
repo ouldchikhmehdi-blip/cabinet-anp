@@ -3,7 +3,7 @@
 // Lecture pour tout authenticated ; écriture réservée au faiseur (RLS).
 // ============================================================
 import { supabase } from '../lib/supabase'
-import { listerSemaines, semainesVacancesScolaires } from './calendrier'
+import { listerSemaines, semainesVacancesScolaires, DEFAUT_ROTATION } from './calendrier'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -41,7 +41,7 @@ export async function recupererVacancesScolairesZoneC(annee) {
 export function calendrierVide(annee) {
   const semaines = {}
   for (const s of listerSemaines(annee)) {
-    semaines[s.num] = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
+    semaines[s.num] = { ...DEFAUT_ROTATION }
   }
   return { semaines, vacancesScolaires: semainesVacancesScolaires(annee), pontsEcartes: [] }
 }

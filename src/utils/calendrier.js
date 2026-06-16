@@ -168,6 +168,37 @@ export function joursFeriesFR(annee) {
     .map(f => ({ iso: formatISO(f.date), nom: f.nom, date: f.date }))
 }
 
+// Jours fériés tombant un jour OUVRÉ (lundi→vendredi), groupés par numéro de semaine ISO.
+// Les fériés tombant un samedi/dimanche sont exclus (le bloc ne tourne pas le week-end).
+// → { <num>: [{ iso, nom, jourLabel }] }
+const JOUR_OUVRE_LABEL = { 1: 'lundi', 2: 'mardi', 3: 'mercredi', 4: 'jeudi', 5: 'vendredi' }
+export function feriesEnSemaine(annee) {
+  const parSemaine = {}
+  for (const f of joursFeriesFR(annee)) {
+    const jour = f.date.getUTCDay() // 0=dim, 1=lun … 5=ven, 6=sam
+    if (jour < 1 || jour > 5) continue
+    const num = numeroSemaineISO(f.date)
+    if (!parSemaine[num]) parSemaine[num] = []
+    parSemaine[num].push({ iso: f.iso, nom: f.nom, jourLabel: JOUR_OUVRE_LABEL[jour] })
+  }
+  return parSemaine
+}
+
+// ── Type garde / astreinte d'un jour de la semaine (rotation avec l'autre groupe). ──
+// Source unique pour la base calendrier (PLANNING.md §3) : lun/mar/mer sont fixes ;
+// jeu/ven/sam/dim viennent de la base saisie, sinon valeur par défaut.
+export const TYPE_FIXE = { 0: 'A', 1: 'G', 2: 'A' }              // lun=Astreinte, mar=Garde, mer=Astreinte
+export const CLE_JOUR = { 3: 'jeu', 4: 'ven', 5: 'sam', 6: 'dim' }
+export const DEFAUT_ROTATION = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
+
+// Type ('G' garde | 'A' astreinte) d'un jour (offset 0=lundi … 6=dimanche) d'une semaine ISO
+// donnée, d'après la base calendrier `data` ({ semaines: { <num>: { jeu, ven, sam, dim } } }).
+export function typeDuJour(calendrier, numSemaine, offset) {
+  if (offset <= 2) return TYPE_FIXE[offset]
+  const cle = CLE_JOUR[offset]
+  return calendrier?.semaines?.[numSemaine]?.[cle] ?? DEFAUT_ROTATION[cle]
+}
+
 // ── Vacances scolaires zone C — pré-remplissage par défaut (vide). ──
 // Les vraies dates sont récupérées en direct depuis l'API officielle
 // (cf. recupererVacancesScolairesZoneC dans calendrierApi.js), via un bouton

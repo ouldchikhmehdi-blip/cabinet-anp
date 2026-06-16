@@ -4,15 +4,10 @@
 // Couleurs gérées via ExcelJS (la lib xlsx communautaire ne sait pas colorer).
 // ============================================================
 import ExcelJS from 'exceljs'
-import { listerSemaines, semainesDansPlage, joursFeriesFR, formatISO, formatDateLongueFR, moisAnneeFR } from './calendrier'
+import { listerSemaines, semainesDansPlage, joursFeriesFR, formatISO, formatDateLongueFR, moisAnneeFR, typeDuJour } from './calendrier'
 import { ASSOCIES } from '../data/associes'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
-
-// Rôle fixe lun/mar/mer (§3) ; jeu/ven/sam/dim viennent de la base saisie.
-const FIXE = { 0: 'A', 1: 'G', 2: 'A' }
-const CLE = { 3: 'jeu', 4: 'ven', 5: 'sam', 6: 'dim' }
-const DEFAUT = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
 
 // Fonds ARGB (FF = opaque).
 const ARGB = {
@@ -28,11 +23,6 @@ const BORDURE = 'FFBFBFBF'
 
 function solid(argb) {
   return { type: 'pattern', pattern: 'solid', fgColor: { argb } }
-}
-
-function roleDuJour(data, num, offset) {
-  if (offset <= 2) return FIXE[offset]
-  return data.semaines?.[num]?.[CLE[offset]] ?? DEFAUT[CLE[offset]]
 }
 
 // Déclenche le téléchargement du classeur.
@@ -105,7 +95,7 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
       const estWeekend = offset >= 5
       const estFerie = !!feries[iso]
       const enVac = vacances.has(sem.num)
-      const role = roleDuJour(data, sem.num, offset)
+      const role = typeDuJour(data, sem.num, offset)
       const dateLong = formatDateLongueFR(date)
 
       // Colonne G/A : on n'affiche que vendredi / samedi / dimanche, plus le jeudi
