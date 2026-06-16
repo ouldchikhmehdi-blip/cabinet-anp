@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { setMasqueMontants } from './data/mockData'
 import { useAuth } from './auth/AuthContext'
 import { supabase } from './lib/supabase'
+import { peutQuitter } from './utils/gardeNavigation'
 import Login from './auth/Login'
 import EnrollMFA from './auth/EnrollMFA'
 import AcceptInvitation from './auth/AcceptInvitation'
@@ -149,7 +150,7 @@ export default function App() {
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar
         currentPage={page}
-        onNavigate={setPage}
+        onNavigate={(p) => { if (peutQuitter()) setPage(p) }}
         masque={masque}
         onToggleMasque={toggleMasque}
         sombre={sombre}

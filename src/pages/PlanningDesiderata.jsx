@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026 } from '../utils/calendrier'
-import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES } from '../utils/desiderata'
+import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES, normaliser } from '../utils/desiderata'
 import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../utils/desiderataApi'
+import { charger as chargerLocal, sauver as sauverLocal } from '../utils/stockage'
+import { definirGardeNavigation } from '../utils/gardeNavigation'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { colonnesSelectionnables } from '../utils/trames'
@@ -58,6 +60,8 @@ export default function PlanningDesiderata() {
   const [chargement, setChargement] = useState(false)
   const [flash, setFlash] = useState(null)
   const [erreur, setErreur] = useState(null)
+  const [brouillonActif, setBrouillonActif] = useState(false) // brouillon local non transmis
+  const baselineRef = useRef(null)                              // signature JSON des données chargées/transmises
   const [semainesScolaires, setSemainesScolaires] = useState([]) // vacances scolaires (Base calendrier)
   const [tramesData, setTramesData] = useState(null) // catalogue de trames de l'année (pour la principale)
   const [nouvSouhaitSem, setNouvSouhaitSem] = useState('')
@@ -115,10 +119,24 @@ export default function PlanningDesiderata() {
       try {
         const r = await chargerMesDesiderata(session.user.id, recueilId)
         if (annule) return
-        setData(r.data); setSoumis(r.soumis); setMajLe(r.updatedAt)
-        // Verrouillé si déjà transmis ; édition si jamais soumis et recueil ouvert.
+        setSoumis(r.soumis); setMajLe(r.updatedAt)
+        baselineRef.current = JSON.stringify(r.data) // référence = données en base
         const rec = recueils.find(x => x.id === recueilId)
-        setEdition(!r.soumis && rec?.statut !== 'ferme')
+        const cle = `desiderata_brouillon_${session.user.id}_${recueilId}`
+        // Brouillon local non transmis : on le restaure s'il diffère de la base et que le recueil est ouvert.
+        const brouillon = chargerLocal(cle, null)
+        const dataBrouillon = brouillon ? normaliser(brouillon) : null
+        const restaurable = dataBrouillon && rec?.statut !== 'ferme' && JSON.stringify(dataBrouillon) !== baselineRef.current
+        if (restaurable) {
+          setData(dataBrouillon); setEdition(true); setBrouillonActif(true)
+          setFlash('Brouillon récupéré (non transmis).')
+          setTimeout(() => setFlash(null), 4000)
+        } else {
+          if (dataBrouillon) sauverLocal(cle, null) // brouillon devenu inutile
+          setData(r.data); setBrouillonActif(false)
+          // Verrouillé si déjà transmis ; édition si jamais soumis et recueil ouvert.
+          setEdition(!r.soumis && rec?.statut !== 'ferme')
+        }
       } catch {
         if (!annule) setErreur('Impossible de charger vos desiderata.')
       } finally {
@@ -128,6 +146,30 @@ export default function PlanningDesiderata() {
     charger()
     return () => { annule = true }
   }, [recueilId, session, recueils])
+
+  // Brouillon auto (local) : écrit dès que `data` diffère des données chargées, en édition seulement.
+  useEffect(() => {
+    if (!edition || !recueilId || !session) return
+    if (baselineRef.current == null || JSON.stringify(data) === baselineRef.current) return
+    sauverLocal(`desiderata_brouillon_${session.user.id}_${recueilId}`, data)
+    setBrouillonActif(true)
+  }, [data, edition, recueilId, session])
+
+  // Avertissement natif si on ferme/rafraîchit l'onglet avec un brouillon non transmis.
+  useEffect(() => {
+    if (!brouillonActif) return
+    const handler = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [brouillonActif])
+
+  // Garde de navigation interne (sidebar, déconnexion) : confirme si brouillon non transmis.
+  useEffect(() => {
+    definirGardeNavigation(() => !brouillonActif || window.confirm(
+      'Vos desiderata ne sont pas transmis au faiseur (votre brouillon est gardé sur cet appareil). Quitter cette page quand même ?'
+    ))
+    return () => definirGardeNavigation(null)
+  }, [brouillonActif])
 
   const semaines = useMemo(
     () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
@@ -167,6 +209,10 @@ export default function PlanningDesiderata() {
     setErreur(null)
     try {
       await sauverMesDesiderata(session.user.id, recueilId, data, true)
+      // Transmis : on efface le brouillon local et on remet la référence à jour.
+      sauverLocal(`desiderata_brouillon_${session.user.id}_${recueilId}`, null)
+      baselineRef.current = JSON.stringify(data)
+      setBrouillonActif(false)
       setSoumis(true)
       setMajLe(new Date().toISOString())
       setEdition(false)
@@ -573,6 +619,11 @@ export default function PlanningDesiderata() {
           <div style={s.barreBas}>
             <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
             {flash && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>{flash}</span>}
+            {!flash && brouillonActif && (
+              <span style={{ fontSize: 13, color: 'var(--color-amber)' }}>
+                ✎ Brouillon gardé automatiquement — cliquez <strong>Enregistrer</strong> pour transmettre au faiseur.
+              </span>
+            )}
           </div>
         </>
       )}

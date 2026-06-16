@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { peutQuitter } from '../utils/gardeNavigation'
 
 const navItems = [
   { id: 'vue-globale', label: 'Vue globale', icon: '⊞' },
@@ -41,6 +42,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
   ]
 
   async function deconnecter() {
+    if (!peutQuitter()) return // brouillon de desiderata non transmis : confirmation
     await supabase.auth.signOut()
     // AuthContext détecte la déconnexion → App affiche Login
   }
