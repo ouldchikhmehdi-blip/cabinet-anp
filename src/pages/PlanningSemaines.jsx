@@ -165,6 +165,22 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
     return m
   }, [desideratas, parUser])
+  // Score de DEMANDES par associé : plus un associé a formulé de souhaits (jours off, vacances précises,
+  // week-ends indisponibles, souhaits de colonne), plus il sera prioritaire pour ABSORBER une garde
+  // rapprochée si un arbitrage d'espacement est nécessaire (équité : qui demande plus accepte plus).
+  const demandeParAssocie = useMemo(() => {
+    const m = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      const d = normaliser(row.data)
+      m[ini] = (d.joursOffSouhaites?.length ?? 0)
+        + (d.vacancesSouhaitees?.length ?? 0)
+        + (d.weekendsIndispo?.length ?? 0)
+        + Object.keys(d.colonnesSouhaitees ?? {}).length
+    }
+    return m
+  }, [desideratas, parUser])
 
   const semaines = useMemo(
     () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
@@ -363,7 +379,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(prev)
       const proposees = proposerSemaines({
         semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
-        desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
+        desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, demandeParAssocie },
         gardesInitiales, compteAnneeInitial, fixes,
         aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
       })

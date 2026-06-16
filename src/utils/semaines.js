@@ -246,7 +246,7 @@ export function proposerSemaines({
   aVenInitial = {}, gVenInitial = {}, recupInitial = {}, feriesOffsetsParSemaine = {},
 }) {
   const { vacances = {} } = contexteAmont
-  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {} } = desiderata
+  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, demandeParAssocie = {} } = desiderata
 
   const gardes = {}; const compteAnnee = {}; const comptePeriode = {}
   // Équilibres annuels additionnels (priorité après les gardes de semaine) : A vendredi, G vendredi, récup JF.
@@ -361,6 +361,11 @@ export function proposerSemaines({
       const recupCol = recupColCount(trame, c, feriesOffsets)
       const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
       const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
+      // Espacement : éviter une garde rapprochée pour tout le monde ; si inévitable (arbitrage), la charger
+      // sur le PLUS demandeur (équité : qui a formulé le plus de souhaits absorbe les gardes rapprochées).
+      const gardeCol = nbGardesCol(c) > 0
+      const demande = (x) => demandeParAssocie[x] ?? 0
+      const creeRapproche = (x) => (ecart(c, x) < ESPACEMENT_GARDE_JOURS ? 1 : 0)
       const cands = [...assocLibres]
       cands.sort((a, b) =>
         (compteAnnee[a] - compteAnnee[b]) ||                 // gardes de semaine — priorité n°1
@@ -368,7 +373,9 @@ export function proposerSemaines({
         (rjRel(a) - rjRel(b)) ||                             // récup jour férié
         (comptePeriode[a] - comptePeriode[b]) ||
         ((reposCouvre(c, b) ? 1 : 0) - (reposCouvre(c, a) ? 1 : 0)) ||
-        (ecart(c, b) - ecart(c, a)) ||                       // plus grand écart d'abord (moins pénible)
+        (gardeCol ? (creeRapproche(a) - creeRapproche(b)) : 0) ||  // ne pas créer de garde rapprochée
+        (gardeCol ? (demande(b) - demande(a)) : 0) ||             // si rapprochée inévitable → au plus demandeur
+        (ecart(c, b) - ecart(c, a)) ||                       // sinon plus grand écart d'abord (moins pénible)
         (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
       attribuer(c, cands[0])
     }
