@@ -41,7 +41,7 @@ async function telecharger(workbook, nomFichier) {
 
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -191,6 +191,34 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
   }
 
   ws.views = [{ state: 'frozen', ySplit: 0, xSplit: 0 }]
+
+  // ── Feuille « Trames par semaine » (étape En semaine) ──
+  // Liste la trame appliquée à chaque semaine ; repère celles ≠ principale et à arbitrer.
+  if (Array.isArray(tramesParSemaine) && tramesParSemaine.length) {
+    const ws2 = wb.addWorksheet('Trames par semaine')
+    ws2.columns = [{ width: 26 }, { width: 30 }, { width: 18 }, { width: 32 }]
+    const entete = ws2.addRow(['Semaine', 'Trame appliquée', 'Type', 'À arbitrer'])
+    entete.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = bordures()
+      cell.alignment = centre
+      cell.font = { name: 'Calibri', bold: true, size: 11 }
+      cell.fill = solid(ARGB.header)
+    })
+    for (const t of tramesParSemaine) {
+      const row = ws2.addRow([
+        t.label ?? '',
+        t.trame ?? '—',
+        t.specifique ? 'Trame spécifique' : 'Principale',
+        t.arbitrer ? (t.motif || 'à arbitrer') : '',
+      ])
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = bordures()
+        cell.alignment = centre
+        cell.font = { name: 'Calibri', size: 11 }
+      })
+    }
+  }
+
   const nomFichier = periode
     ? `Planning_${annee}_S${periode.debut}-S${periode.fin}.xlsx`
     : `Base_calendrier_${annee}.xlsx`

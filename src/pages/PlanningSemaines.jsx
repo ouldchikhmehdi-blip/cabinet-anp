@@ -4,9 +4,13 @@ import { ANNEES, semainesDansPlage, formatJJMM, feriesEnSemaine } from '../utils
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { listerRecueils } from '../utils/desiderataApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
+import { chargerObjectifs } from '../utils/objectifsApi'
+import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
+import { chargerRea } from '../utils/reaApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
+import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import TrameGrille from '../components/planning/TrameGrille'
 
 // Étape « En semaine » : la trame principale s'applique partout par défaut ; le faiseur la remplace
@@ -24,9 +28,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [tramesData, setTramesData] = useState(null)
   const [vacancesData, setVacancesData] = useState(null)
   const [calendrier, setCalendrier] = useState(null)
+  const [objectifs, setObjectifs] = useState(null)
+  const [weekends, setWeekends] = useState(null)
+  const [reaData, setReaData] = useState(null)
   const [data, setData] = useState(null)        // { v, trameParSemaine: { num: trameId } }
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
+  const [exportEnCours, setExportEnCours] = useState(false)
   const [filtreArbitrer, setFiltreArbitrer] = useState(false)
   const [apercus, setApercus] = useState(() => new Set()) // numéros de semaine dont l'aperçu est ouvert
 
@@ -45,14 +53,19 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return () => { annule = true }
   }, [annee, estFaiseur])
 
-  // Catalogue de trames + vacances + base calendrier (vacances scolaires) + choix de trame/semaine.
+  // Catalogue de trames + cumul des étapes précédentes (calendrier, objectifs, week-ends, vacances,
+  // réa) pour l'export + choix de trame/semaine de cette étape.
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerTrames(annee), chargerVacances(annee), chargerCalendrier(annee), chargerSemaines(annee)])
-      .then(([tr, vac, cal, sem]) => {
+    Promise.all([
+      chargerTrames(annee), chargerVacances(annee), chargerCalendrier(annee), chargerSemaines(annee),
+      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee),
+    ])
+      .then(([tr, vac, cal, sem, obj, we, rea]) => {
         if (annule) return
         setTramesData(tr); setVacancesData(vac); setCalendrier(cal); setData(sem)
+        setObjectifs(obj); setWeekends(we); setReaData(rea)
         onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
@@ -125,6 +138,40 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       setTimeout(() => setEnregistre(false), 3000)
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+    }
+  }
+
+  // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
+  const recapTrames = useMemo(() => semaines.map(sem => {
+    const a = analyses[sem.num]
+    const choisi = trameParSemaine[sem.num] ?? null
+    const effId = choisi ?? principaleId
+    const trame = effId != null ? tramesById[effId] : null
+    const motif = [
+      a?.multiVacances ? `${a.vacanciers.length} en vacances` : null,
+      a?.pont ? 'pont' : null,
+    ].filter(Boolean).join(', ')
+    return {
+      label: `S${sem.num} · ${formatJJMM(sem.lundi)} → ${formatJJMM(sem.dimanche)}`,
+      trame: trame ? trame.nom : '—',
+      specifique: choisi != null && choisi !== principaleId,
+      arbitrer: !!a?.aArbitrer,
+      motif,
+    }
+  }), [semaines, analyses, trameParSemaine, tramesById, principaleId])
+
+  async function exporter() {
+    setErreur(null); setExportEnCours(true)
+    try {
+      await exporterCalendrierExcel(
+        annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
+        recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
+        recapTrames,
+      )
+    } catch {
+      setErreur('Export Excel impossible.')
+    } finally {
+      setExportEnCours(false)
     }
   }
 
@@ -205,6 +252,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         </div>
         <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
           Enregistrer
+        </button>
+        <button
+          type="button"
+          onClick={exporter}
+          disabled={!pret || !recueil || exportEnCours}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || !recueil || exportEnCours) ? 0.6 : 1 }}
+          title="Génère un fichier Excel : base calendrier + objectifs + week-ends + vacances + réa, plus la trame par semaine"
+        >
+          {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
         </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
       </div>
