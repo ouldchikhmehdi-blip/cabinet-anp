@@ -381,6 +381,23 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [semaines, trameDe, contexteAmont, affectationsLibres, calendrier])
 
+  // Colonnes remplaçant par semaine (période) pour l'export : { num: [colObject, …] } (lun..ven + service),
+  // triées par index de colonne. Personnes externes (hors des 8 associés).
+  const remplacantsSemaine = useMemo(() => {
+    const m = {}
+    for (const sem of semaines) {
+      const trame = trameDe(sem.num)
+      if (!trame) continue
+      const cols = (trame.remplacants ?? [])
+        .filter(r => r.col != null)
+        .slice().sort((a, b) => a.col - b.col)
+        .map(r => trame.colonnes[r.col])
+        .filter(Boolean)
+      if (cols.length) m[sem.num] = cols
+    }
+    return m
+  }, [semaines, trameDe])
+
   // Récup « jour férié » CUMULÉES sur l'année, dans l'ordre chronologique : un associé qui devait
   // travailler (vrai poste, ≠ de-service) un jour férié ouvré gagne une récup. La personne de service
   // (garde/astreinte) ce jour-là travaille → pas de récup ; un repos ne donne pas de récup.
@@ -461,7 +478,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine,
       )
     } catch {
       setErreur('Export Excel impossible.')

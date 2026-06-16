@@ -42,17 +42,23 @@ async function telecharger(workbook, nomFichier) {
 
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
+  // Nombre de colonnes « Remplaçant » à droite (max de remplaçants sur les semaines fournies).
+  const longueursRempl = Object.values(remplacantsSemaine ?? {}).map(a => a?.length ?? 0)
+  const nbRempl = longueursRempl.length ? Math.max(0, ...longueursRempl) : 0
+  const enteteRempl = Array.from({ length: nbRempl }, (_, k) => (nbRempl > 1 ? `Remplaçant ${k + 1}` : 'Remplaçant'))
+
   // Largeurs (unité Excel = nb de caractères, comme la boîte « Largeur de colonne »).
-  // Date | 8 associés | Date | Groupe
+  // Date | 8 associés | Date | Groupe | Remplaçant(s)
   ws.columns = [
     { width: 35 },
     ...ASSOCIES.map(() => ({ width: 24 })),
     { width: 35 },
     { width: 8 },
+    ...Array.from({ length: nbRempl }, () => ({ width: 24 })),
   ]
 
   const feries = {}
@@ -70,7 +76,7 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
 
   function ligneEntete(date) {
     const libMois = moisAnneeFR(date)
-    const row = ws.addRow([libMois, ...ASSOCIES, libMois, 'G/A'])
+    const row = ws.addRow([libMois, ...ASSOCIES, libMois, 'G/A', ...enteteRempl])
     row.eachCell({ includeEmpty: true }, (cell, col) => {
       cell.border = bordures()
       cell.alignment = centre
@@ -132,11 +138,19 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
         return ''
       })
 
+      // Colonnes remplaçant (postes lun→ven ; vides le week-end et les jours fériés — pas de bloc).
+      const cellulesRempl = Array.from({ length: nbRempl }, (_, k) => {
+        if (estWeekend || estFerie) return ''
+        const colObj = remplacantsSemaine?.[sem.num]?.[k]
+        return colObj ? (colObj[JOURS[offset]] ?? '') : ''
+      })
+
       const row = ws.addRow([
         dateLong,
         ...cellulesAssocies,
         dateLong,
         groupeAffiche,
+        ...cellulesRempl,
       ])
 
       row.eachCell({ includeEmpty: true }, (cell, col) => {
@@ -181,6 +195,15 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
           if (groupeAffiche === 'G') cell.fill = solid(ARGB.garde)
           else if (groupeAffiche === 'A') cell.fill = solid(ARGB.astreinte)
           cell.font = { name: 'Calibri', size: 11, bold: true }
+        } else if (col > NB_COL && col <= NB_COL + nbRempl) {
+          // Colonne remplaçant : garde/astreinte si la colonne est de service ce jour, sinon poste (blanc).
+          const colObj = remplacantsSemaine?.[sem.num]?.[col - NB_COL - 1]
+          const jour = JOURS[offset]
+          if (!estWeekend && !estFerie && colObj?.service?.[jour]) {
+            const t = typeDuJour(data, sem.num, offset)
+            if (t === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
+            else if (t === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+          }
         }
       })
 
