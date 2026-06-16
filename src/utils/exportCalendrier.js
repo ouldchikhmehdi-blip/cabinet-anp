@@ -148,13 +148,17 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
         } else if (estAssocie) {
           const assoc = ASSOCIES[col - 2]
           if (affectationsSemaine && !estWeekend) {
-            // Jour ouvré (En semaine) : congé bleu > garde/astreinte si la colonne est de service > poste simple.
+            // Jour ouvré (En semaine) : congé bleu > garde/astreinte si de service > repos bleu > poste (blanc).
             const colObj = affectationsSemaine[sem.num]?.[assoc]
+            const jour = JOURS[offset]
             if (congesSemaine.includes(assoc)) cell.fill = solid(ARGB.conge)
-            else if (colObj?.service?.[JOURS[offset]]) {
+            else if (colObj?.service?.[jour]) {
               const t = typeDuJour(data, sem.num, offset)
               if (t === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
               else if (t === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+            } else if (colObj && !(colObj[jour] ?? '').trim()) {
+              // Jour de repos (case vide) → bleu, même couleur que les vacances.
+              cell.fill = solid(ARGB.conge)
             }
           } else {
             // Priorité : rôle de week-end (G jaune / A orange) > congé (bleu) > grisé du week-end.
