@@ -323,6 +323,28 @@ export function proposerSemaines({
     const ecart = (col, ini) => ecartMinJours(datesGardeSemaine(trame, col, annee, num, calendrier), gardes[ini])
     const attribuer = (col, ini) => { out[num][col] = ini; placer(col, ini); assocLibres = assocLibres.filter(a => a !== ini) }
 
+    // Phase 0 — RÈGLE DURE (vendredi avant vacances) : on RÉSERVE d'abord les colonnes de service vendredi à
+    // un associé NON interdit (pas en vacances la semaine suivante), AVANT toute autre attribution — sinon les
+    // colonnes de garde consomment les candidats et il ne reste qu'un interdit. Prioritaire sur tout le reste.
+    for (const c of colLibres.filter(colServiceVendredi).sort((a, b) => a - b)) {
+      if (out[num][c] != null || !assocLibres.length) continue
+      let cands = assocLibres.filter(x => !interditsVendredi.has(x))
+      if (!cands.length) cands = [...assocLibres] // repli : aucun non-interdit dispo (cas signalé en alerte)
+      const rvCol = roleVendrediCol(trame, c, num, calendrier)
+      const recupCol = recupColCount(trame, c, feriesOffsets)
+      const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
+      const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
+      const gardeColP0 = datesGardeSemaine(trame, c, annee, num, calendrier).length > 0
+      cands.sort((a, b) =>
+        (gardeColP0 ? (compteAnnee[a] - compteAnnee[b]) : 0) || // si la colonne génère aussi une garde : gardes d'abord
+        (venRel(a) - venRel(b)) ||                              // équilibre A/G vendredi
+        (rjRel(a) - rjRel(b)) ||
+        (compteAnnee[a] - compteAnnee[b]) ||
+        (comptePeriode[a] - comptePeriode[b]) ||
+        (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
+      attribuer(c, cands[0])
+    }
+
     // Phase A — souhaits de colonne (seulement si la semaine utilise la trame PRINCIPALE).
     if (estPrincipale) {
       const parCol = {}
