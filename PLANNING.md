@@ -218,17 +218,20 @@ Chaque étape est un point de contrôle validé avant de continuer.
 - L'outil est donc un **assistant** : il propose des placements, tient les compteurs à jour en direct, et lève des drapeaux — sans jamais décider à la place de l'humain.
 - Possibilité, à tout moment, de **forcer une semaine en « avec remplaçant »** → l'outil propose les différentes structures de remplaçant disponibles, le faiseur de planning choisit, puis l'outil recalcule les compteurs et alertes sans écraser les choix manuels.
 
-**Signalement des conflits (Week-ends / Vacances / Réa).** Chaque étape de placement croise **tous**
-les desiderata : souhaits/refus de vacances, week-ends indisponibles, **jours off** (réa : sur la
-semaine ; week-end : un jour off posé le samedi/dimanche), et **souhaits de colonne** (l'associé veut
-travailler une colonne précise telle semaine). Un conflit n'est **jamais bloquant** (l'humain
-tranche) mais **signalé de façon évidente** : un **panneau « Conflits à arbitrer »** en haut de
-l'étape liste chaque conflit en phrase claire — **où** (semaine), **qui**, **pourquoi**, et
-l'**arbitrage** (« choisir entre X et Y ») — en plus des badges 🔴/🟠 par ligne. Sévérité : contraintes
-dures (refus, indispo, jour off, réa+vacances, semaine vide) en **rouge** ; à viser (espacement,
-garde accolée, scolaire < 2, **souhait de colonne non satisfait**) en **orange**. Quand la proposition
-automatique laisse un créneau vide faute de candidat sans conflit, le panneau **explique pourquoi**.
-Composant : `src/components/planning/PanneauConflits.jsx`.
+**Conflits = entre deux associés (deux colonnes), jamais sur une seule personne.** Donner à
+quelqu'un ce qu'il a demandé n'est **pas** un conflit. Un **vrai conflit** est une **collision entre
+deux associés** qui veulent la même chose (typiquement la **même colonne** une semaine donnée, une
+seule possible) — il se construira à l'**étape d'affectation des colonnes** (à venir).
+
+Pour les étapes actuelles (Week-ends / Vacances / Réa) :
+- les desiderata d'**une seule personne** (refus, indispo, jour off, souhait de colonne) sont
+  **satisfaits / évités automatiquement** par la proposition, et signalés au plus par un **badge
+  discret** sur la ligne — jamais comme un « conflit » ;
+- l'outil **cherche une solution** avant d'alerter : un **jour off** tombant dans une **semaine de
+  vacances** de la personne est **considéré satisfait** (elle est off) ;
+- le **panneau « À arbitrer »** (`src/components/planning/PanneauConflits.jsx`) ne liste que les
+  **créneaux non plaçables** — une semaine où **aucun** associé n'est plaçable sans contrainte — pour
+  expliquer « pourquoi non placé » ; le faiseur garde le dernier mot (rien n'est bloquant, §13).
 
 ### 14. Notation observée dans les fichiers
 

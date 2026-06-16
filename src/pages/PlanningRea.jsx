@@ -137,29 +137,22 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
     return m
   }, [semaines, rea, joursOffParAssocie, weekendAff, vacancesParSemaine, colonnesSouhaiteesParAssocie])
 
-  // Conflits explicites à arbitrer (où / qui / pourquoi / choix).
+  // À arbitrer : uniquement les semaines où AUCUN associé n'est plaçable sans contrainte
+  // (les desiderata d'une seule personne ne sont pas des « conflits » — cf. PLANNING.md §13).
   const conflits = useMemo(() => {
     const out = []
     const lib = (sem) => `S${sem.num} (${formatJJMM(sem.lundi)}→${formatJJMM(sem.dimanche)})`
     for (const sem of semaines) {
-      const ini = rea[sem.num]
-      const a = analyses[sem.num]
-      if (!ini) {
-        const dispo = ASSOCIES.filter(x =>
-          !vacancesParSemaine[sem.num]?.includes(x) && !joursOffParAssocie[x]?.has(sem.num) &&
-          weekendAff[sem.num] !== x && weekendAff[sem.num - 1] !== x)
-        if (dispo.length === 0) {
-          out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — réa non attribuable : aucun associé sans conflit (tous en vacances / jour off / week-end de garde). Arbitrage : forcer un associé malgré un conflit.` })
-        }
-        continue
+      if (rea[sem.num]) continue
+      const dispo = ASSOCIES.filter(x =>
+        !vacancesParSemaine[sem.num]?.includes(x) && !joursOffParAssocie[x]?.has(sem.num) &&
+        weekendAff[sem.num] !== x && weekendAff[sem.num - 1] !== x)
+      if (dispo.length === 0) {
+        out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — réa non attribuable : aucun associé sans contrainte (tous en vacances / jour off / week-end de garde). Arbitrage : forcer un associé malgré une contrainte.` })
       }
-      if (a?.vacances) out.push({ severite: 'danger', semaine: sem.num, message: `${lib(sem)} — ${ini} en réa ET en vacances la même semaine (poste exclusif, impossible). Arbitrage : retirer la réa, ou retirer les vacances de ${ini}.` })
-      else if (a?.jourOff) out.push({ severite: 'danger', semaine: sem.num, message: `${lib(sem)} — ${ini} en réa mais a demandé un jour off cette semaine (réa continue lun→ven). Arbitrage : choisir un autre associé, ou ignorer ce jour off.` })
-      if (a?.garde) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — ${ini} : réa accolée à un week-end de garde (repos du lendemain, §5). Arbitrage : décaler la réa, ou valider l'exception.` })
-      if (a?.souhaitColonne != null) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — ${ini} en réa mais a souhaité la colonne C${a.souhaitColonne + 1} (travailler) cette semaine. Arbitrage : maintenir la réa, ou respecter son souhait de colonne.` })
     }
     return out
-  }, [semaines, rea, analyses, vacancesParSemaine, joursOffParAssocie, weekendAff])
+  }, [semaines, rea, vacancesParSemaine, joursOffParAssocie, weekendAff])
 
   const recap = useMemo(() => {
     let attribuees = 0, vac = 0, off = 0, garde = 0

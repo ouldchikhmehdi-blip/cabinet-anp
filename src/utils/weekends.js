@@ -53,8 +53,10 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie, v
     const ecart = Math.abs(autre - num)
     if (ecart < meilleurEcart) { meilleurEcart = ecart; tropProche = autre }
   }
-  const vacancesCollee = !!(vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini))
-  const jourOffWE = !!joursOffWeekendParAssocie?.[ini]?.has(num)
+  const enVacances = !!vacancesParSemaine?.[num]?.includes(ini)
+  const vacancesCollee = !!(enVacances || vacancesParSemaine?.[num + 1]?.includes(ini))
+  // Un jour off le sam/dim d'une semaine de vacances est déjà satisfait (cas couvert par vacancesCollee).
+  const jourOffWE = !enVacances && !!joursOffWeekendParAssocie?.[ini]?.has(num)
   const col = colonnesSouhaiteesParAssocie?.[ini]?.[num]
   return { indispo, tropProche, vacancesCollee, jourOffWE, souhaitColonne: Number.isInteger(col) ? col : null }
 }

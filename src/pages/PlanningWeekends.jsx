@@ -150,28 +150,20 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [weekends, affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie])
 
-  // Conflits explicites à arbitrer (où / qui / pourquoi / choix).
+  // À arbitrer : uniquement les week-ends où AUCUN associé n'est plaçable sans contrainte
+  // (les desiderata d'une seule personne ne sont pas des « conflits » — cf. PLANNING.md §13).
   const conflits = useMemo(() => {
     const out = []
     const lib = (w) => `WE S${w.num} (${formatJJMM(w.samedi)}–${formatJJMM(w.dimanche)})`
     for (const w of weekends) {
-      const ini = affectations[w.num]
-      const a = analyses[w.num]
-      if (!ini) {
-        const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
-        if (dispo.length === 0) {
-          out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — non attribuable : aucun associé sans conflit (indisponible / jour off le week-end). Arbitrage : forcer un associé malgré un conflit.` })
-        }
-        continue
+      if (affectations[w.num]) continue
+      const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
+      if (dispo.length === 0) {
+        out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — non attribuable : aucun associé sans contrainte (indisponible / jour off le week-end). Arbitrage : forcer un associé malgré une contrainte.` })
       }
-      if (a?.indispo) out.push({ severite: 'danger', semaine: w.num, message: `${lib(w)} — ${ini} indisponible ce week-end (desiderata). Arbitrage : choisir un autre associé, ou forcer ${ini} malgré son indisponibilité.` })
-      else if (a?.jourOffWE) out.push({ severite: 'danger', semaine: w.num, message: `${lib(w)} — ${ini} a demandé un jour off le samedi/dimanche de ce week-end. Arbitrage : choisir un autre associé, ou ignorer ce jour off.` })
-      if (a?.vacancesCollee) out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} : week-end de garde accolé à une semaine de vacances (S ou S+1). Arbitrage : décaler le week-end, ou les vacances.` })
-      if (a?.tropProche != null) out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} : moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}. Arbitrage : espacer davantage, ou accepter le rapprochement.` })
-      if (a?.souhaitColonne != null) out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} a souhaité la colonne C${a.souhaitColonne + 1} en S${w.num} ; ce week-end le placerait sur la colonne « avant week-end ». Arbitrage : choisir un autre associé, ou ignorer ce souhait.` })
     }
     return out
-  }, [weekends, affectations, analyses, indispoParAssocie, joursOffWeekendParAssocie])
+  }, [weekends, affectations, indispoParAssocie, joursOffWeekendParAssocie])
 
   const recap = useMemo(() => {
     let attribues = 0, indispo = 0, proches = 0, vac = 0

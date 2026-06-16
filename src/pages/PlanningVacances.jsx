@@ -10,7 +10,6 @@ import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
-import PanneauConflits from '../components/planning/PanneauConflits'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -119,22 +118,6 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
     for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num), weekendAff, colonnesSouhaiteesParAssocie)
     return m
   }, [semaines, vacances, refusParAssocie, scolairesSet, weekendAff, colonnesSouhaiteesParAssocie])
-
-  // Conflits explicites à arbitrer (où / qui / pourquoi / choix).
-  const conflits = useMemo(() => {
-    const out = []
-    const lib = (sem) => `S${sem.num} (${formatJJMM(sem.lundi)}→${formatJJMM(sem.dimanche)})`
-    for (const sem of semaines) {
-      const a = analyses[sem.num]
-      if (!a) continue
-      if (a.sansVacance) out.push({ severite: 'danger', semaine: sem.num, message: `${lib(sem)} — aucun associé en congé${scolairesSet.has(sem.num) ? ' (semaine scolaire : 2 attendus)' : ''}. Arbitrage : ajouter au moins un associé en vacances.` })
-      if (a.refus.length > 0) out.push({ severite: 'danger', semaine: sem.num, message: `${lib(sem)} — ${a.refus.join(', ')} en congé mais a/ont refusé cette semaine. Arbitrage : retirer ${a.refus.join(', ')}, ou ignorer ce refus.` })
-      if (a.sousScolaire) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — semaine scolaire avec moins de 2 associés en congé. Arbitrage : ajouter un associé, ou accepter la couverture réduite.` })
-      if (a.gardeCollee.length > 0) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — ${a.gardeCollee.join(', ')} en vacances accolées à un week-end de garde (avant/après). Arbitrage : décaler les vacances, ou le week-end.` })
-      if (a.souhaitColonne.length > 0) out.push({ severite: 'amber', semaine: sem.num, message: `${lib(sem)} — ${a.souhaitColonne.join(', ')} en congé mais a/ont souhaité une colonne (travailler) cette semaine. Arbitrage : maintenir le congé, ou libérer la semaine pour respecter le souhait.` })
-    }
-    return out
-  }, [semaines, analyses, scolairesSet])
 
   const recap = useMemo(() => {
     let couvertes = 0, sans = 0, refus = 0, sous = 0, garde = 0
@@ -329,8 +312,6 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
-          <PanneauConflits conflits={conflits} />
-
           {/* Récap */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.couvertes}/{recap.total} semaines couvertes</span>

@@ -33,9 +33,11 @@ export function normaliserRea(data) {
 export function analyserRea(num, ini, joursOffParAssocie, weekendAff = {}, vacancesParSemaine = {}, colonnesSouhaiteesParAssocie = {}) {
   if (!ini) return { vacances: false, jourOff: false, garde: false, souhaitColonne: null }
   const col = colonnesSouhaiteesParAssocie?.[ini]?.[num]
+  const vacances = !!vacancesParSemaine?.[num]?.includes(ini)
   return {
-    vacances: !!vacancesParSemaine?.[num]?.includes(ini),
-    jourOff: !!joursOffParAssocie?.[ini]?.has(num),
+    vacances,
+    // Un jour off tombant dans une semaine de vacances est déjà satisfait (associé off).
+    jourOff: !vacances && !!joursOffParAssocie?.[ini]?.has(num),
     garde: weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini,
     souhaitColonne: Number.isInteger(col) ? col : null,
   }

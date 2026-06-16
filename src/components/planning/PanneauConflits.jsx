@@ -1,7 +1,8 @@
 // ============================================================
-// PanneauConflits — signalement explicite des conflits à arbitrer (Week-ends / Vacances / Réa).
-// L'outil n'impose rien (PLANNING.md §13) : il explique le conflit (où, qui, pourquoi) et
-// l'arbitrage possible ; le faiseur tranche. Affiché en haut de chaque étape de placement.
+// PanneauConflits — points à arbitrer en haut d'une étape de placement (PLANNING.md §13).
+// Pour l'instant : créneaux non plaçables (aucun candidat sans contrainte). Les desiderata
+// d'une seule personne ne sont PAS des conflits (satisfaits/évités automatiquement). Le vrai
+// conflit inter-associés (deux veulent la même colonne) viendra à l'affectation des colonnes.
 //
 // Props : conflits = [{ severite:'danger'|'amber', semaine:number, message:string }]
 // ============================================================
@@ -12,7 +13,7 @@ export default function PanneauConflits({ conflits = [] }) {
   if (!conflits || conflits.length === 0) {
     return (
       <div style={{ fontSize: 13, color: 'var(--color-success)', marginBottom: 16 }}>
-        Aucun conflit à arbitrer ✓
+        Rien à arbitrer ✓
       </div>
     )
   }
@@ -33,7 +34,7 @@ export default function PanneauConflits({ conflits = [] }) {
 
   return (
     <div style={s.carte}>
-      <div style={s.titre}>⚠ Conflits à arbitrer ({tries.length})</div>
+      <div style={s.titre}>⚠ À arbitrer ({tries.length})</div>
       {tries.map((c, i) => (
         <div key={i} style={s.ligne}>
           <span style={s.point(c.severite === 'danger' ? 'var(--color-danger)' : 'var(--color-amber)')} />
