@@ -377,15 +377,17 @@ export default function PlanningSuivi() {
         <button
           type="button"
           onClick={() => setTramesOuvert(o => !o)}
-          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}
+          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left', display: 'block' }}
         >
-          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{tramesOuvert ? '▾' : '▸'}</span>
-          Trames de l'année {annee}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{tramesOuvert ? '▾' : '▸'}</span>
+            Trames de l'année {annee}
+          </span>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+            Collez vos semaines type, désignez la trame principale (montrée aux associés dans leurs desiderata).
+            Modifiable à tout moment.
+          </span>
         </button>
-        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
-          Collez vos semaines type, désignez la trame principale (montrée aux associés dans leurs desiderata).
-          Modifiable à tout moment.
-        </div>
         {tramesOuvert && (
           <div style={{ marginTop: 16 }}>
             <PlanningTrames sansEntete annee={annee} onChangeAnnee={setAnnee} />
