@@ -42,7 +42,7 @@ async function telecharger(workbook, nomFichier) {
 
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null) {
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -119,7 +119,14 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
         // Export « En semaine » : contenu quotidien de la colonne attribuée à l'associé (lun→ven).
         if (affectationsSemaine && !estWeekend) {
           const col = affectationsSemaine[sem.num]?.[a]
-          return col ? (col[JOURS[offset]] ?? '') : ''
+          const jour = JOURS[offset]
+          if (estFerie && col && !congesSemaine.includes(a)) {
+            // Jour férié ouvré : de-service → Garde/Astreinte ; sinon, qui travaillait → Récup JF-N ; repos → vide.
+            if (col.service?.[jour]) return role === 'G' ? 'Garde' : 'Astreinte'
+            if ((col[jour] ?? '').trim()) return `Récup JF-${recupParSemaine?.[sem.num]?.[a] ?? ''}`
+            return ''
+          }
+          return col ? (col[jour] ?? '') : ''
         }
         if (iniRea && a === iniRea && !congesSemaine.includes(a)) return 'Réa'
         return ''
@@ -156,6 +163,9 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
               const t = typeDuJour(data, sem.num, offset)
               if (t === 'G') { cell.fill = solid(ARGB.garde); cell.font = { name: 'Calibri', size: 11, bold: true } }
               else if (t === 'A') { cell.fill = solid(ARGB.astreinte); cell.font = { name: 'Calibri', size: 11, bold: true } }
+            } else if (estFerie && colObj && (colObj[jour] ?? '').trim()) {
+              // Jour férié : qui devait travailler ne travaille pas → Récup JF (vert).
+              cell.fill = solid(ARGB.ferie)
             } else if (colObj && !(colObj[jour] ?? '').trim()) {
               // Jour de repos (case vide) → bleu, même couleur que les vacances.
               cell.fill = solid(ARGB.conge)
@@ -231,6 +241,7 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
       { cle: 'rea', label: 'Réa' },
       { cle: 'gardeSemaine', label: 'Gardes de semaine' },
       { cle: 'vacances', label: 'Semaines de vacances' },
+      { cle: 'recupJF', label: 'Récup jours fériés' },
     ]
     for (const lg of lignesBilan) {
       const valeurs = ASSOCIES.map(a => bilan[a]?.[lg.cle] ?? 0)

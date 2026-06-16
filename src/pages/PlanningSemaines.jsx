@@ -15,7 +15,7 @@ import {
   proposerSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie, resoudreTrame,
 } from '../utils/semaines'
-import { colonnesSelectionnables, capaciteVacances } from '../utils/trames'
+import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import TrameGrille from '../components/planning/TrameGrille'
 import AffectationAssocies from '../components/planning/AffectationAssocies'
@@ -381,12 +381,43 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [semaines, trameDe, contexteAmont, affectationsLibres, calendrier])
 
+  // Récup « jour férié » CUMULÉES sur l'année, dans l'ordre chronologique : un associé qui devait
+  // travailler (vrai poste, ≠ de-service) un jour férié ouvré gagne une récup. La personne de service
+  // (garde/astreinte) ce jour-là travaille → pas de récup ; un repos ne donne pas de récup.
+  //   total : { ini: nb } · parSemaine : { num: { ini: indexCumulé } } (pour le libellé « Récup JF-N »).
+  const recup = useMemo(() => {
+    const total = {}; for (const ini of ASSOCIES) total[ini] = 0
+    const parSemaine = {}
+    if (!calendrier) return { total, parSemaine }
+    for (const num of [...allNums].sort((a, b) => a - b)) {
+      const feries = feriesParSemaine[num]
+      if (!feries?.length) continue
+      const trame = trameDe(num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
+      for (const f of feries) {
+        const offset = parseISO(f.iso).getUTCDay() - 1 // lun=0 … ven=4
+        if (offset < 0 || offset > 4) continue
+        const jour = JOURS[offset]
+        for (const [col, ini] of Object.entries(affR)) {
+          if (!ASSOCIES.includes(ini)) continue
+          const colObj = trame.colonnes[Number(col)]
+          if (!colObj || colObj.service?.[jour]) continue // de-service → travaille la garde, pas de récup
+          if (!(colObj[jour] ?? '').trim()) continue       // repos → pas de récup
+          total[ini]++
+          ;(parSemaine[num] ??= {})[ini] = total[ini]
+        }
+      }
+    }
+    return { total, parSemaine }
+  }, [allNums, feriesParSemaine, trameDe, contexteAmont, affectationsLibres, calendrier])
+
   // Bilan CUMULÉ sur l'année par associé (export, comparaison aux objectifs annuels) :
   // G week-end, A/G vendredi, semaines de réa, gardes de semaine (mardi+jeudi), semaines de vacances.
   const bilan = useMemo(() => {
     const b = {}
     for (const ini of ASSOCIES) {
-      b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: gardesAnnee.comptes[ini] ?? 0, vacances: 0 }
+      b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: gardesAnnee.comptes[ini] ?? 0, vacances: 0, recupJF: recup.total[ini] ?? 0 }
     }
     const { weekendAff = {}, rea: reaAff = {}, vacances: vac = {} } = contexteAmont
     for (const num of allNums) {
@@ -407,7 +438,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       }
     }
     return b
-  }, [allNums, contexteAmont, gardesAnnee, trameDe, affectationsLibres, calendrier])
+  }, [allNums, contexteAmont, gardesAnnee, trameDe, affectationsLibres, calendrier, recup])
 
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
@@ -430,7 +461,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine,
       )
     } catch {
       setErreur('Export Excel impossible.')
