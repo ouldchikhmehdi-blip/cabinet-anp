@@ -440,7 +440,15 @@ export default function PlanningSuivi() {
             </h2>
             {lignes.map(l => (
               <div key={l.ini} style={{ marginBottom: 24 }}>
-                <RecapDesiderata initiales={l.ini} d={l.data} annee={annee} estEte={recueil.type === 'ete'} />
+                <RecapDesiderata
+                  initiales={l.ini}
+                  d={l.data}
+                  annee={annee}
+                  estEte={recueil.type === 'ete'}
+                  ponts={pontsParAssocie[l.ini] ?? []}
+                  pontsWeekend={pontsWeekendParAssocie[l.ini] ?? []}
+                  ecartesSet={ecartesSet}
+                />
               </div>
             ))}
           </div>

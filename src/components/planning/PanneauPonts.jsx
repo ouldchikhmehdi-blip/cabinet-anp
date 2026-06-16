@@ -69,10 +69,9 @@ export default function PanneauPonts({ pontsParAssocie = {}, pontsWeekendParAsso
     <div style={s.carte}>
       <div style={s.titre}>🌉 Ponts / jours fériés ({total})</div>
       <div style={s.note}>
-        Un jour férié = garde/astreinte uniquement, le bloc opératoire ne tourne pas.
         {interactif
-          ? ' Décocher = pont conservé (respecté). Cocher = pont refusé : ce jour off / cette indisponibilité est ignoré par l’attribution automatique des week-ends.'
-          : ' Les éléments cochés (écartés) sont ignorés par l’attribution des week-ends ; à gérer dans le Suivi des desiderata.'}
+          ? 'Décocher = pont conservé (respecté). Cocher = pont refusé : ce jour off / cette indisponibilité est ignoré par l’attribution automatique des week-ends.'
+          : 'Les éléments cochés (écartés) sont ignorés par l’attribution des week-ends ; à gérer dans le Suivi des desiderata.'}
       </div>
 
       {inis.map(ini => (

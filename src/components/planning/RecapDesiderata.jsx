@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { listerSemaines, listerWeekends, parseISO, formatDateLongueFR } from '../../utils/calendrier'
 import { labelSousSemaine } from '../../utils/desiderata'
+import { cleEcart, cleEcartWeekend } from '../../utils/ponts'
 
 const styles = {
   titre: { fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 12 },
@@ -8,6 +9,15 @@ const styles = {
   cle: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 },
   valeur: { fontSize: 13, color: 'var(--color-text)' },
   vide: { fontSize: 13, color: 'var(--color-text-tertiary)' },
+  // Encart « ponts » mis en valeur — bordure + fond ambre, conservés à l'impression.
+  pontsBloc: {
+    marginBottom: 12, padding: '8px 10px',
+    background: 'var(--color-amber-light)', borderLeft: '3px solid var(--color-amber)',
+    borderRadius: 'var(--radius-md)',
+    WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+  },
+  pontsTitre: { fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 4 },
+  pontItem: { fontSize: 12, color: 'var(--color-text)', marginBottom: 2 },
 }
 
 function Ligne({ titre, children, vide }) {
@@ -29,7 +39,7 @@ function Ligne({ titre, children, vide }) {
  *   annee     — number (pour libeller semaines / week-ends)
  *   estEte    — bool : recueil d'été (masque jours off et week-ends, sans objet l'été)
  */
-export default function RecapDesiderata({ initiales, d, annee, estEte = false }) {
+export default function RecapDesiderata({ initiales, d, annee, estEte = false, ponts = [], pontsWeekend = [], ecartesSet = new Set() }) {
   const labelSemaine = useMemo(() => {
     const map = {}
     for (const s of listerSemaines(annee)) map[s.num] = s.label
@@ -64,6 +74,26 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false })
       {d.rienASignaler && (
         <div style={{ ...styles.valeur, fontWeight: 600, color: 'var(--color-success)', marginBottom: 10 }}>
           Rien à signaler
+        </div>
+      )}
+
+      {!estEte && (ponts.length > 0 || pontsWeekend.length > 0) && (
+        <div className="recap-ponts" style={styles.pontsBloc}>
+          <div style={styles.pontsTitre}>🌉 Ponts / jours fériés</div>
+          {ponts.map(p => (
+            <div key={p.id} style={styles.pontItem}>
+              Férié {p.feries.map(f => f.nom).join(', ')} —{' '}
+              {p.joursOff
+                .map(iso => formatDateLongueFR(parseISO(iso)) + (ecartesSet.has(cleEcart(initiales, iso)) ? ' (écarté)' : ''))
+                .join(', ')}
+            </div>
+          ))}
+          {pontsWeekend.map(pw => (
+            <div key={`we-${pw.semaine}`} style={styles.pontItem}>
+              Week-end S{pw.semaine} accolé au férié {pw.feries.map(f => `${f.nom} (${f.jour})`).join(', ')}
+              {ecartesSet.has(cleEcartWeekend(initiales, pw.semaine)) ? ' (écarté)' : ''}
+            </div>
+          ))}
         </div>
       )}
 
