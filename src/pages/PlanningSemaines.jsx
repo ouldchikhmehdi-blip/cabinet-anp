@@ -52,6 +52,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [apercus, setApercus] = useState(() => new Set())
   // Résultat de la dernière amélioration d'espacement : { avant, apres } (gardes rapprochées).
   const [espacementInfo, setEspacementInfo] = useState(null)
+  // Vue continue (compacte) : grilles enchaînées sans marges, façon tableur Excel.
+  const [vueContinue, setVueContinue] = useState(false)
 
   // Recueils « normaux » (l'été se gère par colonnes, hors de cette étape).
   useEffect(() => {
@@ -585,6 +587,16 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       border: `0.5px solid ${categorie === 'bloquant' ? 'var(--color-amber)' : categorie === 'surveiller' ? 'var(--color-primary)' : 'var(--color-border)'}`,
       background: categorie === 'bloquant' ? 'var(--color-amber-light)' : categorie === 'surveiller' ? 'var(--color-primary-light)' : 'var(--color-bg)',
     }),
+    // Vue continue : bloc compact sans marges (grilles qui se touchent), accent de catégorie à gauche.
+    ligneCompact: (categorie) => ({
+      padding: '2px 0 4px', marginBottom: 2,
+      borderLeft: `3px solid ${categorie === 'bloquant' ? 'var(--color-amber)' : categorie === 'surveiller' ? 'var(--color-primary)' : 'transparent'}`,
+      paddingLeft: 6,
+    }),
+    labelCompact: (categorie) => ({
+      fontSize: 12, fontWeight: 700, marginBottom: 2,
+      color: categorie === 'bloquant' ? 'var(--color-amber)' : categorie === 'surveiller' ? 'var(--color-primary)' : 'var(--color-text)',
+    }),
     haut: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
     // Bandeau cliquable (libellé + badges) qui déroule l'aperçu — zone bien plus large que la seule date.
     bandeauCliquable: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 },
@@ -731,6 +743,19 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               <input type="checkbox" checked={filtreArbitrer} onChange={e => setFiltreArbitrer(e.target.checked)} />
               N'afficher que les semaines à arbitrer
             </label>
+            <button
+              type="button"
+              onClick={() => setVueContinue(v => !v)}
+              style={{
+                padding: '4px 10px', fontSize: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                border: `0.5px solid ${vueContinue ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                background: vueContinue ? 'var(--color-primary)' : 'var(--color-bg)',
+                color: vueContinue ? '#fff' : 'var(--color-text-secondary)',
+              }}
+              title="Enchaîne les grilles sans marges (façon tableur). Recliquer pour revenir à la vue normale."
+            >
+              {vueContinue ? '▦ Vue continue : activée' : '▦ Vue continue'}
+            </button>
           </div>
 
           <div style={s.carte}>
@@ -749,7 +774,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               const tramesOptions = trames.filter(t => vReq < 2 || capaciteVacances(t) >= vReq || t.id === effectiveId)
               const nbMasquees = trames.length - tramesOptions.length
               return (
-                <div key={sem.num} style={s.ligne(categorieSem(sem.num))}>
+                <div key={sem.num} style={vueContinue ? s.ligneCompact(categorieSem(sem.num)) : s.ligne(categorieSem(sem.num))}>
+                  {vueContinue && (
+                    <div style={s.labelCompact(categorieSem(sem.num))}>
+                      S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}{trame ? ` · ${trame.nom}` : ' · Aucune trame'}
+                    </div>
+                  )}
+                  {!vueContinue && (<>
                   <div style={s.haut}>
                     <div
                       style={{ ...s.bandeauCliquable, cursor: trame ? 'pointer' : 'default' }}
@@ -824,8 +855,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       </button>
                     )}
                   </div>
-                  {ouvert && trame && (
-                    <div style={s.apercu}>
+                  </>)}
+                  {(ouvert || vueContinue) && trame && (
+                    <div style={vueContinue ? { overflowX: 'auto' } : s.apercu}>
                       <ApercuSemaine
                         annee={annee}
                         sem={sem}
@@ -837,7 +869,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         recupParSemaine={recup.parSemaine}
                         compteurs={compteurs}
                         remplacantsSemaine={remplacantsSemaine}
+                        compact={vueContinue}
                       />
+                      {!vueContinue && (<>
                       <div style={s.colonnesEdit}>
                         {colonnesSelectionnables(trame).map(c => {
                           const cur = affectationsLibres[sem.num]?.[c] ?? ''
@@ -859,6 +893,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       {al?.souhaitNonSatisfait?.length > 0 && (
                         <div style={s.alerteSem}>🟠 Souhait de colonne non satisfait : {al.souhaitNonSatisfait.join(', ')}</div>
                       )}
+                      </>)}
                     </div>
                   )}
                 </div>

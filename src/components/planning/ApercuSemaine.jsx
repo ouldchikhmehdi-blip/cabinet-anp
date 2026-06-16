@@ -15,6 +15,13 @@ import {
 
 const JOURS_LABEL = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim']
 
+// Largeurs FIXES (px) : chaque associé a la même largeur de haut en bas et d'un associé à l'autre,
+// pour qu'on suive une colonne sans décalage (table-layout: fixed + colgroup).
+const W_JOUR = 104
+const W_ASSOC = 94
+const W_GA = 42
+const W_REMPL = 122
+
 const fondCss = (fond) => (fond ? '#' + COULEURS_GRILLE[fond] : 'transparent')
 
 const s = {
@@ -24,14 +31,14 @@ const s = {
     display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
   },
   bandeauVal: { color: 'var(--color-text)' },
-  table: { borderCollapse: 'collapse', fontSize: 12.5, width: '100%' },
+  table: { borderCollapse: 'collapse', fontSize: 12.5, tableLayout: 'fixed' },
   thJour: {
     padding: '5px 8px', fontSize: 12, fontWeight: 700, color: 'var(--color-text)',
     textAlign: 'left', border: '0.5px solid var(--color-border)', background: '#' + COULEURS_GRILLE.header,
     whiteSpace: 'nowrap',
   },
   th: {
-    padding: '5px 8px', fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.8)',
+    padding: '5px 6px', fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.8)',
     textAlign: 'center', border: '0.5px solid var(--color-border)', background: '#' + COULEURS_GRILLE.header,
     whiteSpace: 'nowrap',
   },
@@ -40,8 +47,8 @@ const s = {
     border: '0.5px solid var(--color-border)', whiteSpace: 'nowrap',
   },
   td: {
-    padding: '5px 8px', textAlign: 'center', color: 'rgba(0,0,0,0.85)',
-    border: '0.5px solid var(--color-border)', whiteSpace: 'nowrap',
+    padding: '4px 5px', textAlign: 'center', color: 'rgba(0,0,0,0.85)',
+    border: '0.5px solid var(--color-border)', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.2,
   },
   ferieNom: { fontSize: 11, fontWeight: 700, color: '#1b5e20', display: 'block' },
   legende: { display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 11, color: 'var(--color-text-tertiary)' },
@@ -53,7 +60,7 @@ const s = {
 
 export default function ApercuSemaine({
   annee, sem, calendrier, affectationsSemaine, weekendAff = {}, reaAff = {},
-  congesParSemaine = {}, recupParSemaine = {}, compteurs = null, remplacantsSemaine = {},
+  congesParSemaine = {}, recupParSemaine = {}, compteurs = null, remplacantsSemaine = {}, compact = false,
 }) {
   const feries = useMemo(() => {
     const m = {}
@@ -93,14 +100,22 @@ export default function ApercuSemaine({
     fontWeight: modele.gras ? 700 : 400,
   })
 
+  const largeurTable = W_JOUR + ASSOCIES.length * W_ASSOC + W_GA + nbRempl * W_REMPL
+
   return (
-    <div style={s.wrap}>
-      <div style={s.bandeau}>
+    <div style={compact ? { marginTop: 0 } : s.wrap}>
+      <div style={compact ? { ...s.bandeau, fontSize: 12, marginBottom: 3 } : s.bandeau}>
         <span>🛏️ Garde week-end —</span>
         <span>avant (S{sem.num - 1}) : <span style={s.bandeauVal}>{iniWEavant ?? '—'}</span></span>
         <span>après (S{sem.num}) : <span style={s.bandeauVal}>{iniWEapres ?? '—'}</span></span>
       </div>
-      <table style={s.table}>
+      <table style={{ ...s.table, width: largeurTable }}>
+        <colgroup>
+          <col style={{ width: W_JOUR }} />
+          {ASSOCIES.map((a, i) => <col key={i} style={{ width: W_ASSOC }} />)}
+          <col style={{ width: W_GA }} />
+          {enteteRempl.map((_, k) => <col key={k} style={{ width: W_REMPL }} />)}
+        </colgroup>
         <thead>
           <tr>
             <th style={s.thJour}>Jour</th>
@@ -127,13 +142,15 @@ export default function ApercuSemaine({
           ))}
         </tbody>
       </table>
-      <div style={s.legende}>
-        <span><span style={s.pastille('garde')} />Garde</span>
-        <span><span style={s.pastille('astreinte')} />Astreinte</span>
-        <span><span style={s.pastille('conge')} />Vacances / repos</span>
-        <span><span style={s.pastille('ferie')} />Férié / récup JF</span>
-        <span><span style={s.pastille('weekend')} />Week-end</span>
-      </div>
+      {!compact && (
+        <div style={s.legende}>
+          <span><span style={s.pastille('garde')} />Garde</span>
+          <span><span style={s.pastille('astreinte')} />Astreinte</span>
+          <span><span style={s.pastille('conge')} />Vacances / repos</span>
+          <span><span style={s.pastille('ferie')} />Férié / récup JF</span>
+          <span><span style={s.pastille('weekend')} />Week-end</span>
+        </div>
+      )}
     </div>
   )
 }
