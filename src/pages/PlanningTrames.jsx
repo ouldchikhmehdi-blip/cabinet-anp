@@ -57,7 +57,8 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
       const id = prochainIdTrame(prev.trames)
       const nom = candidatNom.trim() || `Trame ${id}`
       const colonnes = candidatColonnes.map(c => ({ ...c, service: { ...c.service } }))
-      const trame = { id, nom, colonnes, ...suggererRoles(colonnes), remplacants: [] }
+      // suggererRoles fournit déjà vacances (toutes colonnes vides) et remplacants (colonnes C9+).
+      const trame = { id, nom, colonnes, ...suggererRoles(colonnes) }
       return { ...prev, trames: [...prev.trames, trame] }
     })
     setTexteCollage('')
@@ -88,12 +89,26 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     setData(prev => ({ ...prev, principaleId: prev.principaleId === idTrame ? null : idTrame }))
   }
 
-  // Désigne une colonne spéciale d'une trame (réa / vacances / avantWE / apresWE) — index ou null.
+  // Désigne une colonne spéciale mono d'une trame (réa / avantWE / apresWE) — index ou null.
   function majRoleColonne(idTrame, role, index) {
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => ({
       ...prev,
       trames: prev.trames.map(t => (t.id === idTrame ? { ...t, [role]: index } : t)),
+    }))
+  }
+
+  // Ajoute/retire une colonne vacances (plusieurs possibles) — la liste reste triée.
+  function basculerVacances(idTrame, colIndex) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => ({
+      ...prev,
+      trames: prev.trames.map(t => {
+        if (t.id !== idTrame) return t
+        const set = new Set(t.vacances ?? [])
+        if (set.has(colIndex)) set.delete(colIndex); else set.add(colIndex)
+        return { ...t, vacances: [...set].sort((a, b) => a - b) }
+      }),
     }))
   }
 
@@ -229,17 +244,18 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     )
   }
 
-  // Les 4 colonnes spéciales désignables, avec libellé + repère + couleur.
+  // Colonnes spéciales mono-sélection (une seule colonne par rôle). Vacances est géré à part
+  // (plusieurs colonnes possibles → cases à cocher), juste en dessous.
   const ROLES = [
     { cle: 'rea', label: 'Colonne réa :', court: 'Réa', couleur: '#0E7C66' },
-    { cle: 'vacances', label: 'Colonne vacances :', court: 'Vacances', couleur: '#2D6CB5' },
     { cle: 'avantWE', label: 'Colonne avant le week-end :', court: '→ avant WE', couleur: 'var(--color-primary-dark)' },
     { cle: 'apresWE', label: 'Colonne après le week-end :', court: '↩ après WE', couleur: 'var(--color-primary-dark)' },
   ]
 
+  const COULEUR_VACANCES = '#2D6CB5'
   const COULEUR_REMPLACANT = '#B45309'
 
-  // Sélecteur de colonne pour un rôle.
+  // Sélecteur de colonne pour un rôle mono.
   const selecteurRole = (trame, role, label) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
       {label}
@@ -254,6 +270,23 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
     </label>
   )
 
+  // Désignation des colonnes vacances (plusieurs possibles) : une case à cocher par colonne.
+  const selecteurVacances = (trame) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--color-text-secondary)', flexWrap: 'wrap' }}>
+      <span style={{ fontWeight: 600, color: COULEUR_VACANCES }}>Colonnes vacances :</span>
+      {trame.colonnes.map((_, i) => (
+        <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={(trame.vacances ?? []).includes(i)}
+            onChange={() => basculerVacances(trame.id, i)}
+          />
+          C{i + 1}
+        </label>
+      ))}
+    </div>
+  )
+
   return (
     <div style={{ maxWidth: 1100 }}>
       {!sansEntete && <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Trames {annee}</h1>}
@@ -261,8 +294,8 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
         Une <strong>trame</strong> est une <strong>semaine type entière</strong> : une grille de plusieurs
         colonnes, chaque colonne étant une séquence figée de postes du lundi au vendredi (case vide = repos).
         Les colonnes s'intervertissent entre associés selon les jours off. Sur chaque trame, vous désignez les
-        4 colonnes spéciales — <strong>Réa</strong>, <strong>Vacances</strong>, <strong>avant le week-end</strong>,
-        <strong>après le week-end</strong> (Réa et Vacances sont pré-suggérées, à vérifier). Elles se rempliront
+        colonnes spéciales — <strong>Réa</strong>, <strong>Vacances</strong> (une ou plusieurs), <strong>avant le
+        week-end</strong>, <strong>après le week-end</strong> (Réa et Vacances sont pré-suggérées, à vérifier). Elles se rempliront
         automatiquement à l'affectation ; les autres colonnes collent aux jours off demandés. Si la trame comporte
         une ou plusieurs colonnes <strong>remplaçant</strong> (colonnes en plus), désignez-les et nommez-les
         (« Remplaçant 1 », « Remplaçant 2 »…). Le catalogue se remplit par collage depuis Excel, autant de trames
@@ -382,6 +415,7 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                     <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
                       {ROLES.map(r => <span key={r.cle}>{selecteurRole(t, r.cle, r.label)}</span>)}
                     </div>
+                    <div style={{ marginBottom: 10 }}>{selecteurVacances(t)}</div>
 
                     {/* Colonnes remplaçant (0, 1, 2…) */}
                     <div style={{ marginBottom: 10 }}>

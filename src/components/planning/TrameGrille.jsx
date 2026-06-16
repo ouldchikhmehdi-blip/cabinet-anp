@@ -6,7 +6,7 @@
 // COULEUR dépend du JOUR (le type est fixe lun/mar/mer, §3 ; variable jeu/ven selon la base
 // calendrier — non connu ici) : lun/mer → orange (astreinte), mar → jaune (garde), jeu/ven →
 // gris neutre « de service » (le type viendra de la base calendrier au comptage).
-// roles (optionnel) = { rea, vacances, avantWE, apresWE, remplacants:[{col,nom}] } → repères en-tête.
+// roles (optionnel) = { rea, vacances:[idx], avantWE, apresWE, remplacants:[{col,nom}] } → repères en-tête.
 // onToggleService (optionnel, faiseur) = (colIndex, jour) => void : rend les cellules non-repos
 // cliquables (bascule de service ↔ pas de service). Absent ⇒ LECTURE SEULE (aperçu, desiderata).
 // ============================================================
@@ -60,6 +60,9 @@ const s = {
 // associeParColonne (optionnel) : { colIndex: ini } → affiche l'associé attribué en en-tête (En semaine).
 export default function TrameGrille({ colonnes = [], roles = null, colonnesVisibles = null, onToggleService = null, associeParColonne = null }) {
   const remplA = (i) => roles?.remplacants?.filter(r => r.col === i) ?? []
+  // La colonne i porte-t-elle ce rôle ? `vacances` est un TABLEAU d'index (plusieurs colonnes possibles),
+  // les autres rôles un index unique.
+  const aLeRole = (cle, i) => (cle === 'vacances' ? (roles?.vacances ?? []).includes(i) : roles?.[cle] === i)
   const indices = colonnesVisibles ?? colonnes.map((_, i) => i)
   const aDuService = colonnes.some(c => JOURS.some(j => c?.service?.[j]))
 
@@ -72,7 +75,7 @@ export default function TrameGrille({ colonnes = [], roles = null, colonnesVisib
           {indices.map(i => (
             <th key={i} style={s.thCol}>
               <div>C{i + 1}</div>
-              {roles && ROLES_BADGE.filter(r => roles[r.cle] === i).map(r => (
+              {roles && ROLES_BADGE.filter(r => aLeRole(r.cle, i)).map(r => (
                 <div key={r.cle} style={{ ...s.badge, color: r.couleur }}>{r.court}</div>
               ))}
               {remplA(i).map((r, k) => (
@@ -93,7 +96,7 @@ export default function TrameGrille({ colonnes = [], roles = null, colonnesVisib
               const deService = col.service?.[j] === true
               // Type fixe lun/mar/mer (§3) ; jeu/ven non figé ici (dépend de la base calendrier).
               const typeFixe = TYPE_FIXE[offset] ?? null
-              const estRole = roles && (ROLES_BADGE.some(r => roles[r.cle] === i) || remplA(i).length > 0)
+              const estRole = roles && (ROLES_BADGE.some(r => aLeRole(r.cle, i)) || remplA(i).length > 0)
               // Couleur de la cellule de service, dérivée du jour : mar→garde, lun/mer→astreinte,
               // jeu/ven→neutre (« de service », le type vient de la base calendrier).
               const fondService = typeFixe === 'G' ? GARDE_BG : typeFixe === 'A' ? ASTREINTE_BG : SERVICE_BG
