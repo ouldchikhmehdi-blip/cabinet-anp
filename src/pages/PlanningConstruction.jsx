@@ -6,8 +6,9 @@ import PlanningObjectifs from './PlanningObjectifs'
 import PlanningWeekends from './PlanningWeekends'
 import PlanningVacances from './PlanningVacances'
 import PlanningRea from './PlanningRea'
+import PlanningSemaines from './PlanningSemaines'
 
-// Étapes successives du faiseur (extensible : semaine…).
+// Étapes successives du faiseur.
 // Une seule entrée sidebar « Base calendrier » → assistant guidé Précédent/Suivant.
 const ETAPES = [
   { id: 'calendrier', titre: 'Base calendrier' },
@@ -15,6 +16,7 @@ const ETAPES = [
   { id: 'weekends', titre: 'Week-ends' },
   { id: 'vacances', titre: 'Vacances' },
   { id: 'rea', titre: 'Réa' },
+  { id: 'semaine', titre: 'En semaine' },
 ]
 
 export default function PlanningConstruction() {
@@ -31,6 +33,7 @@ export default function PlanningConstruction() {
   const statutWeekends = useCallback(st => setStatuts(p => ({ ...p, weekends: st })), [])
   const statutVacances = useCallback(st => setStatuts(p => ({ ...p, vacances: st })), [])
   const statutRea = useCallback(st => setStatuts(p => ({ ...p, rea: st })), [])
+  const statutSemaine = useCallback(st => setStatuts(p => ({ ...p, semaine: st })), [])
 
   // ── Styles ──
   const s = {
@@ -125,6 +128,7 @@ export default function PlanningConstruction() {
       {etape.id === 'weekends' && <PlanningWeekends annee={annee} onChangeAnnee={setAnnee} onStatut={statutWeekends} />}
       {etape.id === 'vacances' && <PlanningVacances annee={annee} onChangeAnnee={setAnnee} onStatut={statutVacances} />}
       {etape.id === 'rea' && <PlanningRea annee={annee} onChangeAnnee={setAnnee} onStatut={statutRea} />}
+      {etape.id === 'semaine' && <PlanningSemaines annee={annee} onChangeAnnee={setAnnee} onStatut={statutSemaine} />}
     </div>
   )
 }
