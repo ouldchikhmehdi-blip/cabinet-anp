@@ -185,6 +185,11 @@ export default function PlanningDesiderata() {
     },
     titre: { fontSize: 14, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 },
     aide: { fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 14 },
+    noteFerie: {
+      fontSize: 12, color: 'var(--color-text-secondary)',
+      background: 'var(--color-amber-light)', border: '0.5px solid var(--color-amber)',
+      borderRadius: 'var(--radius-md)', padding: '8px 10px', marginBottom: 14,
+    },
     radioLigne: { display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' },
     radio: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--color-text)', cursor: 'pointer' },
     textarea: {
@@ -366,15 +371,34 @@ export default function PlanningDesiderata() {
               />
             </SectionRepliable>
 
+            {/* Week-ends indisponibles (sans objet l'été) */}
+            {!estEte && (
+              <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
+                <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
+                <div style={s.noteFerie}>
+                  🌉 Vos week-ends indisponibles <strong>accolés à un jour férié</strong> (férié un
+                  vendredi ou un lundi) sont <strong>surveillés</strong> : ils forment des « ponts »
+                  et sont automatiquement <strong>repérés et signalés au faiseur de planning</strong>.
+                </div>
+                <WeekendsIndispo
+                  weekends={weekends}
+                  selection={data.weekendsIndispo}
+                  onChange={v => maj('weekendsIndispo', v)}
+                />
+              </SectionRepliable>
+            )}
+
             {/* Jours off souhaités (sans objet l'été) */}
             {!estEte && (
-              <div style={s.carte}>
-                <div style={s.titre}>Jours off souhaités</div>
-                <div style={s.aide}>
-                  Ajoutez les journées précises où vous souhaitez ne pas travailler.
-                  Une <strong>attention particulière</strong> est portée aux jours off demandés
-                  <strong> autour d'un jour férié</strong> (la veille, le jour même ou le lendemain) :
-                  ces « ponts » peuvent créer un déséquilibre et sont signalés au faiseur.
+              <SectionRepliable
+                titre="Jours off souhaités"
+                resume={data.joursOffSouhaites.length ? `${data.joursOffSouhaites.length} jour${data.joursOffSouhaites.length > 1 ? 's' : ''}` : '—'}
+              >
+                <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
+                <div style={s.noteFerie}>
+                  🌉 Vos demandes de jours off <strong>autour d'un jour férié</strong> (la veille, le
+                  jour même ou le lendemain) sont <strong>surveillées</strong> : elles forment des
+                  « ponts » et sont automatiquement <strong>repérées et signalées au faiseur de planning</strong>.
                 </div>
                 <SelecteurDates
                   dates={data.joursOffSouhaites}
@@ -382,7 +406,7 @@ export default function PlanningDesiderata() {
                   annee={annee}
                   bornes={bornes}
                 />
-              </div>
+              </SectionRepliable>
             )}
 
             {/* Préférence vacances scolaires + Toussaint — seulement les périodes du recueil */}
@@ -476,23 +500,6 @@ export default function PlanningDesiderata() {
                   placeholder="Ex. : plutôt la 2ᵉ semaine ; je préfère travailler le 24-25 et être off le 31-1er…"
                 />
               </div>
-            )}
-
-            {/* Week-ends indisponibles (sans objet l'été) */}
-            {!estEte && (
-              <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
-                <div style={s.aide}>
-                  Cochez les week-ends où vous n'êtes pas disponible.
-                  Une <strong>attention particulière</strong> est portée aux week-ends indisponibles
-                  <strong> accolés à un jour férié</strong> (férié un vendredi ou un lundi) : ils
-                  forment un « pont » et sont signalés au faiseur.
-                </div>
-                <WeekendsIndispo
-                  weekends={weekends}
-                  selection={data.weekendsIndispo}
-                  onChange={v => maj('weekendsIndispo', v)}
-                />
-              </SectionRepliable>
             )}
 
             {/* Trame principale — souhaits de colonne par semaine (sans objet l'été) */}

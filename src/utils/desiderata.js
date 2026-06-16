@@ -36,9 +36,20 @@ export function desiderataVide() {
   }
 }
 
+// Vrai si la date ISO 'YYYY-MM-DD' tombe un samedi ou un dimanche.
+function estWeekendISO(iso) {
+  const j = new Date(`${iso}T00:00:00Z`).getUTCDay()
+  return j === 0 || j === 6
+}
+
 // Fusionne une donnée stockée (potentiellement partielle) avec le modèle vide.
+// Les jours off tombant un week-end sont écartés : non sélectionnables dans l'UI,
+// on nettoie aussi côté données (défense contre une saisie forgée) car un off le
+// week-end entrerait en conflit avec l'attribution des week-ends.
 export function normaliser(data) {
-  return { ...desiderataVide(), ...(data ?? {}) }
+  const fusion = { ...desiderataVide(), ...(data ?? {}) }
+  fusion.joursOffSouhaites = (fusion.joursOffSouhaites ?? []).filter(iso => !estWeekendISO(iso))
+  return fusion
 }
 
 // Un associé est « rempli » (🟢) s'il a transmis (soumis), coché « rien à

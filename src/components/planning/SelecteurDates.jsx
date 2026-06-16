@@ -1,10 +1,13 @@
-import { parseISO, formatISO, formatDateLongueFR, moisAnneeFR } from '../../utils/calendrier'
+import { parseISO, formatISO, formatDateLongueFR, moisAnneeFR, joursFeriesFR } from '../../utils/calendrier'
 
 /**
  * SelecteurDates — sélection de dates précises via un calendrier multi-mois.
  *
  * Tous les mois de la plage [min, max] sont affichés empilés ; un clic sur un jour
  * l'ajoute ou le retire immédiatement. Un résumé supprimable suit le calendrier.
+ *
+ * Les jours de week-end (samedi/dimanche) ne sont PAS sélectionnables comme jours off
+ * (conflit avec l'attribution des week-ends). Les jours fériés sont mis en évidence (ambre).
  *
  * Props :
  *   dates     — string[] au format 'YYYY-MM-DD'
@@ -32,6 +35,12 @@ export default function SelecteurDates({ dates, onChange, annee, bornes = null, 
     m++; if (m > 12) { m = 1; y++ }
   }
 
+  // Jours fériés (nom par date ISO) sur toutes les années couvertes par la plage.
+  const feriesParIso = new Map()
+  for (let y = minY; y <= maxY; y++) {
+    for (const f of joursFeriesFR(y)) feriesParIso.set(f.iso, f.nom)
+  }
+
   function toggle(iso) {
     if (choisies.has(iso)) onChange(dates.filter(x => x !== iso))
     else onChange([...dates, iso].sort())
@@ -42,23 +51,25 @@ export default function SelecteurDates({ dates, onChange, annee, bornes = null, 
   }
 
   const s = {
-    grilleMois: { display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: dates.length ? 14 : 0 },
+    grilleMois: { display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 },
     mois: { width: 224 },
     titreMois: { fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 },
     grilleJours: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 },
     entete: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '2px 0' },
     vide: {},
-    jour: (selectionne, horsPlage, weekend) => ({
+    jour: (selectionne, horsPlage, weekend, ferie) => ({
       fontSize: 12,
       textAlign: 'center',
       padding: '6px 0',
       borderRadius: 'var(--radius-md)',
-      border: `0.5px solid ${selectionne ? couleur : 'transparent'}`,
-      background: selectionne ? couleurFond : 'transparent',
-      color: horsPlage ? 'var(--color-text-tertiary)' : (weekend && !selectionne ? 'var(--color-text-tertiary)' : 'var(--color-text)'),
-      opacity: horsPlage ? 0.35 : 1,
-      cursor: horsPlage ? 'default' : 'pointer',
-      fontWeight: selectionne ? 600 : 400,
+      border: `0.5px solid ${selectionne ? couleur : (ferie ? 'var(--color-amber)' : 'transparent')}`,
+      background: selectionne ? couleurFond : (ferie ? 'var(--color-amber-light)' : 'transparent'),
+      color: horsPlage
+        ? 'var(--color-text-tertiary)'
+        : (ferie && !selectionne ? 'var(--color-amber)' : (weekend ? 'var(--color-text-tertiary)' : 'var(--color-text)')),
+      opacity: horsPlage ? 0.35 : (weekend ? 0.5 : 1),
+      cursor: (horsPlage || weekend) ? 'default' : 'pointer',
+      fontWeight: selectionne || ferie ? 600 : 400,
       userSelect: 'none',
     }),
     chips: { display: 'flex', gap: 6, flexWrap: 'wrap' },
@@ -89,13 +100,21 @@ export default function SelecteurDates({ dates, onChange, annee, bornes = null, 
                   const horsPlage = iso < min || iso > max
                   const jourSem = date.getUTCDay()
                   const weekend = jourSem === 0 || jourSem === 6
+                  const nomFerie = feriesParIso.get(iso) ?? null
                   const selectionne = choisies.has(iso)
+                  const title = horsPlage
+                    ? 'Hors de la période'
+                    : weekend
+                      ? 'Week-end — non sélectionnable comme jour off'
+                      : nomFerie
+                        ? `Férié — ${nomFerie}`
+                        : formatDateLongueFR(date)
                   return (
                     <div
                       key={iso}
-                      style={s.jour(selectionne, horsPlage, weekend)}
-                      onClick={horsPlage ? undefined : () => toggle(iso)}
-                      title={horsPlage ? 'Hors de la période' : formatDateLongueFR(date)}
+                      style={s.jour(selectionne, horsPlage, weekend, !!nomFerie)}
+                      onClick={(horsPlage || weekend) ? undefined : () => toggle(iso)}
+                      title={title}
                     >
                       {jour}
                     </div>
@@ -105,6 +124,10 @@ export default function SelecteurDates({ dates, onChange, annee, bornes = null, 
             </div>
           )
         })}
+      </div>
+
+      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: dates.length ? 12 : 0 }}>
+        <span style={{ color: 'var(--color-amber)', fontWeight: 600 }}>■</span> jour férié · les week-ends ne sont pas sélectionnables comme jour off
       </div>
 
       {dates.length > 0 && (
