@@ -144,6 +144,15 @@ Le repos qui suit une garde/astreinte est **déplaçable**, puisque c'est l'équ
 - Quand une personne demande un jour off précis (jour X), on cherche en priorité à lui caler une garde/astreinte (ou viscéral/bloc) le jour X-1, pour que le repos obligatoire tombe pile sur le jour off demandé. Le jour off est satisfait sans gaspiller un jour de repos.
 - La demande dominante des associés, c'est « voilà où je veux poser mon repos ».
 
+**Le week-end comme levier (attribution des week-ends, en place).** Attribuer un week-end à X le
+place, via la **trame principale**, sur la colonne **avant-WE** en semaine W et **après-WE** en
+semaine W+1, dont les repos sont fixes (ex. lundi off après le week-end). L'attribution automatique
+des week-ends **exploite ça** : elle **évite** de donner un week-end qui rendrait impossible un jour
+off demandé en S(W)/S(W+1) (la colonne ne repose pas ce jour-là) et **privilégie** un week-end dont le
+repos coïncide avec le jour off souhaité (ex. veut le lundi off → week-end juste avant). Reste un
+**réglage** (badge « bloque jour off » si forcé), jamais bloquant — le faiseur tranche.
+Helper : `impactJourOffWE()` dans `src/utils/weekends.js`.
+
 ### 8. Vacances (hors été)
 
 - Le nombre de semaines de vacances est une variable annuelle (distincte été / hors-été).

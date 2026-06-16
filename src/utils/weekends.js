@@ -61,14 +61,38 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie, v
   return { indispo, tropProche, vacancesCollee, jourOffWE, souhaitColonne: Number.isInteger(col) ? col : null }
 }
 
+// Impact d'un week-end W sur les jours off (en semaine) d'un associé, via la trame principale :
+// X assuré sur la colonne « avant-WE » en S(W) et « après-WE » en S(W+1), repos fixés par ces colonnes.
+// - joursOffDetailParAssocie : { ini: { semaine: Set('lun'..'ven') } } (jours off en semaine)
+// - avantReposJours / apresReposJours : Set('lun'..'ven') des repos de la colonne (null = non désignée)
+// Renvoie { bloque, satisfait } : bloque = un jour off demandé non couvert par le repos de la colonne ;
+// satisfait = un jour off demandé couvert (synergie, levier §7). Un set null → on ne juge pas ce côté.
+export function impactJourOffWE(num, ini, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null) {
+  let bloque = false, satisfait = false
+  const examiner = (reqSet, reposSet) => {
+    if (!reqSet || reposSet == null) return
+    for (const j of reqSet) {
+      if (reposSet.has(j)) satisfait = true
+      else bloque = true
+    }
+  }
+  examiner(joursOffDetailParAssocie?.[ini]?.[num], avantReposJours)       // semaine W (avant-WE)
+  examiner(joursOffDetailParAssocie?.[ini]?.[num + 1], apresReposJours)   // semaine W+1 (après-WE)
+  return { bloque, satisfait }
+}
+
 // Proposition automatique (glouton déterministe, par numéro de semaine croissant).
 // - weekendsPlage : [{ num, ... }] de la période à caler (ordre croissant attendu)
 // - indispoParAssocie : { ini: Set(nums) }
 // - objectifParAssocie : { ini: number|undefined } (objectif « G week-end »)
 // - affectationsHorsPlage : affectations des autres périodes (pour l'espacement aux bords)
 // - vacancesParSemaine : { num: [inis] } pour éviter une garde collée à des vacances (S ou S+1)
+// - joursOffWeekendParAssocie : { ini: Set(nums) } jours off posés le sam/dim (= indispo de fait)
+// - colonnesSouhaiteesParAssocie : { ini: { num: colIndex } } (souhait de colonne)
+// - joursOffDetailParAssocie + avantReposJours/apresReposJours : pour éviter de bloquer un jour off
+//   en semaine via la colonne avant/après-WE (et privilégier un week-end qui le satisfait).
 // Renvoie un objet { num: ini } limité aux week-ends de la plage.
-export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}) {
+export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null) {
   const resultat = {}
   // Compteur courant (hors-plage + ce qu'on attribue), pour l'équilibrage et l'espacement.
   const courant = { ...affectationsHorsPlage }
@@ -83,15 +107,23 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     const dispo = (ini) => !indispoParAssocie?.[ini]?.has(num) && !joursOffWeekendParAssocie?.[ini]?.has(num)
     const vacancesCollee = (ini) => vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini)
     const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
+    const bloque = (ini) => impactJourOffWE(num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours).bloque
+    const satisfait = (ini) => impactJourOffWE(num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours).satisfait
 
-    let candidats = ASSOCIES.filter(ini => dispo(ini) && espacementOk(ini) && !vacancesCollee(ini))
-    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini)) // relâche l'espacement
-    if (candidats.length === 0) candidats = ASSOCIES.filter(dispo) // relâche aussi la garde collée
+    // Tiers : on évite en priorité de bloquer un jour off en semaine (via colonne avant/après-WE).
+    let candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini) && espacementOk(ini) && !bloque(ini))
+    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini) && !bloque(ini)) // relâche l'espacement
+    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini)) // relâche le non-blocage
+    if (candidats.length === 0) candidats = ASSOCIES.filter(dispo) // relâche la garde collée
     if (candidats.length === 0) continue // personne de dispo → laissé vide, le faiseur tranche
 
-    // Moins de week-ends d'abord ; on pénalise un souhait de colonne ; départage par déficit vs objectif ; puis ordre figé.
+    // Équilibrage d'abord ; synergie (le week-end satisfait un jour off) ; pénalité souhait de colonne ;
+    // déficit vs objectif ; puis ordre figé.
     candidats.sort((a, b) => {
       if (compte[a] !== compte[b]) return compte[a] - compte[b]
+      const synA = satisfait(a) ? 0 : 1
+      const synB = satisfait(b) ? 0 : 1
+      if (synA !== synB) return synA - synB
       const colA = veutColonne(a) ? 1 : 0
       const colB = veutColonne(b) ? 1 : 0
       if (colA !== colB) return colA - colB

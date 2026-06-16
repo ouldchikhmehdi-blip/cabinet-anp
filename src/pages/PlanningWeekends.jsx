@@ -8,9 +8,14 @@ import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
-import { proposerWeekends, analyserAffectation, ESPACEMENT_MIN } from '../utils/weekends'
+import { chargerTrames } from '../utils/tramesApi'
+import { JOURS } from '../utils/trames'
+import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import PanneauConflits from '../components/planning/PanneauConflits'
+
+// getUTCDay() → clé de jour de semaine (lun→ven) ; samedi/dimanche ignorés ici.
+const JOUR_SEMAINE = { 1: 'lun', 2: 'mar', 3: 'mer', 4: 'jeu', 5: 'ven' }
 
 const COULEUR = {
   A: { bg: 'var(--color-amber-light)', fg: 'var(--color-amber)' }, // astreinte = orange
@@ -32,6 +37,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
   const [vacancesData, setVacancesData] = useState(null) // { v, vacances: { num: [ini] } }
+  const [tramesData, setTramesData] = useState(null)     // { v, principaleId, trames: [...] }
   const [data, setData] = useState(null)        // { v, affectations: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -57,10 +63,10 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee)])
-      .then(([cal, obj, we, vac]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee)])
+      .then(([cal, obj, we, vac, tr]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -124,6 +130,39 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     }
     return map
   }, [desideratas, profils])
+
+  // Jours off EN SEMAINE par associé et par semaine : { ini: { semaine: Set('lun'..'ven') } }.
+  const joursOffDetailParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const map = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      const parSem = {}
+      for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+        try {
+          const d = parseISO(iso)
+          const jour = JOUR_SEMAINE[d.getUTCDay()]
+          if (!jour) continue // samedi/dimanche → géré par joursOffWeekendParAssocie
+          const sem = numeroSemaineISO(d)
+          ;(parSem[sem] ??= new Set()).add(jour)
+        } catch { /* date invalide ignorée */ }
+      }
+      map[ini] = parSem
+    }
+    return map
+  }, [desideratas, profils])
+
+  // Trame principale → repos des colonnes avant-WE (semaine W) et après-WE (semaine W+1).
+  const { avantReposJours, apresReposJours } = useMemo(() => {
+    const tp = tramesData ? tramesData.trames.find(t => t.id === tramesData.principaleId) : null
+    const repos = (idx) => {
+      const col = (idx != null) ? tp?.colonnes?.[idx] : null
+      return col ? new Set(JOURS.filter(j => !(col[j] ?? '').trim())) : null
+    }
+    return { avantReposJours: repos(tp?.avantWE), apresReposJours: repos(tp?.apresWE) }
+  }, [tramesData])
 
   const weekends = useMemo(
     () => (recueil ? weekendsDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
@@ -205,7 +244,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = ini
       }
-      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie)
+      const proposees = proposerWeekends(weekends, indispoParAssocie, objectifGW, horsPlage, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours)
       return { ...prev, affectations: { ...horsPlage, ...proposees } }
     })
   }
@@ -380,7 +419,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const roles = calendrier.semaines?.[w.num] ?? { sam: 'A', dim: 'G' }
               const ini = affectations[w.num] ?? ''
               const a = analyses[w.num]
-              const alerte = (a?.indispo || a?.jourOffWE) ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee || a?.souhaitColonne != null ? 'orange' : null)
+              const impact = ini ? impactJourOffWE(w.num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours) : { bloque: false }
+              const alerte = (a?.indispo || a?.jourOffWE) ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee || a?.souhaitColonne != null || impact.bloque ? 'orange' : null)
               const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
               return (
                 <Fragment key={w.num}>
@@ -404,6 +444,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-amber)')} title={`Moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}`}>🟠 &lt;{ESPACEMENT_MIN} sem</span>
                       ) : a.souhaitColonne != null ? (
                         <span style={s.etat('var(--color-amber)')} title={`Cet associé a souhaité la colonne C${a.souhaitColonne + 1} (travailler) cette semaine`}>🟠 colonne</span>
+                      ) : impact.bloque ? (
+                        <span style={s.etat('var(--color-amber)')} title="Ce week-end empêche un jour off demandé en semaine W ou W+1 : la colonne avant/après-WE ne repose pas ce jour-là">🟠 bloque jour off</span>
                       ) : (
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
