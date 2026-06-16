@@ -3,7 +3,8 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil, supprimerDesiderataRecueil } from '../utils/desiderataApi'
+import { uploaderArchive } from '../utils/archivesApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends } from '../utils/weekendsApi'
@@ -16,7 +17,7 @@ import {
   gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, resoudreTrame,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
-import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import { exporterCalendrierExcel, genererClasseurBuffer } from '../utils/exportCalendrier'
 import ApercuSemaine from '../components/planning/ApercuSemaine'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauConflits from '../components/planning/PanneauConflits'
@@ -54,6 +55,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [espacementInfo, setEspacementInfo] = useState(null)
   // Vue continue (compacte) : grilles enchaînées sans marges, façon tableur Excel.
   const [vueContinue, setVueContinue] = useState(false)
+  // Validation définitive : { etat:'cours'|'ok', message } ou null.
+  const [validation, setValidation] = useState(null)
 
   // Recueils « normaux » (l'été se gère par colonnes, hors de cette étape).
   useEffect(() => {
@@ -583,6 +586,37 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
+  // Valide DÉFINITIVEMENT le planning de la période : archive l'Excel (Supabase Storage, consultable
+  // dans Suivi desiderata), ferme le recueil et RÉINITIALISE ses desiderata. Le planning construit
+  // (week-ends, vacances, réa, en-semaine) est CONSERVÉ comme socle annuel.
+  async function valider() {
+    if (!recueil) return
+    const ok = window.confirm(
+      `Valider définitivement « ${recueil.nom} » ?\n\n` +
+      '• Le planning de la période sera archivé en Excel (consultable dans Suivi desiderata).\n' +
+      '• Les desiderata de cette période seront EFFACÉS.\n' +
+      '• Le planning construit (week-ends, vacances, réa, en-semaine) est CONSERVÉ.\n\n' +
+      'Cette action est définitive.'
+    )
+    if (!ok) return
+    setErreur(null); setValidation({ etat: 'cours', message: 'Archivage en cours…' })
+    try {
+      const { buffer } = await genererClasseurBuffer(
+        annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
+        recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs,
+      )
+      await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
+      await definirStatutRecueil(recueil.id, 'ferme')
+      await supprimerDesiderataRecueil(recueil.id)
+      setValidation({ etat: 'ok', message: 'Planning archivé ✓ — disponible dans Suivi desiderata. Desiderata réinitialisés.' })
+      onStatut?.('enregistre')
+    } catch {
+      setErreur('Validation impossible (archivage ou réinitialisation). Vérifie que la migration Supabase est appliquée.')
+      setValidation(null)
+    }
+  }
+
   // ── Styles ──
   const s = {
     select: {
@@ -707,7 +741,17 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         >
           {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
         </button>
+        <button
+          type="button"
+          onClick={valider}
+          disabled={!pret || !recueil || validation?.etat === 'cours'}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'var(--color-success)', opacity: (!pret || !recueil || validation?.etat === 'cours') ? 0.5 : 1 }}
+          title="Archive le planning de la période en Excel (consultable dans Suivi desiderata), ferme le recueil et réinitialise ses desiderata. Le planning construit est conservé."
+        >
+          {validation?.etat === 'cours' ? 'Validation…' : '✅ Valider définitivement'}
+        </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
+        {validation?.etat === 'ok' && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{validation.message}</span>}
         {espacementInfo && (
           <span style={{ fontSize: 13, alignSelf: 'center', color: espacementInfo.apres < espacementInfo.avant ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
             Gardes rapprochées : {espacementInfo.avant} → {espacementInfo.apres}

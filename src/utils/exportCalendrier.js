@@ -44,7 +44,8 @@ async function telecharger(workbook, nomFichier) {
 
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null) {
+// Construit le classeur et renvoie { wb, nomFichier } (sans télécharger).
+async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -248,5 +249,18 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
   const nomFichier = periode
     ? `Planning_${annee}_S${periode.debut}-S${periode.fin}.xlsx`
     : `Base_calendrier_${annee}.xlsx`
+  return { wb, nomFichier }
+}
+
+// Export classique : construit le classeur et déclenche le téléchargement.
+export async function exporterCalendrierExcel(...args) {
+  const { wb, nomFichier } = await construireClasseur(...args)
   await telecharger(wb, nomFichier)
+}
+
+// Variante pour l'archivage : renvoie le buffer .xlsx (à uploader vers Supabase Storage) + le nom.
+export async function genererClasseurBuffer(...args) {
+  const { wb, nomFichier } = await construireClasseur(...args)
+  const buffer = await wb.xlsx.writeBuffer()
+  return { buffer, nomFichier }
 }

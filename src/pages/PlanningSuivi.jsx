@@ -8,6 +8,7 @@ import {
   listerRecueils, creerRecueil, definirStatutRecueil, definirTypeRecueil, supprimerRecueil,
 } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
+import { listerArchives, urlArchive, supprimerArchive } from '../utils/archivesApi'
 import { detecterPontsTous, detecterPontsWeekendTous } from '../utils/ponts'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
 import PanneauPonts from '../components/planning/PanneauPonts'
@@ -25,6 +26,7 @@ export default function PlanningSuivi() {
   const [ouvert, setOuvert] = useState(null)
   const [tramesOuvert, setTramesOuvert] = useState(false)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
+  const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
   const [erreur, setErreur] = useState(null)
 
   // Formulaire de création de recueil
@@ -82,6 +84,37 @@ export default function PlanningSuivi() {
       .catch(() => { if (!annule) setErreur('Impossible de charger les desiderata.') })
     return () => { annule = true }
   }, [recueilId, estFaiseur])
+
+  // Plannings archivés de l'année (fichiers Excel validés définitivement).
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    listerArchives(annee)
+      .then(a => { if (!annule) setArchives(a) })
+      .catch(() => { /* table d'archives peut-être pas encore créée : section simplement vide */ })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
+  async function telechargerArchive(a) {
+    setErreur(null)
+    try {
+      const url = await urlArchive(a.chemin)
+      if (url) window.open(url, '_blank', 'noopener')
+    } catch {
+      setErreur('Téléchargement de l’archive impossible.')
+    }
+  }
+
+  async function supprimerArchiveLigne(a) {
+    if (!confirm(`Supprimer définitivement l’archive « ${a.nom} » ?`)) return
+    setErreur(null)
+    try {
+      await supprimerArchive(a)
+      setArchives(prev => prev.filter(x => x.id !== a.id))
+    } catch {
+      setErreur('Suppression de l’archive impossible.')
+    }
+  }
 
   async function rechargerRecueils(selId) {
     const rs = await listerRecueils(annee)
@@ -370,6 +403,33 @@ export default function PlanningSuivi() {
           </label>
           <button type="button" onClick={creer} style={s.bouton}>Créer le recueil</button>
         </div>
+      </div>
+
+      {/* Plannings archivés (fichiers Excel validés définitivement), par année */}
+      <div style={s.carteSection} className="no-print">
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>
+          Plannings archivés {annee}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
+          Plannings « validés définitivement » de l'année (fichiers Excel). La liste s'enrichit à chaque validation et au fil des années.
+        </div>
+        {archives.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Aucun planning archivé pour {annee}.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {archives.map(a => (
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px' }}>
+                <span style={{ fontSize: 13, color: 'var(--color-text)', flex: 1 }}>
+                  📄 {a.nom}
+                  {a.semaine_debut != null && <span style={{ color: 'var(--color-text-tertiary)' }}> · S{a.semaine_debut}→S{a.semaine_fin}</span>}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}> · {new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
+                </span>
+                <button type="button" onClick={() => telechargerArchive(a)} style={{ ...s.boutonSec, color: 'var(--color-primary)', borderColor: 'var(--color-primary)' }}>⬇ Télécharger</button>
+                <button type="button" onClick={() => supprimerArchiveLigne(a)} style={s.boutonDanger}>Supprimer</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Trames de l'année — gérées ici, en même temps que l'ouverture des desiderata */}

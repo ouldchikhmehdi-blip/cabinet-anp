@@ -79,6 +79,16 @@ export async function sauverMesDesiderata(userId, recueilId, data, soumis) {
   if (error) throw error
 }
 
+// ── Faiseur : réinitialiser (supprimer) tous les desiderata d'un recueil ──
+// Autorisé par la policy DELETE faiseur (cf. supabase/planning_archives.sql).
+export async function supprimerDesiderataRecueil(recueilId) {
+  const { error } = await supabase
+    .from('planning_desiderata')
+    .delete()
+    .eq('recueil_id', recueilId)
+  if (error) throw error
+}
+
 // ── Faiseur : tous les desiderata d'un recueil ──
 // La RLS ne renvoie tout qu'au faiseur (sinon uniquement sa propre ligne).
 export async function chargerTousDesiderata(recueilId) {

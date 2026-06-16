@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
@@ -45,6 +45,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
+  const [blocage, setBlocage] = useState(null)
 
   // Recueils (périodes) « normales » de l'année + profils.
   useEffect(() => {
@@ -319,6 +320,21 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
+  // Bloque les desiderata de la période en cours : le recueil passe « fermé » → les associés ne
+  // peuvent plus modifier leurs choix (UI + base, cf. trigger planning_archives.sql).
+  async function bloquerDesiderata() {
+    if (!recueil || recueil.statut !== 'ouvert') return
+    setErreur(null)
+    try {
+      await definirStatutRecueil(recueil.id, 'ferme')
+      setRecueils(prev => prev.map(r => (r.id === recueil.id ? { ...r, statut: 'ferme' } : r)))
+      setBlocage('Desiderata bloqués — les associés ne peuvent plus modifier leurs choix.')
+      setTimeout(() => setBlocage(null), 4000)
+    } catch {
+      setErreur('Blocage impossible (réservé au faiseur).')
+    }
+  }
+
   async function exporter() {
     setErreur(null); setExportEnCours(true)
     try {
@@ -424,6 +440,16 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
           </button>
           {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         </div>
+        <button
+          type="button"
+          onClick={bloquerDesiderata}
+          disabled={!recueil || recueil.statut !== 'ouvert'}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-amber)', border: '0.5px solid var(--color-amber)', opacity: (!recueil || recueil.statut !== 'ouvert') ? 0.6 : 1 }}
+          title="Ferme le recueil de desiderata de cette période : les associés ne peuvent plus modifier leurs choix. Réouverture possible dans Suivi desiderata."
+        >
+          {recueil?.statut === 'ferme' ? '🔒 Desiderata bloqués' : '🔒 Bloquer les desiderata'}
+        </button>
+        {blocage && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{blocage}</span>}
       </div>
 
       {erreur && (
