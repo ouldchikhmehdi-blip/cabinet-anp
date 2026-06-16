@@ -596,12 +596,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       )}
                     </span>
                     <select
-                      value={effectiveId == null ? '' : String(effectiveId)}
+                      value={trameParSemaine[sem.num] != null ? String(trameParSemaine[sem.num]) : ''}
                       onChange={e => majTrameSemaine(sem.num, e.target.value === '' ? null : Number(e.target.value))}
                       style={s.selTrame}
                       disabled={trames.length === 0}
                     >
-                      <option value="">—</option>
+                      <option value="">Automatique (selon les vacances)</option>
                       {tramesOptions.map(t => {
                         const insuffisante = vReq >= 2 && capaciteVacances(t) < vReq
                         return (
@@ -612,9 +612,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       })}
                     </select>
                   </div>
-                  {repli && trame && (
+                  {trameParSemaine[sem.num] == null && trame && (
                     <div style={{ ...s.meta, marginTop: 2, color: 'var(--color-primary-dark)' }}>
-                      ↪ Repli automatique : « {trame.nom} » appliquée (la trame principale n'a pas assez de colonnes vacances pour cette semaine). Choisis une trame dans la liste pour forcer.
+                      ↪ Automatique : « {trame.nom} » — {capaciteVacances(trame)} colonne{capaciteVacances(trame) > 1 ? 's' : ''} vacances pour {vReq} vacancier{vReq > 1 ? 's' : ''} cette semaine{repli ? ' (la principale n’a pas assez de colonnes vacances)' : ''}.
                     </div>
                   )}
                   {nbMasquees > 0 && (
