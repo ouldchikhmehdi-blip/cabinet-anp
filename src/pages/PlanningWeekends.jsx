@@ -11,8 +11,10 @@ import { chargerVacances } from '../utils/vacancesApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { JOURS } from '../utils/trames'
 import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
+import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleEcart, cleEcartWeekend } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import PanneauConflits from '../components/planning/PanneauConflits'
+import PanneauPonts from '../components/planning/PanneauPonts'
 
 // getUTCDay() → clé de jour de semaine (lun→ven) ; samedi/dimanche ignorés ici.
 const JOUR_SEMAINE = { 1: 'lun', 2: 'mar', 3: 'mer', 4: 'jeu', 5: 'ven' }
@@ -84,29 +86,72 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
 
-  // Indisponibilités week-end par associé : { ini: Set(numsSemaine) }.
-  const indispoParAssocie = useMemo(() => {
+  // Jours off de pont écartés par le faiseur : Set('INI|YYYY-MM-DD') (base calendrier).
+  const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
+
+  // Jours off COMPLETS par associé : { ini: ['YYYY-MM-DD', …] } (avant écartement).
+  const joursOffParAssocie = useMemo(() => {
     const parUser = {}
     for (const p of profils) parUser[p.id] = p.initiales
     const map = {}
     for (const row of desideratas) {
       const ini = parUser[row.user_id]
       if (!ini) continue
-      map[ini] = new Set(normaliser(row.data).weekendsIndispo ?? [])
+      map[ini] = normaliser(row.data).joursOffSouhaites ?? []
     }
     return map
   }, [desideratas, profils])
 
-  // Jours off posés un samedi/dimanche → week-end (semaine ISO) concerné : { ini: Set(nums) }.
-  const joursOffWeekendParAssocie = useMemo(() => {
+  // Détection des ponts (sur les jours off complets, pour montrer aussi les écartés).
+  const pontsParAssocie = useMemo(() => detecterPontsTous(joursOffParAssocie, annee), [joursOffParAssocie, annee])
+
+  // Indispos week-end COMPLÈTES par associé : { ini: [numsSemaine] } (avant écartement).
+  const weekendsIndispoParAssocie = useMemo(() => {
     const parUser = {}
     for (const p of profils) parUser[p.id] = p.initiales
     const map = {}
     for (const row of desideratas) {
       const ini = parUser[row.user_id]
       if (!ini) continue
+      map[ini] = normaliser(row.data).weekendsIndispo ?? []
+    }
+    return map
+  }, [desideratas, profils])
+
+  // Ponts « week-end » (indispo accolée à un férié vendredi/lundi) — complets, pour l'encart.
+  const pontsWeekendParAssocie = useMemo(() => detecterPontsWeekendTous(weekendsIndispoParAssocie, annee), [weekendsIndispoParAssocie, annee])
+
+  // Week-ends accolés à un férié vendredi/lundi (fait calendaire) → badge sur la ligne.
+  const accolesFerie = useMemo(() => weekendsAccolesFerie(annee), [annee])
+
+  // Jours off EFFECTIFS : on retire les jours off de pont écartés par le faiseur.
+  // Ces jours-là ne sont plus traités comme indisponibilités par l'attribution.
+  const joursOffEffectifsParAssocie = useMemo(() => {
+    const map = {}
+    for (const [ini, isos] of Object.entries(joursOffParAssocie)) {
+      map[ini] = isos.filter(iso => !ecartesSet.has(cleEcart(ini, iso)))
+    }
+    return map
+  }, [joursOffParAssocie, ecartesSet])
+
+  // Indisponibilités week-end EFFECTIVES par associé : { ini: Set(numsSemaine) }.
+  // On retire les week-ends de pont écartés par le faiseur (clé "INI|WE|<semaine>") : seuls
+  // des week-ends de pont peuvent l'être, donc une indispo ordinaire reste toujours respectée.
+  const indispoParAssocie = useMemo(() => {
+    const map = {}
+    for (const [ini, semaines] of Object.entries(weekendsIndispoParAssocie)) {
+      map[ini] = new Set(semaines.filter(S => !ecartesSet.has(cleEcartWeekend(ini, S))))
+    }
+    return map
+  }, [weekendsIndispoParAssocie, ecartesSet])
+
+  // Jours off posés un samedi/dimanche → week-end (semaine ISO) concerné : { ini: Set(nums) }.
+  // Basé sur les jours off EFFECTIFS (ponts écartés exclus).
+  const joursOffWeekendParAssocie = useMemo(() => {
+    const map = {}
+    for (const [ini, isos] of Object.entries(joursOffEffectifsParAssocie)) {
       const set = new Set()
-      for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+      for (const iso of isos) {
         try {
           const d = parseISO(iso)
           const j = d.getUTCDay()
@@ -116,7 +161,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       map[ini] = set
     }
     return map
-  }, [desideratas, profils])
+  }, [joursOffEffectifsParAssocie])
 
   // Souhaits de colonne par associé : { ini: { numSemaine: colIndex } } (trame principale).
   const colonnesSouhaiteesParAssocie = useMemo(() => {
@@ -132,15 +177,12 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   }, [desideratas, profils])
 
   // Jours off EN SEMAINE par associé et par semaine : { ini: { semaine: Set('lun'..'ven') } }.
+  // Basé sur les jours off EFFECTIFS (ponts écartés exclus).
   const joursOffDetailParAssocie = useMemo(() => {
-    const parUser = {}
-    for (const p of profils) parUser[p.id] = p.initiales
     const map = {}
-    for (const row of desideratas) {
-      const ini = parUser[row.user_id]
-      if (!ini) continue
+    for (const [ini, isos] of Object.entries(joursOffEffectifsParAssocie)) {
       const parSem = {}
-      for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+      for (const iso of isos) {
         try {
           const d = parseISO(iso)
           const jour = JOUR_SEMAINE[d.getUTCDay()]
@@ -152,7 +194,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       map[ini] = parSem
     }
     return map
-  }, [desideratas, profils])
+  }, [joursOffEffectifsParAssocie])
 
   // Trame principale → repos des colonnes avant-WE (semaine W) et après-WE (semaine W+1).
   const { avantReposJours, apresReposJours } = useMemo(() => {
@@ -263,8 +305,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   async function exporter() {
     setErreur(null); setExportEnCours(true)
     try {
-      // Étape 3 : base calendrier + objectifs + week-ends (incrémental).
-      await exporterCalendrierExcel(annee, calendrier, objectifs, data.affectations)
+      // Étape 3 : base calendrier + objectifs + week-ends (incrémental), borné à la période du recueil.
+      await exporterCalendrierExcel(annee, calendrier, objectifs, data.affectations, null, null, recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null)
     } catch {
       setErreur('Export Excel impossible.')
     } finally {
@@ -382,6 +424,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} ecartesSet={ecartesSet} />
+
           <PanneauConflits conflits={conflits} />
 
           {/* Récap des conflits */}
@@ -428,6 +472,12 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                   <div style={s.ligne}>
                     <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                       WE S{w.num} · {formatJJMM(w.samedi)} – {formatJJMM(w.dimanche)}
+                      {accolesFerie[w.num] && (
+                        <span
+                          style={{ marginLeft: 5, cursor: 'help' }}
+                          title={`Week-end accolé au férié ${accolesFerie[w.num].map(f => `${f.nom} (${f.jour})`).join(', ')} — attention aux indisponibilités (pont)`}
+                        >🌉</span>
+                      )}
                     </span>
                     <div style={s.role(roles.sam)} title="Rôle du samedi (Étape 0)">{roles.sam}</div>
                     <div style={s.role(roles.dim)} title="Rôle du dimanche (Étape 0)">{roles.dim}</div>

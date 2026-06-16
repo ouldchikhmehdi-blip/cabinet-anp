@@ -8,7 +8,9 @@ import {
   listerRecueils, creerRecueil, definirStatutRecueil, definirTypeRecueil, supprimerRecueil,
 } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
+import { detecterPontsTous, detecterPontsWeekendTous } from '../utils/ponts'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
+import PanneauPonts from '../components/planning/PanneauPonts'
 import PlanningTrames from './PlanningTrames'
 
 export default function PlanningSuivi() {
@@ -22,6 +24,7 @@ export default function PlanningSuivi() {
   const [desideratas, setDesideratas] = useState([])
   const [ouvert, setOuvert] = useState(null)
   const [tramesOuvert, setTramesOuvert] = useState(false)
+  const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [erreur, setErreur] = useState(null)
 
   // Formulaire de création de recueil
@@ -60,6 +63,16 @@ export default function PlanningSuivi() {
     return () => { annule = true }
   }, [annee, estFaiseur])
 
+  // Base calendrier de l'année (pour les jours off de pont écartés par le faiseur)
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerCalendrier(annee)
+      .then(c => { if (!annule) setCalendrier(c) })
+      .catch(() => { /* silencieux : l'encart ponts restera simplement non interactif */ })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
   // Desiderata du recueil sélectionné (le board n'est affiché que si un recueil existe)
   useEffect(() => {
     if (!estFaiseur || !recueilId) return
@@ -82,7 +95,9 @@ export default function PlanningSuivi() {
     try {
       const cal = await chargerCalendrier(annee)
       const weeks = await recupererVacancesScolairesZoneC(annee)
-      await sauverCalendrier(annee, { ...cal, vacancesScolaires: weeks }, session.user.id)
+      const maj = { ...cal, vacancesScolaires: weeks }
+      await sauverCalendrier(annee, maj, session.user.id)
+      setCalendrier(maj)
       setMsgVac(`Vacances scolaires ${annee} récupérées et enregistrées dans la base calendrier.`)
       setTimeout(() => setMsgVac(null), 4000)
     } catch {
@@ -165,6 +180,39 @@ export default function PlanningSuivi() {
   }), [profilParInitiales, desiderataParUser])
 
   const nbRemplis = lignes.filter(l => l.rempli).length
+
+  // ── Ponts / jours fériés ──
+  // Jours off par associé (depuis les desiderata déjà normalisés) → détection des ponts.
+  const joursOffParAssocie = useMemo(() => {
+    const map = {}
+    for (const l of lignes) map[l.ini] = l.data.joursOffSouhaites ?? []
+    return map
+  }, [lignes])
+  const pontsParAssocie = useMemo(() => detecterPontsTous(joursOffParAssocie, annee), [joursOffParAssocie, annee])
+  // Indispos week-end par associé → ponts week-end (accolés à un férié vendredi/lundi).
+  const weekendsIndispoParAssocie = useMemo(() => {
+    const map = {}
+    for (const l of lignes) map[l.ini] = l.data.weekendsIndispo ?? []
+    return map
+  }, [lignes])
+  const pontsWeekendParAssocie = useMemo(() => detecterPontsWeekendTous(weekendsIndispoParAssocie, annee), [weekendsIndispoParAssocie, annee])
+  const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
+
+  // Écarter / réintégrer un élément de pont (jour off ou week-end) — persisté dans la base calendrier.
+  async function toggleEcart(cle) {
+    if (!calendrier) return
+    const actuel = calendrier.pontsEcartes ?? []
+    const nouveau = actuel.includes(cle) ? actuel.filter(c => c !== cle) : [...actuel, cle]
+    const maj = { ...calendrier, pontsEcartes: nouveau }
+    const precedent = calendrier
+    setCalendrier(maj) // optimiste
+    try {
+      await sauverCalendrier(annee, maj, session.user.id)
+    } catch {
+      setCalendrier(precedent)
+      setErreur('Écartement impossible (réservé au faiseur).')
+    }
+  }
 
   // ── Styles ──
   const s = {
@@ -375,6 +423,13 @@ export default function PlanningSuivi() {
           {ouvert && (
             <div style={s.panneau} className="no-print">
               <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={recueil.type === 'ete'} />
+            </div>
+          )}
+
+          {/* Ponts / jours fériés — alerte précoce, avant l'attribution des week-ends */}
+          {recueil.type !== 'ete' && (
+            <div className="no-print">
+              <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} ecartesSet={ecartesSet} onToggle={toggleEcart} />
             </div>
           )}
 

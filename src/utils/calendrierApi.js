@@ -43,7 +43,7 @@ export function calendrierVide(annee) {
   for (const s of listerSemaines(annee)) {
     semaines[s.num] = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
   }
-  return { semaines, vacancesScolaires: semainesVacancesScolaires(annee) }
+  return { semaines, vacancesScolaires: semainesVacancesScolaires(annee), pontsEcartes: [] }
 }
 
 const VERSION_CAL = 2 // v2 : jeudi = Garde par défaut
@@ -67,6 +67,8 @@ export function normaliserCalendrier(annee, data) {
     v: VERSION_CAL,
     semaines,
     vacancesScolaires: data?.vacancesScolaires ?? base.vacancesScolaires,
+    // Jours off de pont écartés par le faiseur : tableau de clés "INI|YYYY-MM-DD".
+    pontsEcartes: Array.isArray(data?.pontsEcartes) ? data.pontsEcartes : [],
   }
 }
 
