@@ -13,7 +13,7 @@ import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import {
   proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
-  gardesWeekendParAssocie, gardesSemaineParAssocie, resoudreTrame,
+  gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, resoudreTrame,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
@@ -114,6 +114,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const feriesParSemaine = useMemo(() => feriesEnSemaine(annee), [annee])
+  // Offsets (0=lun … 4=ven) des jours fériés ouvrés par semaine — pour l'équilibrage des récup JF dans le moteur.
+  const feriesOffsetsParSemaine = useMemo(() => {
+    const m = {}
+    for (const [num, arr] of Object.entries(feriesParSemaine)) {
+      const offs = arr.map(f => parseISO(f.iso).getUTCDay() - 1).filter(o => o >= 0 && o <= 4)
+      if (offs.length) m[Number(num)] = offs
+    }
+    return m
+  }, [feriesParSemaine])
   const trameParSemaine = useMemo(() => data?.trameParSemaine ?? {}, [data])
   const affectationsLibres = useMemo(() => data?.affectations ?? {}, [data])
   const verrousData = useMemo(() => data?.verrous ?? {}, [data])
@@ -328,6 +337,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     const gSemHors = gardesSemaineParAssocie(horsNums, annee, calendrier, (n) => trameInfo(n)?.trame ?? null, contexteAmont, prev.affectations ?? {})
     const gardesInitiales = {}
     for (const ini of ASSOCIES) gardesInitiales[ini] = [...(gWE[ini] ?? []), ...(gSemHors.dates[ini] ?? [])]
+    // Socle hors-plage des équilibres additionnels (A vendredi, G vendredi, récup JF) pour l'équilibre annuel.
+    const vrHors = bilanVendrediRecupParAssocie(horsNums, calendrier, (n) => trameInfo(n)?.trame ?? null, contexteAmont, prev.affectations ?? {}, feriesOffsetsParSemaine)
     // Verrous de la plage = colonnes forcées à préserver.
     const fixes = {}
     for (const sem of semaines) {
@@ -337,18 +348,22 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       for (const c of cols) if (prev.affectations?.[sem.num]?.[c] != null) m[c] = prev.affectations[sem.num][c]
       if (Object.keys(m).length) fixes[sem.num] = m
     }
-    return { trameInfo, gardesInitiales, compteAnneeInitial: gSemHors.comptes, fixes }
+    return {
+      trameInfo, gardesInitiales, compteAnneeInitial: gSemHors.comptes, fixes,
+      aVenInitial: vrHors.aVen, gVenInitial: vrHors.gVen, recupInitial: vrHors.recup,
+    }
   }
 
   function proposer() {
     if (!recueil) return
     setEnregistre(false); setEspacementInfo(null); onStatut?.('modifie')
     setData(prev => {
-      const { trameInfo, gardesInitiales, compteAnneeInitial, fixes } = monterEntreesMoteur(prev)
+      const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(prev)
       const proposees = proposerSemaines({
         semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
         desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
         gardesInitiales, compteAnneeInitial, fixes,
+        aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
       })
       const aff = { ...(prev.affectations ?? {}) }
       for (const sem of semaines) {
@@ -362,11 +377,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   // 2e passage : recherche locale par échanges pour réduire les gardes rapprochées (équilibre préservé).
   function ameliorer() {
     if (!recueil || !data) return
-    const { trameInfo, gardesInitiales, compteAnneeInitial, fixes } = monterEntreesMoteur(data)
+    const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(data)
     const { affectations: ameliorees, avant, apres } = ameliorerEspacementSemaines({
       semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
       desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
       gardesInitiales, compteAnneeInitial, fixes, affectations: data.affectations ?? {},
+      aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
     })
     setEspacementInfo({ avant, apres })
     setEnregistre(false); onStatut?.('modifie')

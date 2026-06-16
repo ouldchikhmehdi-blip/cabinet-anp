@@ -189,6 +189,49 @@ export function gardesSemaineParAssocie(weeks, annee, calendrier, trameDe, conte
   return { dates, comptes }
 }
 
+// Rôle du vendredi d'une colonne SI elle est de service le vendredi → 'A' | 'G' | null.
+export function roleVendrediCol(trame, colIndex, num, calendrier) {
+  const col = trame?.colonnes?.[colIndex]
+  if (!col?.service?.ven) return null
+  return typeDuJour(calendrier, num, 4) // 'A' (astreinte) ou 'G' (garde)
+}
+
+// Nb de récup « jour férié » qu'une colonne génère cette semaine : +1 par jour férié ouvré (offset 0–4) où la
+// colonne TRAVAILLE (col[jour] non vide) SANS être de service (de service → garde/astreinte, pas de récup).
+export function recupColCount(trame, colIndex, feriesOffsets = []) {
+  const col = trame?.colonnes?.[colIndex]
+  if (!col || !feriesOffsets.length) return 0
+  let n = 0
+  for (const off of feriesOffsets) {
+    if (off < 0 || off > 4) continue
+    const jour = JOURS[off]
+    if (col.service?.[jour]) continue
+    if ((col[jour] ?? '').trim()) n++
+  }
+  return n
+}
+
+// A/G vendredi + récup JF par associé sur les semaines fournies (d'après les affectations résolues).
+// Sert à initialiser l'équilibre ANNUEL (semaines hors-plage). feriesOffsetsParSemaine = { num:[offset…] }.
+export function bilanVendrediRecupParAssocie(weeks, calendrier, trameDe, contexteAmont, affectationsLibres = {}, feriesOffsetsParSemaine = {}) {
+  const aVen = {}; const gVen = {}; const recup = {}
+  for (const ini of ASSOCIES) { aVen[ini] = 0; gVen[ini] = 0; recup[ini] = 0 }
+  for (const num of weeks) {
+    const trame = trameDe(num)
+    if (!trame) continue
+    const aff = affectationResolue(trame, num, contexteAmont, affectationsLibres)
+    const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
+    for (const [col, ini] of Object.entries(aff)) {
+      if (!ASSOCIES.includes(ini)) continue
+      const rv = roleVendrediCol(trame, Number(col), num, calendrier)
+      if (rv === 'A') aVen[ini]++
+      else if (rv === 'G') gVen[ini]++
+      recup[ini] += recupColCount(trame, Number(col), feriesOffsets)
+    }
+  }
+  return { aVen, gVen, recup }
+}
+
 // ── Remplissage automatique des colonnes libres, semaine par semaine (glouton déterministe) ──
 // Renvoie { <num>: { <colIndex>: ini } } pour les colonnes LIBRES de la plage.
 //   trameInfo(num) → { trame, estPrincipale } | null
@@ -200,15 +243,21 @@ export function gardesSemaineParAssocie(weeks, annee, calendrier, trameDe, conte
 export function proposerSemaines({
   semainesPlage, annee, calendrier, trameInfo, contexteAmont, desiderata,
   gardesInitiales = {}, compteAnneeInitial = {}, fixes = {},
+  aVenInitial = {}, gVenInitial = {}, recupInitial = {}, feriesOffsetsParSemaine = {},
 }) {
   const { vacances = {} } = contexteAmont
   const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {} } = desiderata
 
   const gardes = {}; const compteAnnee = {}; const comptePeriode = {}
+  // Équilibres annuels additionnels (priorité après les gardes de semaine) : A vendredi, G vendredi, récup JF.
+  const cAV = {}; const cGV = {}; const cRJ = {}
   for (const ini of ASSOCIES) {
     gardes[ini] = [...(gardesInitiales[ini] ?? [])]
     compteAnnee[ini] = compteAnneeInitial[ini] ?? 0
     comptePeriode[ini] = 0
+    cAV[ini] = aVenInitial[ini] ?? 0
+    cGV[ini] = gVenInitial[ini] ?? 0
+    cRJ[ini] = recupInitial[ini] ?? 0
   }
 
   const out = {}
@@ -222,11 +271,15 @@ export function proposerSemaines({
 
     const spec = colonnesSpeciales(trame, num, contexteAmont)
     const verrou = fixes[num] ?? {}
+    const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
 
-    // Comptabilise les gardes générées par une colonne pour un associé.
+    // Comptabilise ce qu'une colonne fait gagner à un associé : gardes de semaine + A/G vendredi + récup JF.
     const placer = (col, ini) => {
       const ds = datesGardeSemaine(trame, col, annee, num, calendrier)
       if (ds.length) { gardes[ini].push(...ds); compteAnnee[ini] += ds.length; comptePeriode[ini] += ds.length }
+      const rv = roleVendrediCol(trame, col, num, calendrier)
+      if (rv === 'A') cAV[ini] += 1; else if (rv === 'G') cGV[ini] += 1
+      cRJ[ini] += recupColCount(trame, col, feriesOffsets)
     }
 
     // Associés indisponibles cette semaine (spéciales + tous les vacanciers).
@@ -267,7 +320,16 @@ export function proposerSemaines({
         const cands = parCol[c].filter(a => assocLibres.includes(a))
         if (!cands.length) continue
         // Collision (deux associés veulent la même colonne) : un seul l'obtient (le moins chargé).
-        cands.sort((a, b) => (compteAnnee[a] - compteAnnee[b]) || (comptePeriode[a] - comptePeriode[b]) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
+        const rvCol = roleVendrediCol(trame, c, num, calendrier)
+        const recupCol = recupColCount(trame, c, feriesOffsets)
+        const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
+        const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
+        cands.sort((a, b) =>
+          (compteAnnee[a] - compteAnnee[b]) ||
+          (venRel(a) - venRel(b)) ||
+          (rjRel(a) - rjRel(b)) ||
+          (comptePeriode[a] - comptePeriode[b]) ||
+          (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
         attribuer(c, cands[0])
       }
     }
@@ -294,9 +356,16 @@ export function proposerSemaines({
     const restantesTriees = [...restantes].sort((a, b) => (nbGardesCol(b) - nbGardesCol(a)) || (a - b))
     for (const c of restantesTriees) {
       if (out[num][c] != null || !assocLibres.length) continue
+      // Équilibres additionnels propres à cette colonne (vendredi A/G, récup JF), après les gardes de semaine.
+      const rvCol = roleVendrediCol(trame, c, num, calendrier)
+      const recupCol = recupColCount(trame, c, feriesOffsets)
+      const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
+      const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
       const cands = [...assocLibres]
       cands.sort((a, b) =>
-        (compteAnnee[a] - compteAnnee[b]) ||
+        (compteAnnee[a] - compteAnnee[b]) ||                 // gardes de semaine — priorité n°1
+        (venRel(a) - venRel(b)) ||                           // A ou G vendredi (selon le type du vendredi)
+        (rjRel(a) - rjRel(b)) ||                             // récup jour férié
         (comptePeriode[a] - comptePeriode[b]) ||
         ((reposCouvre(c, b) ? 1 : 0) - (reposCouvre(c, a) ? 1 : 0)) ||
         (ecart(c, b) - ecart(c, a)) ||                       // plus grand écart d'abord (moins pénible)
@@ -317,6 +386,7 @@ export function proposerSemaines({
 export function ameliorerEspacementSemaines({
   semainesPlage, annee, calendrier, trameInfo, contexteAmont, desiderata = {},
   gardesInitiales = {}, compteAnneeInitial = {}, fixes = {}, affectations = {},
+  aVenInitial = {}, gVenInitial = {}, recupInitial = {}, feriesOffsetsParSemaine = {},
 }) {
   const { vacances = {} } = contexteAmont
   const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {} } = desiderata
@@ -326,41 +396,54 @@ export function ameliorerEspacementSemaines({
   const aff = {}
   for (const num of nums) aff[num] = { ...(affectations[num] ?? {}) }
 
-  // Parties FIXES des gardes (jamais modifiées) : socle hors-plage + colonnes spéciales + colonnes verrouillées.
+  // Parties FIXES (jamais modifiées) : socle hors-plage + colonnes spéciales + colonnes verrouillées.
   const weekInfo = {}
   const fixedDates = {}; const fixedEvents = {}; const countFixe = {}
+  const avFixe = {}; const gvFixe = {}; const rjFixe = {}
   for (const ini of ASSOCIES) {
     fixedDates[ini] = [...(gardesInitiales[ini] ?? [])]
     fixedEvents[ini] = []
     countFixe[ini] = compteAnneeInitial[ini] ?? 0
+    avFixe[ini] = aVenInitial[ini] ?? 0
+    gvFixe[ini] = gVenInitial[ini] ?? 0
+    rjFixe[ini] = recupInitial[ini] ?? 0
   }
   for (const num of nums) {
     const info = trameInfo(num)
     if (!info?.trame) { weekInfo[num] = null; continue }
     const spec = colonnesSpeciales(info.trame, num, contexteAmont)
     const verrou = fixes[num] ?? {}
+    const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
     weekInfo[num] = { trame: info.trame, estPrincipale: info.estPrincipale, spec, verrou, vacanciers: new Set(vacances[num] ?? []) }
     const ajoutFixe = (col, ini) => {
       if (!ASSOCIES.includes(ini)) return
       const ds = datesGardeSemaine(info.trame, Number(col), annee, num, calendrier)
       if (ds.length) { fixedDates[ini].push(...ds); fixedEvents[ini].push(ds); countFixe[ini] += ds.length }
+      const rv = roleVendrediCol(info.trame, Number(col), num, calendrier)
+      if (rv === 'A') avFixe[ini] += 1; else if (rv === 'G') gvFixe[ini] += 1
+      rjFixe[ini] += recupColCount(info.trame, Number(col), feriesOffsets)
     }
     for (const [col, ini] of Object.entries(spec)) ajoutFixe(col, ini)
     for (const [col, ini] of Object.entries(verrou)) if (aff[num][col] != null) ajoutFixe(col, ini)
   }
 
   // Cellules ÉCHANGEABLES : colonnes de aff hors verrous. occ = occupant courant (mutable).
+  // Chaque cellule porte ses contributions : gardes (dates/count), A/G vendredi (av/gv), récup JF (rj).
   const cells = []
   const cellsByAssoc = {}; for (const ini of ASSOCIES) cellsByAssoc[ini] = new Set()
-  const compteAnnee = {}; for (const ini of ASSOCIES) compteAnnee[ini] = countFixe[ini]
+  const compteAnnee = {}, compteAV = {}, compteGV = {}, compteRJ = {}
+  for (const ini of ASSOCIES) { compteAnnee[ini] = countFixe[ini]; compteAV[ini] = avFixe[ini]; compteGV[ini] = gvFixe[ini]; compteRJ[ini] = rjFixe[ini] }
   for (const num of nums) {
     const wi = weekInfo[num]; if (!wi) continue
+    const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
     for (const [colStr, ini] of Object.entries(aff[num])) {
       const col = Number(colStr)
       if (wi.verrou[col] != null || !ASSOCIES.includes(ini)) continue
       const ds = datesGardeSemaine(wi.trame, col, annee, num, calendrier)
-      const cell = { id: cells.length, num, col, dates: ds, count: ds.length, occ: ini }
-      cells.push(cell); cellsByAssoc[ini].add(cell.id); compteAnnee[ini] += ds.length
+      const rv = roleVendrediCol(wi.trame, col, num, calendrier)
+      const cell = { id: cells.length, num, col, dates: ds, count: ds.length, av: rv === 'A' ? 1 : 0, gv: rv === 'G' ? 1 : 0, rj: recupColCount(wi.trame, col, feriesOffsets), occ: ini }
+      cells.push(cell); cellsByAssoc[ini].add(cell.id)
+      compteAnnee[ini] += ds.length; compteAV[ini] += cell.av; compteGV[ini] += cell.gv; compteRJ[ini] += cell.rj
     }
   }
 
@@ -383,9 +466,10 @@ export function ameliorerEspacementSemaines({
     return p
   }
   const penaltyTotale = () => { let p = 0; for (const ini of ASSOCIES) p += penaltyAssoc(ini); return p }
-  const ecartEquilibre = () => {
+  // Écart max−min d'un compteur (équilibre). Sert aux gardes de semaine ET aux A/G vendredi / récup JF.
+  const ecartDe = (m) => {
     let mn = Infinity, mx = -Infinity
-    for (const ini of ASSOCIES) { const v = compteAnnee[ini]; if (v < mn) mn = v; if (v > mx) mx = v }
+    for (const ini of ASSOCIES) { const v = m[ini]; if (v < mn) mn = v; if (v > mx) mx = v }
     return mx - mn
   }
   // Souhaits de colonne non satisfaits référençant une cellule (semaine principale uniquement).
@@ -415,6 +499,9 @@ export function ameliorerEspacementSemaines({
     A.occ = Y; B.occ = X
     cellsByAssoc[Y].add(A.id); cellsByAssoc[X].add(B.id)
     compteAnnee[X] += (B.count - A.count); compteAnnee[Y] += (A.count - B.count)
+    compteAV[X] += (B.av - A.av); compteAV[Y] += (A.av - B.av)
+    compteGV[X] += (B.gv - A.gv); compteGV[Y] += (A.gv - B.gv)
+    compteRJ[X] += (B.rj - A.rj); compteRJ[Y] += (A.rj - B.rj)
   }
   // Un associé occupe-t-il déjà une colonne de la semaine (hors la cellule `exceptId`) ?
   const occupeSemaine = (ini, num, exceptId) => {
@@ -449,12 +536,14 @@ export function ameliorerEspacementSemaines({
           if (occupeSemaine(X, B.num, B.id) || occupeSemaine(Y, A.num, A.id)) continue
         }
         const pBefore = penaltyAssoc(X) + penaltyAssoc(Y)
-        const eqBefore = ecartEquilibre()
+        const eqBefore = ecartDe(compteAnnee)
+        const eqAVBefore = ecartDe(compteAV), eqGVBefore = ecartDe(compteGV), eqRJBefore = ecartDe(compteRJ)
         const souhaitBefore = souhaitInsatCell(A.num, A.col, X) + souhaitInsatCell(B.num, B.col, Y)
         const reposBefore = reposCouvreCell(A.num, A.col, X) + reposCouvreCell(B.num, B.col, Y)
         echanger(A, B)
         const pAfter = penaltyAssoc(X) + penaltyAssoc(Y)
-        const eqAfter = ecartEquilibre()
+        const eqAfter = ecartDe(compteAnnee)
+        const eqAVAfter = ecartDe(compteAV), eqGVAfter = ecartDe(compteGV), eqRJAfter = ecartDe(compteRJ)
         const souhaitAfter = souhaitInsatCell(A.num, A.col, A.occ) + souhaitInsatCell(B.num, B.col, B.occ)
         const reposAfter = reposCouvreCell(A.num, A.col, A.occ) + reposCouvreCell(B.num, B.col, B.occ)
         echanger(A, B) // revert
@@ -462,7 +551,9 @@ export function ameliorerEspacementSemaines({
         const dEq = eqAfter - eqBefore
         const dSouhait = souhaitAfter - souhaitBefore
         const dRepos = reposAfter - reposBefore
-        if (dP < 0 && dEq <= 0 && dSouhait <= 0) {
+        // Équilibre d'abord : ne pas dégrader gardes de semaine, ni A/G vendredi, ni récup JF, ni souhaits.
+        const equilibresOk = dEq <= 0 && (eqAVAfter - eqAVBefore) <= 0 && (eqGVAfter - eqGVBefore) <= 0 && (eqRJAfter - eqRJBefore) <= 0
+        if (dP < 0 && equilibresOk && dSouhait <= 0) {
           if (!meilleur || dP < meilleur.dP || (dP === meilleur.dP && (dEq < meilleur.dEq || (dEq === meilleur.dEq && dRepos > meilleur.dRepos)))) {
             meilleur = { A, B, dP, dEq, dRepos }
           }
