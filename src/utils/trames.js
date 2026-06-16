@@ -4,9 +4,9 @@
 // séquence figée lun→ven de postes ("" = repos). Les colonnes sont interchangeables entre
 // associés, mais la succession à l'intérieur d'une colonne ne change jamais.
 //
-// Quatre colonnes spéciales sont DÉSIGNÉES par le faiseur sur chaque trame (index, ou null) :
+// Des colonnes spéciales sont DÉSIGNÉES par le faiseur sur chaque trame (index, ou null) :
 //   - rea      : colonne de réanimation (à donner à l'associé de réa) ;
-//   - vacances : colonne de vacances (semaine de congé) ;
+//   - vacances : TABLEAU d'index — une ou PLUSIEURS colonnes de vacances (autant de postes de congé) ;
 //   - avantWE  : colonne d'avant week-end (celui qui s'apprête à faire le week-end) ;
 //   - apresWE  : colonne du retour de week-end (celui qui sort d'un week-end).
 // Au moment de l'affectation, ces colonnes se remplissent automatiquement selon les étapes
@@ -22,7 +22,7 @@
 // Le faiseur apporte ses trames par collage depuis Excel. Persistance dans tramesApi.js.
 // data = { v, principaleId, trames: [ { id, nom, colonnes: [ {lun..ven} ], rea, vacances,
 //                                       avantWE, apresWE, remplacants: [ { col, nom } ] } ] }
-// rea / vacances / avantWE / apresWE / remplacants[].col = index (0-based) d'une colonne.
+// rea / avantWE / apresWE / remplacants[].col = index (0-based) d'une colonne ; vacances = tableau d'index.
 //
 // Chaque colonne porte EN PLUS un objet `service` { lun..ven } booléen : true = cette colonne est
 // « de service » (de garde/astreinte) ce jour-là, détecté au collage depuis le FOND de couleur des
@@ -31,7 +31,9 @@
 // base calendrier (rotation, par semaine) — cf. typeDuJour() dans calendrier.js. Le comptage par
 // personne croisera `service` × typeDuJour × affectation des colonnes (à venir).
 // ============================================================
-export const VERSION_TRAMES = 2
+import { ASSOCIES } from '../data/associes'
+
+export const VERSION_TRAMES = 3
 
 // Jours couverts par une colonne (lun→ven). Le week-end est géré dans l'étape Week-ends.
 export const JOURS = ['lun', 'mar', 'mer', 'jeu', 'ven']
@@ -72,12 +74,18 @@ export function normaliserTrames(data) {
     const colonnes = colsSrc.map(c => ({ ...normaliserJours(c), service: normaliserService(c?.service ?? c?.statuts) }))
     // Index de colonne valide (dans les bornes) sinon null.
     const idxCol = (v) => (Number.isInteger(v) && v >= 0 && v < colonnes.length ? v : null)
+    // Tableau d'index valides, dédupliqués et triés. Migration tolérante : un ancien nombre unique
+    // (vacances = index) devient [index] ; null/absent → [].
+    const idxColArray = (v) => {
+      const src = Array.isArray(v) ? v : (v == null ? [] : [v])
+      return [...new Set(src.map(idxCol).filter(i => i != null))].sort((a, b) => a - b)
+    }
     return {
       id: Number.isInteger(t?.id) ? t.id : null,
       nom: typeof t?.nom === 'string' ? t.nom.trim() : '',
       colonnes,
       rea: idxCol(t?.rea),
-      vacances: idxCol(t?.vacances),
+      vacances: idxColArray(t?.vacances),
       avantWE: idxCol(t?.avantWE),
       apresWE: idxCol(t?.apresWE),
       remplacants: Array.isArray(t?.remplacants)
@@ -115,10 +123,11 @@ export function colonneVide(jours) {
   return JOURS.every(j => !(jours?.[j] ?? '').trim())
 }
 
-// Capacité d'accueil de vacances d'une trame = nombre de colonnes entièrement vides (repos toute
-// la semaine = un poste « vacances »). Sert à ne proposer, pour N vacanciers, que les trames à ≥ N.
+// Capacité d'accueil de vacances d'une trame = nombre de colonnes vacances DÉSIGNÉES (= nombre de
+// vacanciers plaçables). Par défaut, suggererRoles désigne toutes les colonnes entièrement vides, mais
+// le faiseur peut en ajouter/retirer. Sert à ne proposer, pour N vacanciers, que les trames à ≥ N.
 export function capaciteVacances(trame) {
-  return (trame?.colonnes ?? []).filter(colonneVide).length
+  return (trame?.vacances ?? []).length
 }
 
 // Indices des colonnes qu'un associé peut DEMANDER dans ses desiderata : on exclut les colonnes
@@ -128,7 +137,7 @@ export function colonnesSelectionnables(trame) {
   if (!trame) return []
   const exclus = new Set()
   if (trame.rea != null) exclus.add(trame.rea)
-  if (trame.vacances != null) exclus.add(trame.vacances)
+  for (const i of trame.vacances ?? []) exclus.add(i)
   if (trame.avantWE != null) exclus.add(trame.avantWE)
   if (trame.apresWE != null) exclus.add(trame.apresWE)
   for (const r of trame.remplacants ?? []) if (r.col != null) exclus.add(r.col)
@@ -140,22 +149,28 @@ function normaliserPoste(v) {
 }
 
 // Suggestions de désignation à la création (le faiseur reste libre de corriger) :
-//   - vacances : 1ʳᵉ colonne entièrement vide ;
+//   - vacances : TOUTES les colonnes entièrement vides (autant de postes de congé) ;
 //   - rea      : 1ʳᵉ colonne dont les 5 jours contiennent « rea » ;
 //   - apresWE  : 1ʳᵉ colonne avec lundi ET vendredi au repos (cases vides) mais pas entièrement
 //                vide — retour de garde de week-end → repos le lundi (et le vendredi), §7. C'est
 //                forcément la colonne « après le week-end » ; le faiseur n'a plus qu'à désigner
 //                l'« avant le week-end ».
+//   - remplacants : les colonnes AU-DELÀ des 8 associés (index ≥ ASSOCIES.length, soit C9, C10, C11…)
+//                qui ne sont pas vides — ce sont forcément des postes de remplaçant externe. Le nom
+//                reste à compléter par le faiseur.
 function estRepos(col, j) { return !(col?.[j] ?? '').trim() }
 export function suggererRoles(colonnes) {
-  let vacances = colonnes.findIndex(colonneVide)
-  if (vacances === -1) vacances = null
+  const vacances = colonnes.map((col, i) => (colonneVide(col) ? i : -1)).filter(i => i !== -1)
   let rea = colonnes.findIndex(col => JOURS.every(j => normaliserPoste(col[j]).includes('rea')))
   if (rea === -1) rea = null
   let apresWE = colonnes.findIndex((col, i) =>
     i !== rea && !colonneVide(col) && estRepos(col, 'lun') && estRepos(col, 'ven'))
   if (apresWE === -1) apresWE = null
-  return { rea, vacances, avantWE: null, apresWE }
+  const remplacants = colonnes
+    .map((col, i) => i)
+    .filter(i => i >= ASSOCIES.length && i !== rea && i !== apresWE && !colonneVide(colonnes[i]))
+    .map(col => ({ col, nom: '' }))
+  return { rea, vacances, avantWE: null, apresWE, remplacants }
 }
 
 // Construit les colonnes brutes d'un bloc collé (texte tabulé : tabulations entre colonnes,

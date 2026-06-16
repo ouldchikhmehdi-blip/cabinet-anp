@@ -55,19 +55,21 @@ pas). Chaque colonne encode à elle seule « ce qui doit se suivre / ce qui ne p
 **la succession à l'intérieur d'une colonne ne change jamais**, mais **on peut intervertir les
 colonnes entre associés**.
 
-Affecter le planning d'une semaine = donner une colonne à chaque associé. **Quatre colonnes
+Affecter le planning d'une semaine = donner une colonne à chaque associé. **Des colonnes
 spéciales sont DÉSIGNÉES par le faiseur sur chaque trame** (plutôt que devinées par contenu, plus
 fiable) ; elles se remplissent automatiquement à l'affectation, d'après les étapes précédentes :
 
 - colonne **Réa** (`rea`) → l'associé de réa (étape Réa) ;
-- colonne **Vacances** (`vacances`) → la semaine de **vacances** (étape Vacances) ;
+- colonnes **Vacances** (`vacances`, **un tableau** : une ou **plusieurs** colonnes) → les associés en
+  **vacances** cette semaine (étape Vacances) ; le i-ᵉ congé est placé sur la i-ᵉ colonne vacances ;
 - colonne **avant le week-end** (`avantWE`) → celui qui **s'apprête à faire le week-end suivant**
   (lien avec l'étape Week-ends : ce week-end → cette colonne, qui porte tel jour off) ;
 - colonne **après le week-end** (`apresWE`) → l'associé qui **revient de week-end**.
 
-À la création d'une trame, **Réa et Vacances sont pré-suggérées** (colonne tout en « réa » / colonne
-entièrement vide) mais restent modifiables. Les **autres colonnes** se répartissent ensuite pour
-**coller aux jours off demandés** (jour off demandé = on choisit la colonne dont ce jour est vide).
+À la création d'une trame, **Réa, Vacances et Remplaçant sont pré-suggérées** : Réa = colonne tout en
+« réa » ; Vacances = **toutes** les colonnes entièrement vides ; Remplaçant = les colonnes **au-delà du
+8ᵉ rang** (C9, C10, C11…) non vides (postes externes). Tout reste modifiable. Les **autres colonnes** se
+répartissent ensuite pour **coller aux jours off demandés** (jour off demandé = colonne dont ce jour est vide).
 
 **Colonnes remplaçant.** Certaines trames ont en plus une ou plusieurs colonnes **remplaçant** (le ou
 les remplaçants pris cette semaine-là ; c'est la colonne ajoutée à droite de la grille). Le faiseur les
@@ -244,8 +246,8 @@ Puis, sur cette base :
 3. **Remplir le planning en semaine** selon les desiderata (onglet « En semaine », `PlanningSemaines.jsx`).
    - **Affectation des colonnes (en place).** Selon la trame choisie pour la semaine, l'outil répartit
      les 8 associés sur les colonnes. Les colonnes **Réa / Vacances / avant-WE / après-WE** sont
-     **pré-remplies** depuis les étapes précédentes (réa → associé de réa ; vacances → 1er congé ;
-     avant-WE → week-end de la semaine ; après-WE → week-end précédent) ; les colonnes **remplaçant**
+     **pré-remplies** depuis les étapes précédentes (réa → associé de réa ; vacances → un congé par
+     colonne vacances ; avant-WE → week-end de la semaine ; après-WE → week-end précédent) ; les colonnes **remplaçant**
      sont externes. Les colonnes **libres** sont attribuées en respectant les **souhaits de colonne**,
      les **jours off** via le **repos-levier** (placer sur une colonne dont le repos post-garde/astreinte
      tombe sur le jour off demandé), puis l'**équilibre des gardes** et l'**espacement**. Attribuer une

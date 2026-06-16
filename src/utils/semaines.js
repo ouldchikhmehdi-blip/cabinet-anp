@@ -67,11 +67,15 @@ export function reposJours(col) {
 }
 
 // Colonnes spéciales RÉSOLUES (dérivées des étapes précédentes) → { <colIndex>: ini }.
-//   rea→rea[num] ; vacances→1er vacancier ; avantWE→week-end de la semaine ; apresWE→week-end précédent.
+//   rea→rea[num] ; vacances→un vacancier par colonne vacances ; avantWE→week-end de la semaine ;
+//   apresWE→week-end précédent.
 export function colonnesSpeciales(trame, num, { rea = {}, vacances = {}, weekendAff = {} } = {}) {
   const map = {}
   if (trame?.rea != null && rea[num]) map[trame.rea] = rea[num]
-  if (trame?.vacances != null && (vacances[num]?.length)) map[trame.vacances] = vacances[num][0]
+  // Pairage vacancier ↔ colonne vacances : le i-ᵉ congé de la semaine va sur la i-ᵉ colonne vacances.
+  if (Array.isArray(trame?.vacances) && vacances[num]?.length) {
+    trame.vacances.forEach((col, i) => { if (vacances[num][i] != null) map[col] = vacances[num][i] })
+  }
   if (trame?.avantWE != null && weekendAff[num]) map[trame.avantWE] = weekendAff[num]
   if (trame?.apresWE != null && weekendAff[num - 1]) map[trame.apresWE] = weekendAff[num - 1]
   return map
