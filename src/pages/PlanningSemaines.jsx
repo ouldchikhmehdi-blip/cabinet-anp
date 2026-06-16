@@ -659,7 +659,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const aDesAffectations = Object.keys(data?.affectations ?? {}).length > 0
 
   return (
-    <div style={{ maxWidth: 1180 }}>
+    <div style={{ maxWidth: vueContinue ? '100%' : 1180 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>En semaine {annee}</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
         Choisissez la <strong>trame</strong> de chaque semaine puis lancez le <strong>remplissage

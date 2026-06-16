@@ -111,7 +111,7 @@ export default function ApercuSemaine({
           <span>après (S{sem.num}) : <span style={s.bandeauVal}>{iniWEapres ?? '—'}</span></span>
         </div>
       )}
-      <table style={{ ...s.table, width: largeurTable }}>
+      <table style={{ ...s.table, width: '100%', minWidth: largeurTable }}>
         <colgroup>
           <col style={{ width: W_JOUR }} />
           {ASSOCIES.map((a, i) => <col key={i} style={{ width: W_ASSOC }} />)}
