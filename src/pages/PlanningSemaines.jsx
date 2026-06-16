@@ -356,6 +356,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       <TrameGrille
                         colonnes={trame.colonnes}
                         roles={{ rea: trame.rea, vacances: trame.vacances, avantWE: trame.avantWE, apresWE: trame.apresWE, remplacants: trame.remplacants }}
+                        colonnesVisibles={trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && i !== trame.vacances)}
                       />
                     </div>
                   )}

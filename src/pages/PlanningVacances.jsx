@@ -333,7 +333,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   const pret = data !== null && calendrier !== null
 
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div style={{ maxWidth: 1180 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Vacances {annee}</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
         Au moins un associé en congé par semaine (deux en vacances scolaires). Choisissez une
