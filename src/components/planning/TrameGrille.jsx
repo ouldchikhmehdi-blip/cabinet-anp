@@ -52,11 +52,13 @@ const s = {
   pastille: { fontSize: 9, fontWeight: 700, color: 'rgba(0,0,0,0.55)', marginLeft: 4 },
   legende: { display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: 'var(--color-text-tertiary)' },
   legPuce: { display: 'inline-block', width: 11, height: 11, borderRadius: 2, marginRight: 4, verticalAlign: 'middle', border: '0.5px solid var(--color-border)' },
+  assoc: { fontSize: 12, fontWeight: 700, color: 'var(--color-primary-dark)', marginTop: 2 },
 }
 
 // colonnesVisibles (optionnel) : indices d'origine à afficher (les numéros C{i+1} sont conservés).
 // Absent → toutes les colonnes (étape Trames du faiseur). Fourni → vue allégée (desiderata).
-export default function TrameGrille({ colonnes = [], roles = null, colonnesVisibles = null, onToggleService = null }) {
+// associeParColonne (optionnel) : { colIndex: ini } → affiche l'associé attribué en en-tête (En semaine).
+export default function TrameGrille({ colonnes = [], roles = null, colonnesVisibles = null, onToggleService = null, associeParColonne = null }) {
   const remplA = (i) => roles?.remplacants?.filter(r => r.col === i) ?? []
   const indices = colonnesVisibles ?? colonnes.map((_, i) => i)
   const aDuService = colonnes.some(c => JOURS.some(j => c?.service?.[j]))
@@ -76,6 +78,7 @@ export default function TrameGrille({ colonnes = [], roles = null, colonnesVisib
               {remplA(i).map((r, k) => (
                 <div key={`r${k}`} style={{ ...s.badge, color: COULEUR_REMPLACANT }}>{r.nom || 'Remplaçant'}</div>
               ))}
+              {associeParColonne?.[i] && <div style={s.assoc}>{associeParColonne[i]}</div>}
             </th>
           ))}
         </tr>

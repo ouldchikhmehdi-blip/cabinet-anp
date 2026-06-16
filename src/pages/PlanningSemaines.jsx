@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, formatJJMM, feriesEnSemaine } from '../utils/calendrier'
-import { ANNEE_DEFAUT } from '../utils/desiderata'
-import { listerRecueils } from '../utils/desiderataApi'
+import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO } from '../utils/calendrier'
+import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
+import { ASSOCIES } from '../data/associes'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends } from '../utils/weekendsApi'
@@ -10,11 +11,21 @@ import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea } from '../utils/reaApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
+import {
+  proposerSemaines, affectationResolue, analyserSemaineColonnes,
+  gardesWeekendParAssocie, gardesSemaineParAssocie,
+} from '../utils/semaines'
+import { colonnesSelectionnables } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import TrameGrille from '../components/planning/TrameGrille'
+import BoutonVerrou from '../components/planning/BoutonVerrou'
+import PanneauConflits from '../components/planning/PanneauConflits'
 
-// Étape « En semaine » : la trame principale s'applique partout par défaut ; le faiseur la remplace
-// sur les semaines particulières (2+ vacances, ponts = férié en semaine, remplaçants).
+// getUTCDay() → jour de semaine (lun→ven) ; samedi/dimanche ignorés (jours off de semaine seulement).
+const JOUR_SEMAINE = { 1: 'lun', 2: 'mar', 3: 'mer', 4: 'jeu', 5: 'ven' }
+
+// Étape « En semaine » : trame par semaine + remplissage des colonnes (qui occupe quoi), avec
+// équilibre des gardes de semaine (période molle / année dure) et espacement (≥ 1 semaine).
 export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
@@ -25,18 +36,20 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
   const [recueils, setRecueils] = useState([])
   const [recueilId, setRecueilId] = useState(null)
+  const [profils, setProfils] = useState([])
+  const [desideratas, setDesideratas] = useState([])
   const [tramesData, setTramesData] = useState(null)
   const [vacancesData, setVacancesData] = useState(null)
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
   const [weekends, setWeekends] = useState(null)
   const [reaData, setReaData] = useState(null)
-  const [data, setData] = useState(null)        // { v, trameParSemaine: { num: trameId } }
+  const [data, setData] = useState(null)        // { v, trameParSemaine, affectations, verrous }
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
   const [filtreArbitrer, setFiltreArbitrer] = useState(false)
-  const [apercus, setApercus] = useState(() => new Set()) // numéros de semaine dont l'aperçu est ouvert
+  const [apercus, setApercus] = useState(() => new Set())
 
   // Recueils « normaux » (l'été se gère par colonnes, hors de cette étape).
   useEffect(() => {
@@ -53,8 +66,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return () => { annule = true }
   }, [annee, estFaiseur])
 
-  // Catalogue de trames + cumul des étapes précédentes (calendrier, objectifs, week-ends, vacances,
-  // réa) pour l'export + choix de trame/semaine de cette étape.
+  // Profils (mapping user_id → initiales), une fois.
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerProfilsAvecInitiales().then(ps => { if (!annule) setProfils(ps) }).catch(() => {})
+    return () => { annule = true }
+  }, [estFaiseur])
+
+  // Trames + cumul des étapes précédentes + choix/affectations de cette étape.
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
@@ -72,6 +92,14 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return () => { annule = true }
   }, [annee, estFaiseur, onStatut])
 
+  // Desiderata du recueil sélectionné (souhaits de colonne + jours off).
+  useEffect(() => {
+    if (!estFaiseur || !recueilId) return
+    let annule = false
+    chargerTousDesiderata(recueilId).then(rows => { if (!annule) setDesideratas(rows) }).catch(() => {})
+    return () => { annule = true }
+  }, [recueilId, estFaiseur])
+
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const trames = useMemo(() => tramesData?.trames ?? [], [tramesData])
   const principaleId = tramesData?.principaleId ?? null
@@ -85,13 +113,76 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const feriesParSemaine = useMemo(() => feriesEnSemaine(annee), [annee])
   const trameParSemaine = useMemo(() => data?.trameParSemaine ?? {}, [data])
+  const affectationsLibres = useMemo(() => data?.affectations ?? {}, [data])
+  const verrousData = useMemo(() => data?.verrous ?? {}, [data])
+
+  const contexteAmont = useMemo(() => ({
+    rea: reaData?.rea ?? {}, vacances: vacancesData?.vacances ?? {}, weekendAff: weekends?.affectations ?? {},
+  }), [reaData, vacancesData, weekends])
+
+  // Desiderata dérivés : souhaits de colonne et jours off (par jour de semaine).
+  const parUser = useMemo(() => {
+    const m = {}
+    for (const p of profils) m[p.id] = p.initiales
+    return m
+  }, [profils])
+  const colonnesSouhaiteesParAssocie = useMemo(() => {
+    const m = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (ini) m[ini] = normaliser(row.data).colonnesSouhaitees ?? {}
+    }
+    return m
+  }, [desideratas, parUser])
+  const joursOffDetailParAssocie = useMemo(() => {
+    const m = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      const parSem = {}
+      for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+        try {
+          const d = parseISO(iso)
+          const jour = JOUR_SEMAINE[d.getUTCDay()]
+          if (!jour) continue
+          ;(parSem[numeroSemaineISO(d)] ??= new Set()).add(jour)
+        } catch { /* date invalide ignorée */ }
+      }
+      m[ini] = parSem
+    }
+    return m
+  }, [desideratas, parUser])
 
   const semaines = useMemo(
     () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
     [annee, recueil]
   )
+  const allNums = useMemo(() => listerSemaines(annee).map(s => s.num), [annee])
 
-  // Analyse par semaine : repères « à arbitrer » (2+ vacances, pont) + repère indicatif scolaire.
+  // Trame résolue d'une semaine + si c'est la trame principale (souhaits de colonne).
+  const trameDe = useCallback((num) => {
+    const id = trameParSemaine[num] ?? principaleId
+    return id != null ? (tramesById[id] ?? null) : null
+  }, [trameParSemaine, principaleId, tramesById])
+  const estPrincipaleSem = useCallback((num) => ((trameParSemaine[num] ?? principaleId) === principaleId), [trameParSemaine, principaleId])
+
+  // Gardes sur l'année : dates (week-ends toute l'année + gardes de semaine résolues) + compteurs.
+  const gardesAnnee = useMemo(() => {
+    if (!calendrier) return { dates: {}, comptes: {} }
+    const gWE = gardesWeekendParAssocie(allNums, annee, contexteAmont.weekendAff)
+    const gSem = gardesSemaineParAssocie(allNums, annee, calendrier, trameDe, contexteAmont, affectationsLibres)
+    const dates = {}
+    for (const ini of ASSOCIES) dates[ini] = [...(gWE[ini] ?? []), ...(gSem.dates[ini] ?? [])]
+    return { dates, comptes: gSem.comptes }
+  }, [allNums, annee, calendrier, trameDe, contexteAmont, affectationsLibres])
+
+  const comptesPeriode = useMemo(() => {
+    if (!calendrier) return {}
+    const nums = semaines.map(s => s.num)
+    return gardesSemaineParAssocie(nums, annee, calendrier, trameDe, contexteAmont, affectationsLibres).comptes
+  }, [semaines, annee, calendrier, trameDe, contexteAmont, affectationsLibres])
+
+  // Analyse par semaine : repères « à arbitrer » (2+ vacances, pont) + repère scolaire.
   const analyses = useMemo(() => {
     const m = {}
     for (const sem of semaines) {
@@ -104,21 +195,77 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [semaines, vacancesParSemaine, feriesParSemaine, scolairesSet])
 
-  const nbArbitrer = useMemo(() => semaines.filter(s => analyses[s.num]?.aArbitrer).length, [semaines, analyses])
+  // Alertes liées au remplissage des colonnes (gardes rapprochées, non plaçables, colonnes vides…).
+  const alertesColonnes = useMemo(() => {
+    if (!calendrier) return {}
+    const m = {}
+    for (const sem of semaines) {
+      const trame = trameDe(sem.num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, sem.num, contexteAmont, affectationsLibres)
+      m[sem.num] = analyserSemaineColonnes(trame, sem.num, annee, calendrier, affR, gardesAnnee.dates, {
+        souhaitsParAssocie: colonnesSouhaiteesParAssocie,
+        vacanciers: contexteAmont.vacances[sem.num] ?? [],
+        estPrincipale: estPrincipaleSem(sem.num),
+      })
+    }
+    return m
+  }, [semaines, trameDe, contexteAmont, affectationsLibres, annee, calendrier, gardesAnnee, colonnesSouhaiteesParAssocie, estPrincipaleSem])
 
+  const conflits = useMemo(() => {
+    const out = []
+    for (const sem of semaines) {
+      const al = alertesColonnes[sem.num]
+      if (!al) continue
+      if (al.nonPlaces.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — associé(s) non placé(s) : ${al.nonPlaces.join(', ')} (pas assez de colonnes libres).` })
+      if (al.colonnesVides.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — colonne(s) libre(s) non pourvue(s) : ${al.colonnesVides.map(c => `C${c + 1}`).join(', ')}.` })
+      if (al.multiVacances) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ≥ 2 associés en vacances : la trame n'a qu'une colonne vacances, placez le 2ᵉ congé à la main ou choisissez une autre trame.` })
+    }
+    return out
+  }, [semaines, alertesColonnes])
+
+  const nbArbitrer = useMemo(() => semaines.filter(s => analyses[s.num]?.aArbitrer).length, [semaines, analyses])
   const semainesAffichees = useMemo(
     () => (filtreArbitrer ? semaines.filter(s => analyses[s.num]?.aArbitrer) : semaines),
     [semaines, analyses, filtreArbitrer]
   )
 
+  // ── Handlers ──
   function majTrameSemaine(num, trameId) {
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const map = { ...(prev?.trameParSemaine ?? {}) }
-      // Suivre la principale = pas de choix stocké.
       if (trameId == null || trameId === principaleId) delete map[num]
       else map[num] = trameId
       return { ...prev, trameParSemaine: map }
+    })
+  }
+
+  // Placer un associé sur une colonne libre VERROUILLE la case ; « — » la remet en automatique.
+  function majAffectationColonne(num, col, ini) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const aff = { ...(prev.affectations ?? {}) }
+      const cols = { ...(aff[num] ?? {}) }
+      const ver = { ...(prev.verrous ?? {}) }
+      const vcols = new Set(ver[num] ?? [])
+      if (ini) { cols[col] = ini; vcols.add(col) }
+      else { delete cols[col]; vcols.delete(col) }
+      if (Object.keys(cols).length) aff[num] = cols; else delete aff[num]
+      if (vcols.size) ver[num] = [...vcols].sort((a, b) => a - b); else delete ver[num]
+      return { ...prev, affectations: aff, verrous: ver }
+    })
+  }
+
+  function basculerVerrouColonne(num, col) {
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      if (prev.affectations?.[num]?.[col] == null) return prev
+      const ver = { ...(prev.verrous ?? {}) }
+      const vcols = new Set(ver[num] ?? [])
+      if (vcols.has(col)) vcols.delete(col); else vcols.add(col)
+      if (vcols.size) ver[num] = [...vcols].sort((a, b) => a - b); else delete ver[num]
+      return { ...prev, verrous: ver }
     })
   }
 
@@ -127,6 +274,45 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const s = new Set(prev)
       if (s.has(num)) s.delete(num); else s.add(num)
       return s
+    })
+  }
+
+  function proposer() {
+    if (!recueil) return
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const debut = recueil.semaine_debut, fin = recueil.semaine_fin
+      const trameInfo = (num) => {
+        const id = (prev.trameParSemaine?.[num] ?? principaleId)
+        const trame = id != null ? (tramesById[id] ?? null) : null
+        return trame ? { trame, estPrincipale: id === principaleId } : null
+      }
+      // Socle d'équilibre annuel : gardes hors-plage (week-ends toute l'année + gardes de semaine hors-plage).
+      const horsNums = allNums.filter(n => n < debut || n > fin)
+      const gWE = gardesWeekendParAssocie(allNums, annee, contexteAmont.weekendAff)
+      const gSemHors = gardesSemaineParAssocie(horsNums, annee, calendrier, (n) => trameInfo(n)?.trame ?? null, contexteAmont, prev.affectations ?? {})
+      const gardesInitiales = {}
+      for (const ini of ASSOCIES) gardesInitiales[ini] = [...(gWE[ini] ?? []), ...(gSemHors.dates[ini] ?? [])]
+      // Verrous de la plage = colonnes forcées à préserver.
+      const fixes = {}
+      for (const sem of semaines) {
+        const cols = prev.verrous?.[sem.num] ?? []
+        if (!cols.length) continue
+        const m = {}
+        for (const c of cols) if (prev.affectations?.[sem.num]?.[c] != null) m[c] = prev.affectations[sem.num][c]
+        if (Object.keys(m).length) fixes[sem.num] = m
+      }
+      const proposees = proposerSemaines({
+        semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
+        desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
+        gardesInitiales, compteAnneeInitial: gSemHors.comptes, fixes,
+      })
+      const aff = { ...(prev.affectations ?? {}) }
+      for (const sem of semaines) {
+        const m = proposees[sem.num] ?? {}
+        if (Object.keys(m).length) aff[sem.num] = m; else delete aff[sem.num]
+      }
+      return { ...prev, affectations: aff }
     })
   }
 
@@ -147,10 +333,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     const choisi = trameParSemaine[sem.num] ?? null
     const effId = choisi ?? principaleId
     const trame = effId != null ? tramesById[effId] : null
-    const motif = [
-      a?.multiVacances ? `${a.vacanciers.length} en vacances` : null,
-      a?.pont ? 'pont' : null,
-    ].filter(Boolean).join(', ')
+    const motif = [a?.multiVacances ? `${a.vacanciers.length} en vacances` : null, a?.pont ? 'pont' : null].filter(Boolean).join(', ')
     return {
       label: `S${sem.num} · ${formatJJMM(sem.lundi)} → ${formatJJMM(sem.dimanche)}`,
       trame: trame ? trame.nom : '—',
@@ -211,6 +394,16 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       fontSize: 12, padding: 0, whiteSpace: 'nowrap',
     },
     apercu: { marginTop: 8, overflowX: 'auto' },
+    compteurs: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 },
+    chip: { fontSize: 12, padding: '5px 9px', borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-surface)' },
+    colonnesEdit: { display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 },
+    colEdit: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 },
+    colLabel: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)' },
+    selCol: {
+      padding: '4px 6px', fontSize: 12, borderRadius: 'var(--radius-md)',
+      border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none',
+    },
+    alerteSem: { fontSize: 12, color: 'var(--color-amber)', marginTop: 6 },
   }
 
   if (!estFaiseur) {
@@ -227,13 +420,14 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const pret = data !== null && tramesData !== null && calendrier !== null
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 1180 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>En semaine {annee}</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-        La <strong>trame principale</strong> s'applique à toutes les semaines, sauf là où vous collez une
-        autre trame du catalogue. L'outil met en avant les semaines à arbitrer : <strong>2 associés ou
-        plus en vacances</strong> et les <strong>ponts</strong> (un jour férié tombant un jour ouvré).
-        Choisissez la trame de chaque semaine ; la principale reste la valeur par défaut.
+        Choisissez la <strong>trame</strong> de chaque semaine puis lancez le <strong>remplissage
+        automatique</strong> : l'outil répartit les associés sur les colonnes (Réa, Vacances, avant/après
+        week-end sont pré-remplies) en équilibrant les <strong>gardes de semaine</strong> (mardi, et jeudi
+        si garde) sur la période, en respectant les souhaits de colonne et les jours off, et en évitant les
+        gardes trop rapprochées. Vous gardez la main (override + cadenas).
       </p>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -250,6 +444,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             {recueils.map(r => <option key={r.id} value={r.id}>{r.nom} · S{r.semaine_debut}→S{r.semaine_fin}</option>)}
           </select>
         </div>
+        <button type="button" onClick={proposer} disabled={!pret || !recueil || principaleId == null} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil || principaleId == null) ? 0.5 : 1 }}>
+          Proposer automatiquement
+        </button>
         <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
           Enregistrer
         </button>
@@ -273,7 +470,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
       {pret && principaleId == null && (
         <div style={{ fontSize: 13, color: 'var(--color-amber)', background: 'var(--color-amber-light)', border: '0.5px solid var(--color-amber)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
-          Aucune <strong>trame principale</strong> désignée. Choisissez-en une dans l'onglet <strong>Trames</strong> (Suivi des desiderata) pour qu'elle s'applique par défaut.
+          Aucune <strong>trame principale</strong> désignée. Choisissez-en une dans l'onglet <strong>Trames</strong> (Suivi des desiderata) pour pouvoir remplir.
         </div>
       )}
 
@@ -285,6 +482,17 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          {/* Compteurs de gardes de semaine : période / année */}
+          <div style={s.compteurs}>
+            {ASSOCIES.map(ini => (
+              <span key={ini} style={s.chip} title="Gardes de semaine — période / année">
+                <strong>{ini}</strong> : {comptesPeriode[ini] ?? 0} / {gardesAnnee.comptes[ini] ?? 0}
+              </span>
+            ))}
+          </div>
+
+          <PanneauConflits conflits={conflits} />
+
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ color: nbArbitrer ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>
               {nbArbitrer ? `🌉 ${nbArbitrer} semaine${nbArbitrer > 1 ? 's' : ''} à arbitrer` : '✓ Aucune semaine à arbitrer'}
@@ -297,15 +505,17 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
           <div style={s.carte}>
             {semainesAffichees.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', padding: 8 }}>
-                Aucune semaine à afficher.
-              </div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', padding: 8 }}>Aucune semaine à afficher.</div>
             ) : semainesAffichees.map(sem => {
               const a = analyses[sem.num]
               const choisi = trameParSemaine[sem.num] ?? null
               const effectiveId = choisi ?? principaleId
               const trame = effectiveId != null ? tramesById[effectiveId] : null
               const ouvert = apercus.has(sem.num)
+              const affR = trame ? affectationResolue(trame, sem.num, contexteAmont, affectationsLibres) : {}
+              const al = alertesColonnes[sem.num]
+              const tropProche = al?.tropProche ?? {}
+              const visibles = trame ? trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && i !== trame.vacances) : []
               return (
                 <div key={sem.num} style={s.ligne(a.aArbitrer)}>
                   <div style={s.haut}>
@@ -322,8 +532,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         </span>
                       )}
                       {a.scolaire && (
-                        <span style={s.badge('var(--color-text-tertiary)', 'transparent')} title="Semaine de vacances scolaires (souvent plus de remplaçants)">
-                          🎒 Vacances scolaires
+                        <span style={s.badge('var(--color-text-tertiary)', 'transparent')} title="Semaine de vacances scolaires">🎒 Vacances scolaires</span>
+                      )}
+                      {Object.keys(tropProche).length > 0 && (
+                        <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Gardes trop rapprochées (< 1 semaine)">
+                          🟠 Gardes rapprochées : {Object.entries(tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}
                         </span>
                       )}
                     </span>
@@ -347,7 +560,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                     </span>
                     {trame && (
                       <button type="button" onClick={() => toggleApercu(sem.num)} style={s.lienApercu}>
-                        {ouvert ? 'Masquer l’aperçu' : 'Aperçu de la trame'}
+                        {ouvert ? 'Masquer l’aperçu' : 'Aperçu & affectation'}
                       </button>
                     )}
                   </div>
@@ -356,8 +569,30 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       <TrameGrille
                         colonnes={trame.colonnes}
                         roles={{ rea: trame.rea, vacances: trame.vacances, avantWE: trame.avantWE, apresWE: trame.apresWE, remplacants: trame.remplacants }}
-                        colonnesVisibles={trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && i !== trame.vacances)}
+                        colonnesVisibles={visibles}
+                        associeParColonne={affR}
                       />
+                      <div style={s.colonnesEdit}>
+                        {colonnesSelectionnables(trame).map(c => {
+                          const cur = affectationsLibres[sem.num]?.[c] ?? ''
+                          const verrou = (verrousData[sem.num] ?? []).includes(c)
+                          const placesAilleurs = new Set(Object.entries(affR).filter(([cc]) => Number(cc) !== c).map(([, i]) => i))
+                          const opts = ASSOCIES.filter(x => x === cur || !placesAilleurs.has(x))
+                          return (
+                            <span key={c} style={s.colEdit}>
+                              <span style={s.colLabel}>C{c + 1}</span>
+                              <select value={cur} onChange={e => majAffectationColonne(sem.num, c, e.target.value)} style={s.selCol}>
+                                <option value="">—</option>
+                                {opts.map(x => <option key={x} value={x}>{x}</option>)}
+                              </select>
+                              {cur && <BoutonVerrou verrouille={verrou} onToggle={() => basculerVerrouColonne(sem.num, c)} />}
+                            </span>
+                          )
+                        })}
+                      </div>
+                      {al?.souhaitNonSatisfait?.length > 0 && (
+                        <div style={s.alerteSem}>🟠 Souhait de colonne non satisfait : {al.souhaitNonSatisfait.join(', ')}</div>
+                      )}
                     </div>
                   )}
                 </div>

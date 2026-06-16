@@ -241,7 +241,24 @@ Puis, sur cette base :
      et la ligne du week-end concerné porte un badge **« 🌉 »** dans l'étape Week-ends. Les associés
      en sont prévenus dès la saisie des desiderata (jours off **et** week-ends indisponibles).
 2. **Positionner les vacances** de chacun (avec vérification Pâques/février).
-3. **Remplir le planning en semaine** selon les desiderata.
+3. **Remplir le planning en semaine** selon les desiderata (onglet « En semaine », `PlanningSemaines.jsx`).
+   - **Affectation des colonnes (en place).** Selon la trame choisie pour la semaine, l'outil répartit
+     les 8 associés sur les colonnes. Les colonnes **Réa / Vacances / avant-WE / après-WE** sont
+     **pré-remplies** depuis les étapes précédentes (réa → associé de réa ; vacances → 1er congé ;
+     avant-WE → week-end de la semaine ; après-WE → week-end précédent) ; les colonnes **remplaçant**
+     sont externes. Les colonnes **libres** sont attribuées en respectant les **souhaits de colonne**,
+     les **jours off** via le **repos-levier** (placer sur une colonne dont le repos post-garde/astreinte
+     tombe sur le jour off demandé), puis l'**équilibre des gardes** et l'**espacement**. Attribuer une
+     colonne attribue d'emblée **sa garde/astreinte et son repos**. Modèle/algorithme : `src/utils/semaines.js`.
+   - **Pénibilité des gardes (important).** Une **garde de semaine** = jour où l'associé est sur la
+     colonne de service ET le groupe est de garde : **mardi** (toujours) + **jeudi** (si la base
+     calendrier le met en garde). Lundi/mercredi = astreinte (**non comptés**) ; **vendredi** = suivi à
+     part (Objectifs). Viser **≥ 1 semaine (7 jours)** entre deux gardes d'un même associé (gardes de
+     semaine **et** de week-end = dimanche) : en dessous, **non bloquant mais alerte** au faiseur avec
+     **l'écart exact en jours** ; l'attribution privilégie ≥ 7 j et ne relâche qu'en dernier recours.
+     Constante `ESPACEMENT_GARDE_JOURS = 7` (`semaines.js`).
+   - **Équilibre des gardes de semaine** : à peu près **égal par période** (règle molle) et **égal sur
+     l'année entière** (règle dure, à terme) — compteurs « période / année » par associé.
 
 Chaque étape est un point de contrôle validé avant de continuer.
 
