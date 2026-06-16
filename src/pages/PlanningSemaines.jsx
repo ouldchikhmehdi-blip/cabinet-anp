@@ -572,7 +572,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                   </div>
                   {nbMasquees > 0 && (
                     <div style={{ ...s.meta, marginTop: 2 }}>
-                      {nbMasquees} trame{nbMasquees > 1 ? 's' : ''} masquée{nbMasquees > 1 ? 's' : ''} : pas assez de colonnes vacances pour {vReq} congés.
+                      {nbMasquees} autre{nbMasquees > 1 ? 's' : ''} trame{nbMasquees > 1 ? 's' : ''} non proposée{nbMasquees > 1 ? 's' : ''} dans la liste : moins de {vReq} colonnes vacances pour les {vReq} congés de cette semaine.
                     </div>
                   )}
                   <div style={{ ...s.haut, marginTop: 4, justifyContent: 'space-between' }}>
