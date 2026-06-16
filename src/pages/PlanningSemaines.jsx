@@ -429,6 +429,40 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return { total, parSemaine }
   }, [allNums, feriesParSemaine, trameDe, contexteAmont, affectationsLibres, calendrier])
 
+  // Compteurs CUMULÉS par associé (export), dans l'ordre chronologique : on mémorise, à chaque
+  // occurrence, le n° courant (pour l'afficher dans la case : « G1 », « NC G 3 », « Réa2 », n° de vacances…).
+  //   weekend:{num:n} · gardeSem:{num:{offset:n}} · vendredi:{num:n} · rea:{num:n} · vac:{num:{ini:n}}
+  const compteurs = useMemo(() => {
+    const cWE = {}, cGS = {}, cAV = {}, cGV = {}, cRea = {}, cVac = {}
+    for (const ini of ASSOCIES) { cWE[ini] = 0; cGS[ini] = 0; cAV[ini] = 0; cGV[ini] = 0; cRea[ini] = 0; cVac[ini] = 0 }
+    const weekend = {}, gardeSem = {}, vendredi = {}, rea = {}, vac = {}
+    const { weekendAff = {}, rea: reaAff = {}, vacances: vacAff = {} } = contexteAmont
+    for (const num of [...allNums].sort((a, b) => a - b)) {
+      const wk = weekendAff[num]; if (wk && cWE[wk] != null) { cWE[wk]++; weekend[num] = cWE[wk] }
+      const r = reaAff[num]; if (r && cRea[r] != null) { cRea[r]++; rea[num] = cRea[r] }
+      for (const ini of (vacAff[num] ?? [])) if (cVac[ini] != null) { cVac[ini]++; (vac[num] ??= {})[ini] = cVac[ini] }
+      if (!calendrier) continue
+      const trame = trameDe(num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, num, contexteAmont, affectationsLibres)
+      const deService = (jour) => {
+        for (const [col, a] of Object.entries(affR)) {
+          if (ASSOCIES.includes(a) && trame.colonnes[Number(col)]?.service?.[jour]) return a
+        }
+        return null
+      }
+      const aMar = deService('mar'); if (aMar) { cGS[aMar]++; (gardeSem[num] ??= {})[1] = cGS[aMar] }
+      const aJeu = deService('jeu'); if (aJeu && typeDuJour(calendrier, num, 3) === 'G') { cGS[aJeu]++; (gardeSem[num] ??= {})[3] = cGS[aJeu] }
+      const aVen = deService('ven')
+      if (aVen) {
+        const t = typeDuJour(calendrier, num, 4)
+        if (t === 'A') { cAV[aVen]++; vendredi[num] = cAV[aVen] }
+        else if (t === 'G') { cGV[aVen]++; vendredi[num] = cGV[aVen] }
+      }
+    }
+    return { weekend, gardeSem, vendredi, rea, vac }
+  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier])
+
   // Bilan CUMULÉ sur l'année par associé (export, comparaison aux objectifs annuels) :
   // G week-end, A/G vendredi, semaines de réa, gardes de semaine (mardi+jeudi), semaines de vacances.
   const bilan = useMemo(() => {
@@ -478,7 +512,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, reaData?.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs,
       )
     } catch {
       setErreur('Export Excel impossible.')
