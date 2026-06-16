@@ -115,6 +115,12 @@ export function colonneVide(jours) {
   return JOURS.every(j => !(jours?.[j] ?? '').trim())
 }
 
+// Capacité d'accueil de vacances d'une trame = nombre de colonnes entièrement vides (repos toute
+// la semaine = un poste « vacances »). Sert à ne proposer, pour N vacanciers, que les trames à ≥ N.
+export function capaciteVacances(trame) {
+  return (trame?.colonnes ?? []).filter(colonneVide).length
+}
+
 // Indices des colonnes qu'un associé peut DEMANDER dans ses desiderata : on exclut les colonnes
 // affectées automatiquement — Réa, Vacances, Remplaçant, ainsi que les colonnes avant-WE et
 // après-WE (fixées par l'attribution des week-ends, donc non demandables).

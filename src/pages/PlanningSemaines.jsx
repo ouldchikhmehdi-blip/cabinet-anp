@@ -15,7 +15,7 @@ import {
   proposerSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie,
 } from '../utils/semaines'
-import { colonnesSelectionnables } from '../utils/trames'
+import { colonnesSelectionnables, capaciteVacances } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import TrameGrille from '../components/planning/TrameGrille'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
@@ -220,6 +220,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       if (al.nonPlaces.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — associé(s) non placé(s) : ${al.nonPlaces.join(', ')} (pas assez de colonnes libres).` })
       if (al.colonnesVides.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — colonne(s) libre(s) non pourvue(s) : ${al.colonnesVides.map(c => `C${c + 1}`).join(', ')}.` })
       if (al.multiVacances) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ≥ 2 associés en vacances : la trame n'a qu'une colonne vacances, placez le 2ᵉ congé à la main ou choisissez une autre trame.` })
+      if (al.souhaitsIgnoresTrame?.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${al.souhaitsIgnoresTrame.join(', ')} avai(en)t demandé une colonne (trame principale) ; cette semaine utilise une trame spécifique → souhait non applicable.` })
     }
     return out
   }, [semaines, alertesColonnes])
@@ -516,6 +517,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               const al = alertesColonnes[sem.num]
               const tropProche = al?.tropProche ?? {}
               const visibles = trame ? trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && i !== trame.vacances) : []
+              // ≥ 2 vacanciers : ne proposer que les trames à capacité suffisante (+ la trame courante).
+              const vReq = a.vacanciers.length
+              const tramesOptions = trames.filter(t => vReq < 2 || capaciteVacances(t) >= vReq || t.id === effectiveId)
+              const nbMasquees = trames.length - tramesOptions.length
               return (
                 <div key={sem.num} style={s.ligne(a.aArbitrer)}>
                   <div style={s.haut}>
@@ -539,6 +544,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                           🟠 Gardes rapprochées : {Object.entries(tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}
                         </span>
                       )}
+                      {al?.souhaitsIgnoresTrame?.length > 0 && (
+                        <span style={s.badge('var(--color-amber)', 'var(--color-amber-light)')} title="Trame spécifique : la colonne demandée (sur la trame principale) ne s'applique pas">
+                          🟠 Souhait colonne ignoré (trame ≠ principale) : {al.souhaitsIgnoresTrame.join(', ')}
+                        </span>
+                      )}
                     </span>
                     <select
                       value={effectiveId == null ? '' : String(effectiveId)}
@@ -547,11 +557,21 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       disabled={trames.length === 0}
                     >
                       <option value="">—</option>
-                      {trames.map(t => (
-                        <option key={t.id} value={t.id}>{t.nom}{t.id === principaleId ? ' (principale)' : ''}</option>
-                      ))}
+                      {tramesOptions.map(t => {
+                        const insuffisante = vReq >= 2 && capaciteVacances(t) < vReq
+                        return (
+                          <option key={t.id} value={t.id}>
+                            {t.nom}{t.id === principaleId ? ' (principale)' : ''}{insuffisante ? ' — colonnes vacances insuffisantes' : ''}
+                          </option>
+                        )
+                      })}
                     </select>
                   </div>
+                  {nbMasquees > 0 && (
+                    <div style={{ ...s.meta, marginTop: 2 }}>
+                      {nbMasquees} trame{nbMasquees > 1 ? 's' : ''} masquée{nbMasquees > 1 ? 's' : ''} : pas assez de colonnes vacances pour {vReq} congés.
+                    </div>
+                  )}
                   <div style={{ ...s.haut, marginTop: 4, justifyContent: 'space-between' }}>
                     <span style={s.meta}>
                       {trame

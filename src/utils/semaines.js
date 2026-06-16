@@ -284,12 +284,18 @@ export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolu
   const colonnesVides = colonnesSelectionnables(trame).filter(c => affResolue[c] == null)
 
   const souhaitNonSatisfait = []
-  if (estPrincipale) {
-    for (const ini of ASSOCIES) {
-      const c = souhaitsParAssocie?.[ini]?.[num]
-      if (Number.isInteger(c) && affResolue[c] !== ini) souhaitNonSatisfait.push(ini)
+  const souhaitsIgnoresTrame = []
+  for (const ini of ASSOCIES) {
+    const c = souhaitsParAssocie?.[ini]?.[num]
+    if (!Number.isInteger(c)) continue
+    if (estPrincipale) {
+      // Souhait exprimé sur la principale, semaine en principale : satisfait ou non.
+      if (affResolue[c] !== ini) souhaitNonSatisfait.push(ini)
+    } else {
+      // Semaine en trame spécifique : le souhait (indexé sur la principale) n'est pas applicable.
+      souhaitsIgnoresTrame.push(ini)
     }
   }
 
-  return { tropProche, souhaitNonSatisfait, nonPlaces, colonnesVides, multiVacances: (vacanciers?.length ?? 0) > 1 }
+  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, multiVacances: (vacanciers?.length ?? 0) > 1 }
 }
