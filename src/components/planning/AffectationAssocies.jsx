@@ -30,6 +30,9 @@ const s = {
     display: 'inline-block', padding: '1px 6px', borderRadius: 3, fontSize: 11, fontWeight: 600,
     background: '#FFFF00', color: 'rgba(0,0,0,0.7)',
   },
+  rempla: { marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 12 },
+  remplaTitre: { fontWeight: 600, color: ROLE_REMPLACANT },
+  remplaItem: { color: ROLE_REMPLACANT },
 }
 
 const JOUR_LABEL = { 2: 'Mardi', 4: 'Jeudi' }
@@ -43,15 +46,20 @@ export default function AffectationAssocies({ trame, affResolue = {}, annee, num
     if (ASSOCIES.includes(ini) && colParAssocie[ini] == null) colParAssocie[ini] = Number(col)
   }
 
-  const remplacantCols = new Set((trame.remplacants ?? []).map(r => r.col))
+  // Un associé n'occupe jamais une colonne remplaçant (externe) ; ce rôle est listé à part, en dessous.
   const roleDe = (col) => {
     if (col === trame.rea) return { label: 'Réa', couleur: ROLE_REA }
     if ((trame.vacances ?? []).includes(col)) return { label: 'Vacances', couleur: ROLE_VACANCES }
     if (col === trame.avantWE) return { label: 'Avant WE', couleur: ROLE_WE }
     if (col === trame.apresWE) return { label: 'Après WE', couleur: ROLE_WE }
-    if (remplacantCols.has(col)) return { label: 'Remplaçant', couleur: ROLE_REMPLACANT }
     return { label: 'Libre', couleur: 'var(--color-text-secondary)' }
   }
+
+  // Colonnes remplaçant (personnes externes) — affichées séparément, jamais comptées comme associés.
+  const remplacants = (trame.remplacants ?? [])
+    .filter(r => r.col != null)
+    .slice()
+    .sort((a, b) => a.col - b.col)
 
   return (
     <div style={s.wrap}>
@@ -94,6 +102,14 @@ export default function AffectationAssocies({ trame, affResolue = {}, annee, num
           })}
         </tbody>
       </table>
+      {remplacants.length > 0 && (
+        <div style={s.rempla}>
+          <span style={s.remplaTitre}>Remplaçant{remplacants.length > 1 ? 's' : ''} (externe{remplacants.length > 1 ? 's' : ''}) :</span>
+          {remplacants.map((r, k) => (
+            <span key={k} style={s.remplaItem}>C{r.col + 1} → {r.nom || `Remplaçant ${k + 1}`}</span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

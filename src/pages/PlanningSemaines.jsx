@@ -228,9 +228,16 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const capVac = capaciteVacances(trameDe(sem.num))
       if (nbVac > capVac) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${nbVac} associés en vacances mais la trame n'a que ${capVac} colonne(s) vacances : placez le(s) congé(s) en trop à la main ou choisissez une autre trame.` })
       if (al.souhaitsIgnoresTrame?.length) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${al.souhaitsIgnoresTrame.join(', ')} avai(en)t demandé une colonne (trame principale) ; cette semaine utilise une trame spécifique → souhait non applicable.` })
+      // Incohérence amont : un vacancier de la semaine est désigné au week-end (avant/après-WE) ou à la réa.
+      const enVac = new Set(contexteAmont.vacances[sem.num] ?? [])
+      const incoherents = new Set()
+      if (enVac.has(contexteAmont.weekendAff[sem.num])) incoherents.add(contexteAmont.weekendAff[sem.num])
+      if (enVac.has(contexteAmont.weekendAff[sem.num - 1])) incoherents.add(contexteAmont.weekendAff[sem.num - 1])
+      if (enVac.has(contexteAmont.rea[sem.num])) incoherents.add(contexteAmont.rea[sem.num])
+      if (incoherents.size) out.push({ severite: 'amber', semaine: sem.num, message: `S${sem.num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
     }
     return out
-  }, [semaines, alertesColonnes, analyses, trameDe])
+  }, [semaines, alertesColonnes, analyses, trameDe, contexteAmont])
 
   const nbArbitrer = useMemo(() => semaines.filter(s => analyses[s.num]?.aArbitrer).length, [semaines, analyses])
   const semainesAffichees = useMemo(
@@ -524,7 +531,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               const affR = trame ? affectationResolue(trame, sem.num, contexteAmont, affectationsLibres) : {}
               const al = alertesColonnes[sem.num]
               const tropProche = al?.tropProche ?? {}
-              const visibles = trame ? trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && !trame.vacances.includes(i)) : []
+              const remplaCols = trame ? new Set((trame.remplacants ?? []).map(r => r.col)) : new Set()
+              const visibles = trame ? trame.colonnes.map((_, i) => i).filter(i => i !== trame.rea && !trame.vacances.includes(i) && !remplaCols.has(i)) : []
               // ≥ 2 vacanciers : ne proposer que les trames à capacité suffisante (+ la trame courante).
               const vReq = a.vacanciers.length
               const tramesOptions = trames.filter(t => vReq < 2 || capaciteVacances(t) >= vReq || t.id === effectiveId)

@@ -92,13 +92,19 @@ export function reposJours(col) {
 //   apresWE→week-end précédent.
 export function colonnesSpeciales(trame, num, { rea = {}, vacances = {}, weekendAff = {} } = {}) {
   const map = {}
-  if (trame?.rea != null && rea[num]) map[trame.rea] = rea[num]
+  // La VACANCE est prioritaire : un associé en congé cette semaine n'occupe QUE sa colonne vacances,
+  // jamais une colonne de travail (réa / avant-WE / après-WE) même si une étape amont l'y a désigné
+  // (ex. week-end attribué à un vacancier). On ignore alors l'occupant dérivé → la colonne sera pourvue
+  // par le moteur (colonnesAPourvoir) et l'incohérence amont est signalée par une alerte.
+  const enVacances = new Set(vacances[num] ?? [])
+  const placerTravail = (col, ini) => { if (col != null && ini && !enVacances.has(ini)) map[col] = ini }
+  placerTravail(trame?.rea, rea[num])
   // Pairage vacancier ↔ colonne vacances : le i-ᵉ congé de la semaine va sur la i-ᵉ colonne vacances.
   if (Array.isArray(trame?.vacances) && vacances[num]?.length) {
     trame.vacances.forEach((col, i) => { if (vacances[num][i] != null) map[col] = vacances[num][i] })
   }
-  if (trame?.avantWE != null && weekendAff[num]) map[trame.avantWE] = weekendAff[num]
-  if (trame?.apresWE != null && weekendAff[num - 1]) map[trame.apresWE] = weekendAff[num - 1]
+  placerTravail(trame?.avantWE, weekendAff[num])
+  placerTravail(trame?.apresWE, weekendAff[num - 1])
   return map
 }
 
