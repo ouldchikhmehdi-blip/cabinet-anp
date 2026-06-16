@@ -25,6 +25,17 @@ import PanneauConflits from '../components/planning/PanneauConflits'
 // getUTCDay() → jour de semaine (lun→ven) ; samedi/dimanche ignorés (jours off de semaine seulement).
 const JOUR_SEMAINE = { 1: 'lun', 2: 'mar', 3: 'mer', 4: 'jeu', 5: 'ven' }
 
+// Lignes du bilan « Réalisé à ce stade » (identique au bloc de l'export Excel).
+const LIGNES_BILAN = [
+  ['gWeekend', 'G week-end'],
+  ['aVendredi', 'A vendredi'],
+  ['gVendredi', 'G vendredi'],
+  ['rea', 'Réa'],
+  ['gardeSemaine', 'Gardes de semaine'],
+  ['vacances', 'Semaines de vacances'],
+  ['recupJF', 'Récup jours fériés'],
+]
+
 // Étape « En semaine » : trame par semaine + remplissage des colonnes (qui occupe quoi), avec
 // équilibre des gardes de semaine (période molle / année dure) et espacement (≥ 1 semaine).
 export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
@@ -210,12 +221,6 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     for (const ini of ASSOCIES) dates[ini] = [...(gWE[ini] ?? []), ...(gSem.dates[ini] ?? [])]
     return { dates, comptes: gSem.comptes }
   }, [allNums, annee, calendrier, trameDe, contexteAmont, affectationsLibres])
-
-  const comptesPeriode = useMemo(() => {
-    if (!calendrier) return {}
-    const nums = semaines.map(s => s.num)
-    return gardesSemaineParAssocie(nums, annee, calendrier, trameDe, contexteAmont, affectationsLibres).comptes
-  }, [semaines, annee, calendrier, trameDe, contexteAmont, affectationsLibres])
 
   // Analyse par semaine : repères informatifs (2+ vacances, pont, scolaire). La catégorie
   // « à arbitrer » / « à surveiller » est calculée séparément (cf. categorieSem).
@@ -668,6 +673,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     apercu: { marginTop: 8, overflowX: 'auto' },
     compteurs: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 },
     chip: { fontSize: 12, padding: '5px 9px', borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-surface)' },
+    bilanTh: { padding: '4px 10px', fontSize: 12, fontWeight: 700, color: 'var(--color-text)', textAlign: 'center', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' },
+    bilanThLabel: { padding: '4px 10px', borderBottom: '0.5px solid var(--color-border)' },
+    bilanTd: { padding: '4px 10px', fontSize: 12.5, textAlign: 'center', color: 'var(--color-text)', borderBottom: '0.5px solid var(--color-border)' },
+    bilanTdLabel: { padding: '4px 10px', fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', borderBottom: '0.5px solid var(--color-border)' },
     colonnesEdit: { display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 },
     colEdit: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 },
     colLabel: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)' },
@@ -780,17 +789,31 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
-          {/* Compteurs de gardes de semaine : période / année */}
-          <div style={s.compteurs}>
-            {ASSOCIES.map(ini => (
-              <span key={ini} style={s.chip} title="Gardes de semaine — période / année">
-                <strong>{ini}</strong> : {comptesPeriode[ini] ?? 0} / {gardesAnnee.comptes[ini] ?? 0}
-              </span>
-            ))}
-          </div>
-
           <PanneauConflits conflits={conflitsBloquants} titre="⚠ À arbitrer" couleurBordure="var(--color-danger)" messageVide="Rien à arbitrer ✓" />
           <PanneauConflits conflits={conflitsSurveiller} titre="👁 À surveiller" couleurBordure="var(--color-primary)" messageVide="Rien à surveiller ✓" />
+
+          {/* Bilan « Réalisé à ce stade » (cumul annuel) — identique au tableau de l'export Excel. */}
+          <div style={{ ...s.carte, overflowX: 'auto', padding: '10px 14px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>
+              Réalisé à ce stade (année {annee})
+            </div>
+            <table style={{ borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  <th style={s.bilanThLabel}>&nbsp;</th>
+                  {ASSOCIES.map(ini => <th key={ini} style={s.bilanTh}>{ini}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {LIGNES_BILAN.map(([cle, label]) => (
+                  <tr key={cle}>
+                    <td style={s.bilanTdLabel}>{label}</td>
+                    {ASSOCIES.map(ini => <td key={ini} style={s.bilanTd}>{bilan[ini]?.[cle] ?? 0}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ color: nbArbitrer ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>
