@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO } from '../utils/calendrier'
+import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, listerSemaines } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
@@ -9,6 +9,8 @@ import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerTrames } from '../utils/tramesApi'
+import { chargerNoel } from '../utils/noelApi'
+import { weekendsGardeNoel } from '../utils/noel'
 import { JOURS } from '../utils/trames'
 import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
 import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleEcart, cleEcartWeekend } from '../utils/ponts'
@@ -41,6 +43,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [objectifs, setObjectifs] = useState(null)
   const [vacancesData, setVacancesData] = useState(null) // { v, vacances: { num: [ini] } }
   const [tramesData, setTramesData] = useState(null)     // { v, principaleId, trames: [...] }
+  const [noelData, setNoelData] = useState(null)         // grille de Noël (week-ends de garde imposés)
   const [data, setData] = useState(null)        // { v, affectations: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -67,10 +70,10 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee)])
-      .then(([cal, obj, we, vac, tr]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee), chargerNoel(annee)])
+      .then(([cal, obj, we, vac, tr, noel]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); setNoelData(noel); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -217,6 +220,17 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const verrous = useMemo(() => new Set(data?.verrous ?? []), [data])
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
 
+  // Week-ends de garde IMPOSÉS par la grille de Noël (notamment ceux qui encadrent les 15 jours),
+  // restreints aux semaines de l'année en cours : { <numSemaine>: ini }. Source unique = grille de Noël
+  // (non persistés ici) ; ils sont comptés dans l'équilibrage et affichés « imposés », jamais réattribués.
+  const semainesAnnee = useMemo(() => new Set(listerSemaines(annee).map(s => s.num)), [annee])
+  const weekendsNoel = useMemo(() => {
+    const tout = weekendsGardeNoel(noelData)
+    const m = {}
+    for (const [num, ini] of Object.entries(tout)) if (semainesAnnee.has(Number(num))) m[Number(num)] = ini
+    return m
+  }, [noelData, semainesAnnee])
+
   // Objectif « G week-end » par associé (étape 2), si renseigné.
   const objectifGW = useMemo(() => {
     const m = {}
@@ -240,34 +254,34 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     const out = []
     const lib = (w) => `WE S${w.num} (${formatJJMM(w.samedi)}–${formatJJMM(w.dimanche)})`
     for (const w of weekends) {
-      if (affectations[w.num]) continue
+      if (affectations[w.num] || weekendsNoel[w.num]) continue // imposé par Noël = attribué
       const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
       if (dispo.length === 0) {
         out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — non attribuable : aucun associé sans contrainte (indisponible / jour off le week-end). Arbitrage : forcer un associé malgré une contrainte.` })
       }
     }
     return out
-  }, [weekends, affectations, indispoParAssocie, joursOffWeekendParAssocie])
+  }, [weekends, affectations, weekendsNoel, indispoParAssocie, joursOffWeekendParAssocie])
 
   const recap = useMemo(() => {
     let attribues = 0, indispo = 0, proches = 0, vac = 0
     for (const w of weekends) {
-      if (affectations[w.num]) attribues++
+      if (affectations[w.num] || weekendsNoel[w.num]) attribues++
       const a = analyses[w.num]
       if (a?.indispo) indispo++
       if (a?.tropProche != null) proches++
       if (a?.vacancesCollee) vac++
     }
     return { total: weekends.length, attribues, indispo, proches, vac }
-  }, [weekends, affectations, analyses])
+  }, [weekends, affectations, weekendsNoel, analyses])
 
-  // Compteur de week-ends par associé sur la période.
+  // Compteur de week-ends par associé sur la période (week-ends imposés par Noël inclus → taux réel).
   const compteParAssocie = useMemo(() => {
     const m = {}
     for (const ini of ASSOCIES) m[ini] = 0
-    for (const w of weekends) { const ini = affectations[w.num]; if (ini && m[ini] != null) m[ini]++ }
+    for (const w of weekends) { const ini = weekendsNoel[w.num] ?? affectations[w.num]; if (ini && m[ini] != null) m[ini]++ }
     return m
-  }, [weekends, affectations])
+  }, [weekends, affectations, weekendsNoel])
 
   // Placer un associé à la main VERROUILLE le week-end (forcé) ; « — » le remet en automatique.
   function majAffectation(num, ini) {
@@ -303,8 +317,10 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin || ver.has(n)) fixes[n] = ini
       }
-      const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]))
-      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, fixes, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours)
+      // Les week-ends de garde imposés par Noël ne sont PAS réattribués ni persistés ici, mais comptent
+      // dans l'équilibrage des autres (ajoutés au contexte hors-plage de proposerWeekends).
+      const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]) && !weekendsNoel[w.num])
+      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours)
       return { ...prev, affectations: { ...fixes, ...proposees } }
     })
   }
@@ -514,6 +530,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const mois = new Date(w.samedi).getUTCMonth()
               const sep = idx === 0 || mois !== moisPrec
               const roles = calendrier.semaines?.[w.num] ?? { sam: 'A', dim: 'G' }
+              const impose = weekendsNoel[w.num] ?? null // week-end de garde imposé par Noël (lecture seule)
               const ini = affectations[w.num] ?? ''
               const verrou = verrous.has(w.num)
               const a = analyses[w.num]
@@ -536,7 +553,9 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                     <div style={s.role(roles.sam)} title="Rôle du samedi (Étape 0)">{roles.sam}</div>
                     <div style={s.role(roles.dim)} title="Rôle du dimanche (Étape 0)">{roles.dim}</div>
                     <span>
-                      {!ini ? (
+                      {impose ? (
+                        <span style={s.etat('var(--color-primary)')} title="Week-end de garde imposé par la grille de Noël (encadrant les 15 jours)">🎄 imposé</span>
+                      ) : !ini ? (
                         <span style={s.etat('var(--color-text-tertiary)')}>—</span>
                       ) : a.indispo ? (
                         <span style={s.etat('var(--color-danger)')} title="Indisponible (desiderata)">🔴 indispo</span>
@@ -554,32 +573,41 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-success)')}>✓</span>
                       )}
                     </span>
-                    <select
-                      value=""
-                      onChange={() => {}}
-                      style={s.selWE(null)}
-                      title="Associés disponibles ce week-end selon les desiderata (consultation)"
-                    >
-                      <option value="">{dispo.length}/{ASSOCIES.length} dispo</option>
-                      {dispo.map(x => <option key={x} value={x}>{x}</option>)}
-                    </select>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {impose ? <span /> : (
                       <select
-                        value={ini}
-                        onChange={e => majAffectation(w.num, e.target.value)}
-                        style={{ ...s.selWE(alerte), flex: 1, ...(verrou ? { borderColor: 'var(--color-primary)', borderWidth: 1 } : {}) }}
-                        title={verrou ? 'Forcé (verrouillé) — non modifié par « Proposer »' : undefined}
+                        value=""
+                        onChange={() => {}}
+                        style={s.selWE(null)}
+                        title="Associés disponibles ce week-end selon les desiderata (consultation)"
                       >
-                        <option value="">—</option>
-                        {ASSOCIES.map(x => {
-                          const ind = indispoParAssocie[x]?.has(w.num)
-                          const offWE = joursOffWeekendParAssocie[x]?.has(w.num)
-                          const marque = ind ? ' ⚠ indispo' : offWE ? ' ⚠ jour off' : ''
-                          return <option key={x} value={x}>{x}{marque}</option>
-                        })}
+                        <option value="">{dispo.length}/{ASSOCIES.length} dispo</option>
+                        {dispo.map(x => <option key={x} value={x}>{x}</option>)}
                       </select>
-                      {ini && <BoutonVerrou verrouille={verrou} onToggle={() => basculerVerrou(w.num)} />}
-                    </span>
+                    )}
+                    {impose ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>
+                        {impose}
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)' }} title="Imposé par la grille de Noël — non réattribué, mais compté dans l'équilibrage">🎄 Noël</span>
+                      </span>
+                    ) : (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <select
+                          value={ini}
+                          onChange={e => majAffectation(w.num, e.target.value)}
+                          style={{ ...s.selWE(alerte), flex: 1, ...(verrou ? { borderColor: 'var(--color-primary)', borderWidth: 1 } : {}) }}
+                          title={verrou ? 'Forcé (verrouillé) — non modifié par « Proposer »' : undefined}
+                        >
+                          <option value="">—</option>
+                          {ASSOCIES.map(x => {
+                            const ind = indispoParAssocie[x]?.has(w.num)
+                            const offWE = joursOffWeekendParAssocie[x]?.has(w.num)
+                            const marque = ind ? ' ⚠ indispo' : offWE ? ' ⚠ jour off' : ''
+                            return <option key={x} value={x}>{x}{marque}</option>
+                          })}
+                        </select>
+                        {ini && <BoutonVerrou verrouille={verrou} onToggle={() => basculerVerrou(w.num)} />}
+                      </span>
+                    )}
                   </div>
                 </Fragment>
               )

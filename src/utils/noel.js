@@ -126,6 +126,35 @@ function estReaPoste(poste) {
   return /r[ée]a/i.test(poste ?? '')
 }
 
+// Rôle du groupe ce jour-là pour la colonne « G/A » (aperçu + export) : 'G' s'il existe une garde,
+// sinon 'A' s'il existe une astreinte, sinon ''.
+export function groupeJourNoel(jour) {
+  let aG = false, aA = false
+  for (const ini of ASSOCIES) {
+    const r = jour?.parAssocie?.[ini]?.role
+    if (r === 'G') aG = true
+    else if (r === 'A') aA = true
+  }
+  return aG ? 'G' : aA ? 'A' : ''
+}
+
+// Week-ends de garde imposés par la grille de Noël (notamment ceux qui ENCADRENT les 15 jours) :
+//   → { <numSemaineISO>: ini } = le porteur de la garde de week-end (le dimanche de garde).
+// Sert à intégrer ces week-ends à l'équilibrage de l'étape Week-ends sans double saisie.
+export function weekendsGardeNoel(noelData) {
+  const data = normaliserNoel(noelData)
+  const m = {}
+  for (const j of data.jours) {
+    const d = parseISO(j.iso)
+    if (d.getUTCDay() !== 0) continue // dimanche uniquement (= garde de week-end)
+    const num = numeroSemaineISO(d)
+    for (const ini of ASSOCIES) {
+      if (j.parAssocie?.[ini]?.role === 'G') { m[num] = ini; break }
+    }
+  }
+  return m
+}
+
 // Bilan des comptes de Noël par associé + ensemble des semaines ISO couvertes (pour exclure le double
 // comptage côté bilan annuel). Les fériés des DEUX années sont pris en compte (Noël chevauche l'an).
 //   → { parAssocie:{ <ini>:{ gWeekend, aVendredi, gVendredi, gardeSemaine, rea, recupJF } }, semaines:Set }

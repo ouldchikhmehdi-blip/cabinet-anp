@@ -13,7 +13,7 @@ import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerNoel, sauverNoel } from '../utils/noelApi'
-import { parserCollageNoel, normaliserNoel, bilanNoel } from '../utils/noel'
+import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel } from '../utils/noel'
 import { COULEURS_GRILLE } from '../utils/grilleSemaine'
 
 const JOUR_LABEL = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'] // getUTCDay() : 0=dim … 6=sam
@@ -44,10 +44,13 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   const [recueilId, setRecueilId] = useState(null)
   const [profils, setProfils] = useState([])
   const [desideratas, setDesideratas] = useState([])
-  const [data, setData] = useState(null) // { v, colle, jours }
+  const [data, setData] = useState(null) // { v, colle, jours } (grille committée)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [ouvert, setOuvert] = useState(null) // initiales de l'associé dont on montre le texte Noël
+  // Zone de collage : grille candidate (avant « Ajouter »).
+  const [texteCandidat, setTexteCandidat] = useState('')
+  const [candidat, setCandidat] = useState(null) // { colle, jours } | null
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -110,12 +113,16 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   }, [data])
 
   const recap = useMemo(() => (data ? bilanNoel(data, annee) : null), [data, annee])
+  const joursCandidat = useMemo(() => {
+    const js = (candidat?.jours ?? []).slice()
+    js.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+    return js
+  }, [candidat])
 
-  // ── Collage ──
-  function majTexteCollage(valeur) {
-    setEnregistre(false); onStatut?.('modifie')
-    const parsed = parserCollageNoel(valeur, '', annee)
-    setData(normaliserNoel({ colle: parsed.colle, jours: parsed.jours }))
+  // ── Collage (candidat, avant « Ajouter ») ──
+  function majTexteCandidat(valeur) {
+    setTexteCandidat(valeur)
+    setCandidat(parserCollageNoel(valeur, '', annee)) // saisie clavier : sans couleurs
   }
 
   function collerDepuisExcel(e) {
@@ -123,9 +130,23 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
     if (!html) return // sans HTML, onChange gère le texte brut (sans couleurs)
     e.preventDefault()
     const texte = e.clipboardData.getData('text/plain')
+    setTexteCandidat(texte)
+    setCandidat(parserCollageNoel(texte, html, annee))
+  }
+
+  // « Ajouter » : fige la grille candidate comme grille de Noël.
+  function ajouterGrille() {
+    if (!candidat?.jours?.length) return
     setEnregistre(false); onStatut?.('modifie')
-    const parsed = parserCollageNoel(texte, html, annee)
-    setData(normaliserNoel({ colle: parsed.colle, jours: parsed.jours }))
+    setData(normaliserNoel({ colle: candidat.colle, jours: candidat.jours }))
+    setTexteCandidat(''); setCandidat(null)
+  }
+
+  // « Effacer » : vide la grille de Noël committée.
+  function effacerGrille() {
+    if (!window.confirm('Effacer la grille de Noël de cette année ?')) return
+    setEnregistre(false); onStatut?.('modifie')
+    setData(normaliserNoel({ colle: '', jours: [] }))
   }
 
   async function enregistrer() {
@@ -178,6 +199,42 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
       color: actif ? '#fff' : aTexte ? 'var(--color-text)' : 'var(--color-text-tertiary)',
     }),
   }
+
+  // Aperçu d'une grille (candidate ou committée) au MÊME format que l'export Excel : Date | 8 associés | G/A.
+  const apercuTable = (joursList) => (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={s.table}>
+        <thead>
+          <tr>
+            <th style={s.th}>Date</th>
+            {ASSOCIES.map(ini => <th key={ini} style={s.th}>{ini}</th>)}
+            <th style={s.th}>G/A</th>
+          </tr>
+        </thead>
+        <tbody>
+          {joursList.map(j => {
+            const d = parseISO(j.iso)
+            const dow = d.getUTCDay()
+            const fondDate = feriesSet.has(j.iso) ? 'ferie' : (dow === 0 || dow === 6) ? 'weekend' : null
+            const grp = groupeJourNoel(j)
+            const grpFond = grp === 'G' ? 'garde' : grp === 'A' ? 'astreinte' : null
+            return (
+              <tr key={j.iso}>
+                <td style={{ ...s.tdJour, background: fondCss(fondDate) }}>{JOUR_LABEL[dow]} {formatJJMM(d)}</td>
+                {ASSOCIES.map(ini => {
+                  const cell = j.parAssocie?.[ini]
+                  const poste = (cell?.poste ?? '').trim()
+                  const fond = cell?.role === 'G' ? 'garde' : cell?.role === 'A' ? 'astreinte' : poste ? null : 'conge'
+                  return <td key={ini} style={{ ...s.td, background: fondCss(fond), fontWeight: cell?.role ? 700 : 400 }}>{poste}</td>
+                })}
+                <td style={{ ...s.td, background: fondCss(grpFond), fontWeight: 700 }}>{grp}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 
   if (!estFaiseur) {
     return (
@@ -255,60 +312,50 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
             )}
           </div>
 
-          {/* Collage de la grille de Noël */}
+          {/* Coller une grille candidate puis « Ajouter » */}
           <div style={s.carte}>
             <div style={s.titreSection}>Coller la grille de Noël depuis Excel</div>
             <p style={s.aide}>
               Sélectionnez dans Excel le bloc complet : <strong>ligne d'en-tête</strong> (les initiales des
-              associés), <strong>colonne des dates</strong> à gauche, et les cases colorées, puis collez ci-dessous
-              (Ctrl+V). Les fonds <strong>jaune (garde)</strong> et <strong>orange (astreinte)</strong> sont lus
-              automatiquement ; une case vide = repos.
+              associés), <strong>colonne des dates</strong> à gauche (incluez les <strong>week-ends de garde
+              avant et après</strong> les 15 jours), et les cases colorées, puis collez ci-dessous (Ctrl+V). Les
+              fonds <strong>jaune (garde)</strong> et <strong>orange (astreinte)</strong> sont lus automatiquement ;
+              une case vide = repos. Vérifiez l'aperçu, puis <strong>Ajouter</strong>.
             </p>
             <textarea
-              value={data.colle ?? ''}
-              onChange={e => majTexteCollage(e.target.value)}
+              value={texteCandidat}
+              onChange={e => majTexteCandidat(e.target.value)}
               onPaste={collerDepuisExcel}
-              placeholder="Collez ici la grille des 15 jours copiée depuis Excel…"
+              placeholder="Collez ici la grille (en-tête + dates + cases colorées) copiée depuis Excel…"
               style={s.textarea}
             />
+            {joursCandidat.length > 0 && (
+              <>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '12px 0' }}>
+                  <button type="button" onClick={ajouterGrille} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13 }}>
+                    + Ajouter la grille
+                  </button>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    {joursCandidat.length} jour{joursCandidat.length > 1 ? 's' : ''} détecté{joursCandidat.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+                {apercuTable(joursCandidat)}
+              </>
+            )}
           </div>
 
-          {/* Aperçu de la grille détectée */}
+          {/* Grille de Noël committée (au format Excel) */}
           {jours.length > 0 && (
             <div style={s.carte}>
-              <div style={{ ...s.titreSection, marginBottom: 10 }}>
-                Aperçu détecté <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>· {jours.length} jour{jours.length > 1 ? 's' : ''}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={s.titreSection}>
+                  Grille de Noël <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>· {jours.length} jour{jours.length > 1 ? 's' : ''} · apparaît telle quelle dans l'export Excel</span>
+                </div>
+                <button type="button" onClick={effacerGrille} style={{ marginLeft: 'auto', padding: '5px 11px', fontSize: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', border: '0.5px solid var(--color-danger)', background: 'var(--color-bg)', color: 'var(--color-danger)' }}>
+                  Remplacer / Effacer
+                </button>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={s.table}>
-                  <thead>
-                    <tr>
-                      <th style={s.th}>Date</th>
-                      {ASSOCIES.map(ini => <th key={ini} style={s.th}>{ini}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {jours.map(j => {
-                      const d = parseISO(j.iso)
-                      const dow = d.getUTCDay()
-                      const fondDate = feriesSet.has(j.iso) ? 'ferie' : (dow === 0 || dow === 6) ? 'weekend' : null
-                      return (
-                        <tr key={j.iso}>
-                          <td style={{ ...s.tdJour, background: fondCss(fondDate) }}>{JOUR_LABEL[dow]} {formatJJMM(d)}</td>
-                          {ASSOCIES.map(ini => {
-                            const cell = j.parAssocie?.[ini]
-                            const poste = (cell?.poste ?? '').trim()
-                            const fond = cell?.role === 'G' ? 'garde' : cell?.role === 'A' ? 'astreinte' : poste ? null : 'conge'
-                            return (
-                              <td key={ini} style={{ ...s.td, background: fondCss(fond), fontWeight: cell?.role ? 700 : 400 }}>{poste}</td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {apercuTable(jours)}
             </div>
           )}
 

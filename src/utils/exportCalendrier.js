@@ -4,11 +4,12 @@
 // Couleurs gérées via ExcelJS (la lib xlsx communautaire ne sait pas colorer).
 // ============================================================
 import ExcelJS from 'exceljs'
-import { listerSemaines, semainesDansPlage, joursFeriesFR, formatDateLongueFR, moisAnneeFR } from './calendrier'
+import { listerSemaines, semainesDansPlage, joursFeriesFR, formatDateLongueFR, moisAnneeFR, parseISO, numeroSemaineISO } from './calendrier'
 import { ASSOCIES } from '../data/associes'
 import {
   COULEURS_GRILLE, ctxJour, celluleAssocieJour, celluleRemplacantJour, celluleGroupeJour, celluleDateJour,
 } from './grilleSemaine'
+import { groupeJourNoel } from './noel'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -45,7 +46,7 @@ async function telecharger(workbook, nomFichier) {
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
 // Construit le classeur et renvoie { wb, nomFichier } (sans télécharger).
-async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null) {
+async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null, noelData = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -90,7 +91,13 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
     })
   }
 
-  const semaines = periode ? semainesDansPlage(annee, periode.debut, periode.fin) : listerSemaines(annee)
+  // Jours de Noël (grille fournie telle quelle) triés par date + semaines ISO couvertes : ces semaines
+  // sont EXCLUES du calendrier normal (rendues dans le bloc « Noël » plus bas) → pas de doublon.
+  const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+  const semainesNoel = new Set(joursNoel.map(j => numeroSemaineISO(parseISO(j.iso))))
+
+  const semaines = (periode ? semainesDansPlage(annee, periode.debut, periode.fin) : listerSemaines(annee))
+    .filter(s => !semainesNoel.has(s.num))
   let moisPrec = null
   for (const sem of semaines) {
     // Ligne d'en-tête (initiales) à la FRONTIÈRE de semaine : juste avant le lundi, quand le mois du lundi
@@ -151,6 +158,54 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
         // Note le nom du férié en commentaire sur la cellule date de gauche.
         row.getCell(1).note = feries[ctx.iso]
       }
+    }
+  }
+
+  // ── Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au même format que le calendrier ──
+  if (joursNoel.length) {
+    const feriesNoel = {}
+    for (const f of [...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)]) feriesNoel[f.iso] = f.nom
+    ws.addRow([])
+    const titre = ws.addRow([`Noël ${annee}`])
+    titre.getCell(1).font = { name: 'Calibri', bold: true, size: 12 }
+    ligneEntete(parseISO(joursNoel[0].iso))
+    for (const j of joursNoel) {
+      const date = parseISO(j.iso)
+      const dow = date.getUTCDay() // 0=dim … 6=sam
+      const estFerie = !!feriesNoel[j.iso]
+      const estWeekend = dow === 0 || dow === 6
+      const cellulesAssocies = ASSOCIES.map(ini => {
+        const c = j.parAssocie?.[ini]
+        const poste = (c?.poste ?? '').trim()
+        const role = c?.role ?? null
+        const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : (poste ? null : 'conge')
+        return { texte: poste, fond, gras: !!role }
+      })
+      const groupeTxt = groupeJourNoel(j)
+      const dateFond = estFerie ? 'ferie' : estWeekend ? 'weekend' : null
+      const dateLong = formatDateLongueFR(date)
+      const row = ws.addRow([
+        dateLong,
+        ...cellulesAssocies.map(c => c.texte),
+        dateLong,
+        groupeTxt,
+        ...enteteRempl.map(() => ''),
+      ])
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        cell.border = bordures()
+        cell.alignment = centre
+        cell.font = { name: 'Calibri', size: 11 }
+        const estDate = col === 1 || col === NB_COL - 1
+        const estAssocie = col >= 2 && col <= 1 + ASSOCIES.length
+        const estGroupe = col === NB_COL
+        let modele = null
+        if (estDate) modele = dateFond ? { fond: dateFond } : null
+        else if (estAssocie) modele = cellulesAssocies[col - 2]
+        else if (estGroupe) modele = { fond: groupeTxt === 'G' ? 'garde' : groupeTxt === 'A' ? 'astreinte' : null }
+        if (modele?.fond) cell.fill = solid('FF' + COULEURS_GRILLE[modele.fond])
+        if (modele?.gras || estGroupe) cell.font = { name: 'Calibri', size: 11, bold: true }
+      })
+      if (estFerie) row.getCell(1).note = feriesNoel[j.iso]
     }
   }
 

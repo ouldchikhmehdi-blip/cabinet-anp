@@ -719,7 +719,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData,
       )
     } catch {
       setErreur('Export Excel impossible.')
@@ -746,7 +746,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const { buffer } = await genererClasseurBuffer(
         annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData,
       )
       await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
       await definirStatutRecueil(recueil.id, 'ferme')
