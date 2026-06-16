@@ -212,8 +212,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
   async function exporter() {
     setErreur(null); setExportEnCours(true)
     try {
-      // Étape 5 : base calendrier + objectifs + week-ends + vacances + réa (incrémental).
-      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, data.rea)
+      // Étape 5 : base calendrier + objectifs + week-ends + vacances + réa (incrémental), borné à la période du recueil.
+      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, data.rea, recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null)
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

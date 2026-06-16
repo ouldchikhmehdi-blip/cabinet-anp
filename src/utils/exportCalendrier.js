@@ -4,7 +4,7 @@
 // Couleurs gérées via ExcelJS (la lib xlsx communautaire ne sait pas colorer).
 // ============================================================
 import ExcelJS from 'exceljs'
-import { listerSemaines, joursFeriesFR, formatISO, formatDateLongueFR, moisAnneeFR } from './calendrier'
+import { listerSemaines, semainesDansPlage, joursFeriesFR, formatISO, formatDateLongueFR, moisAnneeFR } from './calendrier'
 import { ASSOCIES } from '../data/associes'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
@@ -49,7 +49,9 @@ async function telecharger(workbook, nomFichier) {
   URL.revokeObjectURL(url)
 }
 
-export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null) {
+// periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
+// Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
+export async function exporterCalendrierExcel(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -88,8 +90,9 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
     })
   }
 
+  const semaines = periode ? semainesDansPlage(annee, periode.debut, periode.fin) : listerSemaines(annee)
   let moisPrec = null
-  for (const sem of listerSemaines(annee)) {
+  for (const sem of semaines) {
     for (let offset = 0; offset < 7; offset++) {
       const date = new Date(sem.lundi.getTime() + offset * JOUR_MS)
       const mois = date.getUTCMonth()
@@ -198,5 +201,8 @@ export async function exporterCalendrierExcel(annee, data, objectifs = null, wee
   }
 
   ws.views = [{ state: 'frozen', ySplit: 0, xSplit: 0 }]
-  await telecharger(wb, `Base_calendrier_${annee}.xlsx`)
+  const nomFichier = periode
+    ? `Planning_${annee}_S${periode.debut}-S${periode.fin}.xlsx`
+    : `Base_calendrier_${annee}.xlsx`
+  await telecharger(wb, nomFichier)
 }

@@ -197,8 +197,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   async function exporter() {
     setErreur(null); setExportEnCours(true)
     try {
-      // Étape 4 : base calendrier + objectifs + week-ends + vacances (incrémental).
-      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, data.vacances)
+      // Étape 4 : base calendrier + objectifs + week-ends + vacances (incrémental), borné à la période du recueil.
+      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, data.vacances, null, recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null)
     } catch {
       setErreur('Export Excel impossible.')
     } finally {
