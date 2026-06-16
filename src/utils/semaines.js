@@ -15,7 +15,7 @@
 //   Vendredi = à part (suivi Objectifs). Pénibilité : ≥ 1 semaine entre deux gardes (cf. §12).
 // ============================================================
 import { ASSOCIES } from '../data/associes'
-import { JOURS, colonnesSelectionnables } from './trames'
+import { JOURS, colonnesSelectionnables, capaciteVacances } from './trames'
 import { typeDuJour, lundiDeSemaineISO } from './calendrier'
 
 export const VERSION_SEMAINES = 2
@@ -56,9 +56,30 @@ export function normaliserSemaines(data) {
   return { v: VERSION_SEMAINES, trameParSemaine, affectations, verrous }
 }
 
-// Trame appliquée à une semaine : le choix explicite, sinon la trame principale (peut être null).
-export function trameEffective(data, num, principaleId) {
-  return data?.trameParSemaine?.[num] ?? principaleId ?? null
+// Trame effective d'une semaine, avec REPLI AUTOMATIQUE selon le nombre de vacanciers :
+//   - choix explicite (trameParSemaine) → prioritaire (même s'il est « insuffisant ») ;
+//   - sinon la principale si sa capacité vacances suffit ;
+//   - sinon la plus PETITE trame dont la capacité vacances ≥ nbVacanciers (tie-break : id) ;
+//   - sinon (aucune suffisante) la principale, sinon la trame de plus grande capacité.
+// Renvoie { trame, estPrincipale, repli } (trame:null si le catalogue est vide).
+//   estPrincipale → pilote les souhaits de colonne ; repli → l'outil a dévié de la principale.
+export function resoudreTrame({ trames = [], tramesById = {}, principaleId = null, choisiId = null, nbVacanciers = 0 }) {
+  if (choisiId != null) {
+    const trame = tramesById[choisiId] ?? null
+    return { trame, estPrincipale: choisiId === principaleId, repli: false }
+  }
+  const principale = principaleId != null ? (tramesById[principaleId] ?? null) : null
+  if (principale && capaciteVacances(principale) >= nbVacanciers) {
+    return { trame: principale, estPrincipale: true, repli: false }
+  }
+  const suffisantes = trames.filter(t => capaciteVacances(t) >= nbVacanciers)
+  if (suffisantes.length) {
+    const trame = [...suffisantes].sort((a, b) => (capaciteVacances(a) - capaciteVacances(b)) || (a.id - b.id))[0]
+    return { trame, estPrincipale: trame.id === principaleId, repli: trame.id !== principaleId }
+  }
+  if (principale) return { trame: principale, estPrincipale: true, repli: false }
+  const trame = [...trames].sort((a, b) => (capaciteVacances(b) - capaciteVacances(a)) || (a.id - b.id))[0] ?? null
+  return { trame, estPrincipale: trame != null && trame.id === principaleId, repli: trame != null }
 }
 
 // Jours de repos d'une colonne (cellules vides) → Set('lun'..'ven').
@@ -85,6 +106,19 @@ export function colonnesSpeciales(trame, num, { rea = {}, vacances = {}, weekend
 // Les colonnes remplaçant restent vides (personnes externes).
 export function affectationResolue(trame, num, contexteAmont, affectationsLibres = {}) {
   return { ...colonnesSpeciales(trame, num, contexteAmont), ...(affectationsLibres[num] ?? {}) }
+}
+
+// Colonnes que le moteur doit POURVOIR avec un associé cette semaine : les colonnes libres
+// (colonnesSelectionnables) PLUS les colonnes de travail spéciales (rea/avantWE/apresWE) restées SANS
+// occupant dérivé (absentes de `spec`, ex. après-WE en 1ʳᵉ semaine ou étape Week-ends/Réa non faite).
+// Exclut les colonnes vacances (repos) et remplaçant (personne externe). Évite qu'une colonne de travail
+// reste vide pendant qu'un associé est « non placé ».
+export function colonnesAPourvoir(trame, spec = {}) {
+  const cols = [...colonnesSelectionnables(trame)]
+  for (const col of [trame?.rea, trame?.avantWE, trame?.apresWE]) {
+    if (col != null && spec[col] == null && !cols.includes(col)) cols.push(col)
+  }
+  return cols.sort((a, b) => a - b)
 }
 
 // Dates des gardes de SEMAINE qu'une colonne génère cette semaine-là (0, 1 ou 2 dates).
@@ -195,9 +229,10 @@ export function proposerSemaines({
     for (const ini of (vacances[num] ?? [])) pris.add(ini)
     for (const [col, ini] of Object.entries(spec)) placer(Number(col), ini)
 
-    // Colonnes libres ; les verrouillées sont posées d'emblée.
+    // Colonnes à pourvoir (libres + colonnes de travail spéciales restées vides) ; les verrouillées
+    // sont posées d'emblée.
     const colLibres = []
-    for (const c of colonnesSelectionnables(trame)) {
+    for (const c of colonnesAPourvoir(trame, spec)) {
       if (verrou[c] != null) { out[num][c] = verrou[c]; pris.add(verrou[c]); placer(c, verrou[c]) }
       else colLibres.push(c)
     }
@@ -245,8 +280,13 @@ export function proposerSemaines({
       if (best != null && bestN > 0) { attribuer(best, ini); restantes = restantes.filter(c => c !== best) }
     }
 
-    // Phase C — équilibre des gardes (année dure → période molle) + espacement, par colonne croissante.
-    for (const c of restantes) {
+    // Phase C — équilibre des gardes : on attribue D'ABORD les colonnes qui génèrent une garde, aux
+    // associés les MOINS chargés (sinon les colonnes sans garde, prises en premier par les moins
+    // chargés, laissent toujours la garde aux plus chargés → déséquilibre auto-entretenu). Égalité
+    // d'abord ; l'écart entre gardes reste un tie-break (déjà dans le tri des candidats).
+    const nbGardesCol = (c) => datesGardeSemaine(trame, c, annee, num, calendrier).length
+    const restantesTriees = [...restantes].sort((a, b) => (nbGardesCol(b) - nbGardesCol(a)) || (a - b))
+    for (const c of restantesTriees) {
       if (out[num][c] != null || !assocLibres.length) continue
       const cands = [...assocLibres]
       cands.sort((a, b) =>
@@ -285,7 +325,11 @@ export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolu
   for (const i of places) indispo.add(i)
   const nonPlaces = ASSOCIES.filter(a => !indispo.has(a))
 
-  const colonnesVides = colonnesSelectionnables(trame).filter(c => affResolue[c] == null)
+  // Colonnes de travail vides = colonnes libres + colonnes spéciales rea/avantWE/apresWE (une colonne
+  // avec occupant dérivé n'est pas vide dans affResolue) ; les vacances/remplaçant sont exclues.
+  const colonnesTravail = [...colonnesSelectionnables(trame), trame?.rea, trame?.avantWE, trame?.apresWE]
+    .filter(c => c != null)
+  const colonnesVides = [...new Set(colonnesTravail)].sort((a, b) => a - b).filter(c => affResolue[c] == null)
 
   const souhaitNonSatisfait = []
   const souhaitsIgnoresTrame = []

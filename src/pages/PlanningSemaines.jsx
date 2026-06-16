@@ -13,7 +13,7 @@ import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import {
   proposerSemaines, affectationResolue, analyserSemaineColonnes,
-  gardesWeekendParAssocie, gardesSemaineParAssocie,
+  gardesWeekendParAssocie, gardesSemaineParAssocie, resoudreTrame,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances } from '../utils/trames'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
@@ -159,12 +159,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   )
   const allNums = useMemo(() => listerSemaines(annee).map(s => s.num), [annee])
 
-  // Trame résolue d'une semaine + si c'est la trame principale (souhaits de colonne).
-  const trameDe = useCallback((num) => {
-    const id = trameParSemaine[num] ?? principaleId
-    return id != null ? (tramesById[id] ?? null) : null
-  }, [trameParSemaine, principaleId, tramesById])
-  const estPrincipaleSem = useCallback((num) => ((trameParSemaine[num] ?? principaleId) === principaleId), [trameParSemaine, principaleId])
+  // Trame résolue d'une semaine, AVEC repli automatique selon le nombre de vacanciers → { trame,
+  // estPrincipale, repli }. Source unique de vérité (affichage, analyses, proposer, export).
+  const resoudreSem = useCallback((num) => resoudreTrame({
+    trames, tramesById, principaleId,
+    choisiId: trameParSemaine[num] ?? null,
+    nbVacanciers: (vacancesParSemaine[num] ?? []).length,
+  }), [trames, tramesById, principaleId, trameParSemaine, vacancesParSemaine])
+  const trameDe = useCallback((num) => resoudreSem(num).trame, [resoudreSem])
+  const estPrincipaleSem = useCallback((num) => resoudreSem(num).estPrincipale, [resoudreSem])
 
   // Gardes sur l'année : dates (week-ends toute l'année + gardes de semaine résolues) + compteurs.
   const gardesAnnee = useMemo(() => {
@@ -287,9 +290,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     setData(prev => {
       const debut = recueil.semaine_debut, fin = recueil.semaine_fin
       const trameInfo = (num) => {
-        const id = (prev.trameParSemaine?.[num] ?? principaleId)
-        const trame = id != null ? (tramesById[id] ?? null) : null
-        return trame ? { trame, estPrincipale: id === principaleId } : null
+        const { trame, estPrincipale } = resoudreTrame({
+          trames, tramesById, principaleId,
+          choisiId: prev.trameParSemaine?.[num] ?? null,
+          nbVacanciers: (contexteAmont.vacances[num] ?? []).length,
+        })
+        return trame ? { trame, estPrincipale } : null
       }
       // Socle d'équilibre annuel : gardes hors-plage (week-ends toute l'année + gardes de semaine hors-plage).
       const horsNums = allNums.filter(n => n < debut || n > fin)
@@ -334,18 +340,17 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
     const a = analyses[sem.num]
-    const choisi = trameParSemaine[sem.num] ?? null
-    const effId = choisi ?? principaleId
-    const trame = effId != null ? tramesById[effId] : null
+    const { trame, estPrincipale, repli } = resoudreSem(sem.num)
     const motif = [a?.multiVacances ? `${a.vacanciers.length} en vacances` : null, a?.pont ? 'pont' : null].filter(Boolean).join(', ')
     return {
       label: `S${sem.num} · ${formatJJMM(sem.lundi)} → ${formatJJMM(sem.dimanche)}`,
       trame: trame ? trame.nom : '—',
-      specifique: choisi != null && choisi !== principaleId,
+      specifique: trame != null && !estPrincipale,
+      repli: !!repli,
       arbitrer: !!a?.aArbitrer,
       motif,
     }
-  }), [semaines, analyses, trameParSemaine, tramesById, principaleId])
+  }), [semaines, analyses, resoudreSem])
 
   async function exporter() {
     setErreur(null); setExportEnCours(true)
@@ -512,9 +517,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', padding: 8 }}>Aucune semaine à afficher.</div>
             ) : semainesAffichees.map(sem => {
               const a = analyses[sem.num]
-              const choisi = trameParSemaine[sem.num] ?? null
-              const effectiveId = choisi ?? principaleId
-              const trame = effectiveId != null ? tramesById[effectiveId] : null
+              const { trame, repli } = resoudreSem(sem.num)
+              const effectiveId = trame ? trame.id : null
               const ouvert = apercus.has(sem.num)
               const affR = trame ? affectationResolue(trame, sem.num, contexteAmont, affectationsLibres) : {}
               const al = alertesColonnes[sem.num]
@@ -570,6 +574,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                       })}
                     </select>
                   </div>
+                  {repli && trame && (
+                    <div style={{ ...s.meta, marginTop: 2, color: 'var(--color-primary-dark)' }}>
+                      ↪ Repli automatique : « {trame.nom} » appliquée (la trame principale n'a pas assez de colonnes vacances pour cette semaine). Choisis une trame dans la liste pour forcer.
+                    </div>
+                  )}
                   {nbMasquees > 0 && (
                     <div style={{ ...s.meta, marginTop: 2 }}>
                       {nbMasquees} autre{nbMasquees > 1 ? 's' : ''} trame{nbMasquees > 1 ? 's' : ''} non proposée{nbMasquees > 1 ? 's' : ''} dans la liste : moins de {vReq} colonnes vacances pour les {vReq} congés de cette semaine.
@@ -578,7 +587,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                   <div style={{ ...s.haut, marginTop: 4, justifyContent: 'space-between' }}>
                     <span style={s.meta}>
                       {trame
-                        ? `${trame.colonnes.length} colonne${trame.colonnes.length > 1 ? 's' : ''}${trame.remplacants?.length ? ` · ${trame.remplacants.length} remplaçant${trame.remplacants.length > 1 ? 's' : ''}` : ''}${choisi != null && choisi !== principaleId ? ' · trame spécifique' : ''}`
+                        ? `${trame.colonnes.length} colonne${trame.colonnes.length > 1 ? 's' : ''}${trame.remplacants?.length ? ` · ${trame.remplacants.length} remplaçant${trame.remplacants.length > 1 ? 's' : ''}` : ''}${trameParSemaine[sem.num] != null && trameParSemaine[sem.num] !== principaleId ? ' · trame spécifique' : ''}`
                         : 'Aucune trame'}
                     </span>
                     {trame && (
