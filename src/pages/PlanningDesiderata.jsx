@@ -8,8 +8,10 @@ import { definirGardeNavigation } from '../utils/gardeNavigation'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { listerArchives, urlArchive } from '../utils/archivesApi'
 import { chargerTrames } from '../utils/tramesApi'
+import { chargerTrameEte } from '../utils/trameEteApi'
 import { colonnesSelectionnables } from '../utils/trames'
 import SelecteurRecueil from '../components/planning/SelecteurRecueil'
+import ChoixColonnesEte from '../components/planning/ChoixColonnesEte'
 import SelecteurSemaines from '../components/planning/SelecteurSemaines'
 import SelecteurDates from '../components/planning/SelecteurDates'
 import WeekendsIndispo from '../components/planning/WeekendsIndispo'
@@ -65,13 +67,15 @@ export default function PlanningDesiderata() {
   const baselineRef = useRef(null)                              // signature JSON des données chargées/transmises
   const [semainesScolaires, setSemainesScolaires] = useState([]) // vacances scolaires (Base calendrier)
   const [tramesData, setTramesData] = useState(null) // catalogue de trames de l'année (pour la principale)
+  const [trameEte, setTrameEte] = useState(null)     // grille d'été du recueil (si publiée → mode été)
   const [archives, setArchives] = useState([])       // plannings validés (Excel) de l'année
   const [nouvSouhaitSem, setNouvSouhaitSem] = useState('')
   const [nouvSouhaitCol, setNouvSouhaitCol] = useState('')
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const ferme = recueil?.statut === 'ferme'
-  const estEte = recueil?.type === 'ete'
+  // « Mode été » : une grille d'été a été publiée pour ce recueil → la saisie devient un choix de colonnes.
+  const modeEte = trameEte != null
 
   // Archive (planning validé) du recueil courant — la plus récente (liste triée created_at desc).
   const archiveRecueil = useMemo(
@@ -113,6 +117,16 @@ export default function PlanningDesiderata() {
       .catch(() => { if (!annule) setTramesData(null) })
     return () => { annule = true }
   }, [annee])
+
+  // Charge la grille d'été du recueil sélectionné. Si elle existe, la saisie passe en « mode été ».
+  // chargerTrameEte(null) renvoie null → pas de setState synchrone (tout passe par la promesse).
+  useEffect(() => {
+    let annule = false
+    chargerTrameEte(recueilId)
+      .then(t => { if (!annule) setTrameEte(t) })
+      .catch(() => { if (!annule) setTrameEte(null) })
+    return () => { annule = true }
+  }, [recueilId])
 
   // Charge les recueils de l'année (ouverts ET fermés ; les fermés sont en lecture seule)
   useEffect(() => {
@@ -379,7 +393,7 @@ export default function PlanningDesiderata() {
           ) : null}
 
           <div style={{ ...s.carte }}>
-            <RecapDesiderata initiales={initiales} d={data} annee={annee} estEte={estEte} />
+            <RecapDesiderata initiales={initiales} d={data} annee={annee} estEte={modeEte} />
           </div>
 
           {!ferme && (
@@ -389,16 +403,52 @@ export default function PlanningDesiderata() {
             </div>
           )}
         </>
-      ) : (
-        // ── Mode édition ──
+      ) : modeEte ? (
+        // ── Mode édition « été » : uniquement le choix de colonnes (+ commentaire) ──
         <>
-          {estEte && (
-            <div style={s.banniere('var(--color-text-secondary)', 'var(--color-bg)')}>
-              <strong>Recueil d'été.</strong> Les congés d'été se répartissent par <strong>choix de colonnes</strong>
-              {' '}(maquette fournie chaque année). Les week-ends et les jours off ne se saisissent pas ici.
-            </div>
-          )}
+          <div style={s.banniere('var(--color-text-secondary)', 'var(--color-bg)')}>
+            <strong>Recueil d'été.</strong> Tout est déjà placé dans la grille ci-dessous (vacances, gardes,
+            week-ends, jour férié). Indiquez seulement <strong>quelle(s) colonne(s)</strong> vous souhaitez faire.
+          </div>
 
+          <div style={s.carte}>
+            <div style={s.titre}>Choix des colonnes — été</div>
+            <div style={s.aide}>
+              Pour chaque colonne : <strong>⭐ Prioritaire</strong> (classez vos 1er/2e/3e choix),
+              {' '}<strong>👍 Possible</strong> (« je peux la faire »), <strong>🚫 À éviter</strong> (« surtout pas »),
+              ou laissez sans avis. Vous pouvez en marquer plusieurs.
+            </div>
+            <ChoixColonnesEte
+              trameEte={trameEte}
+              valeur={data.colonnesEte}
+              onChange={v => maj('colonnesEte', v)}
+            />
+          </div>
+
+          <div style={s.carte}>
+            <div style={s.titre}>Commentaire libre</div>
+            <textarea
+              style={s.textarea}
+              value={data.commentaire}
+              onChange={e => maj('commentaire', e.target.value)}
+              placeholder="Toute autre précision utile au faiseur de planning…"
+            />
+          </div>
+
+          {/* Barre d'enregistrement */}
+          <div style={s.barreBas}>
+            <button type="button" onClick={enregistrer} style={s.bouton}>Enregistrer</button>
+            {flash && <span style={{ fontSize: 13, color: 'var(--color-success)' }}>{flash}</span>}
+            {!flash && brouillonActif && (
+              <span style={{ fontSize: 13, color: 'var(--color-amber)' }}>
+                ✎ Brouillon gardé automatiquement — cliquez <strong>Enregistrer</strong> pour transmettre au faiseur.
+              </span>
+            )}
+          </div>
+        </>
+      ) : (
+        // ── Mode édition (recueil normal) ──
+        <>
           {/* Rien à signaler */}
           <div style={s.carte}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
@@ -446,43 +496,39 @@ export default function PlanningDesiderata() {
               />
             </SectionRepliable>
 
-            {/* Week-ends indisponibles (sans objet l'été) */}
-            {!estEte && (
-              <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
-                <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
-                <div style={s.noteFerie}>
-                  🌉 Vos week-ends indisponibles <strong>accolés à un jour férié</strong> (férié un
-                  vendredi ou un lundi) sont <strong>surveillés</strong> : ils forment des « ponts »
-                  et sont automatiquement <strong>repérés et signalés au faiseur de planning</strong>.
-                </div>
-                <WeekendsIndispo
-                  weekends={weekends}
-                  selection={data.weekendsIndispo}
-                  onChange={v => maj('weekendsIndispo', v)}
-                />
-              </SectionRepliable>
-            )}
+            {/* Week-ends indisponibles */}
+            <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
+              <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
+              <div style={s.noteFerie}>
+                🌉 Vos week-ends indisponibles <strong>accolés à un jour férié</strong> (férié un
+                vendredi ou un lundi) sont <strong>surveillés</strong> : ils forment des « ponts »
+                et sont automatiquement <strong>repérés et signalés au faiseur de planning</strong>.
+              </div>
+              <WeekendsIndispo
+                weekends={weekends}
+                selection={data.weekendsIndispo}
+                onChange={v => maj('weekendsIndispo', v)}
+              />
+            </SectionRepliable>
 
-            {/* Jours off souhaités (sans objet l'été) */}
-            {!estEte && (
-              <SectionRepliable
-                titre="Jours off souhaités"
-                resume={data.joursOffSouhaites.length ? `${data.joursOffSouhaites.length} jour${data.joursOffSouhaites.length > 1 ? 's' : ''}` : '—'}
-              >
-                <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
-                <div style={s.noteFerie}>
-                  🌉 Vos demandes de jours off <strong>autour d'un jour férié</strong> (la veille, le
-                  jour même ou le lendemain) sont <strong>surveillées</strong> : elles forment des
-                  « ponts » et sont automatiquement <strong>repérées et signalées au faiseur de planning</strong>.
-                </div>
-                <SelecteurDates
-                  dates={data.joursOffSouhaites}
-                  onChange={v => maj('joursOffSouhaites', v)}
-                  annee={annee}
-                  bornes={bornes}
-                />
-              </SectionRepliable>
-            )}
+            {/* Jours off souhaités */}
+            <SectionRepliable
+              titre="Jours off souhaités"
+              resume={data.joursOffSouhaites.length ? `${data.joursOffSouhaites.length} jour${data.joursOffSouhaites.length > 1 ? 's' : ''}` : '—'}
+            >
+              <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
+              <div style={s.noteFerie}>
+                🌉 Vos demandes de jours off <strong>autour d'un jour férié</strong> (la veille, le
+                jour même ou le lendemain) sont <strong>surveillées</strong> : elles forment des
+                « ponts » et sont automatiquement <strong>repérées et signalées au faiseur de planning</strong>.
+              </div>
+              <SelecteurDates
+                dates={data.joursOffSouhaites}
+                onChange={v => maj('joursOffSouhaites', v)}
+                annee={annee}
+                bornes={bornes}
+              />
+            </SectionRepliable>
 
             {/* Préférence vacances scolaires + Toussaint — seulement les périodes du recueil */}
             {voirCarteScol && (
@@ -558,27 +604,25 @@ export default function PlanningDesiderata() {
             </div>
             )}
 
-            {/* Fêtes de fin d'année — réparties à la main (sans objet l'été) */}
-            {!estEte && (
-              <div style={s.carte}>
-                <div style={s.titre}>Fêtes de fin d'année (Noël / Nouvel An)</div>
-                <div style={s.aide}>
-                  Les 15 jours de fin d'année sont répartis <strong>à la main</strong> par le faiseur de planning,
-                  dès la mise en place du planning de début d'année. Rien n'est automatisé ici : indiquez en
-                  texte libre vos préférences selon les possibilités qu'il proposera — par exemple la 1ʳᵉ ou la
-                  2ᵉ semaine, ou si vous préférez travailler le 24/25 décembre ou le 31/1ᵉʳ janvier.
-                </div>
-                <textarea
-                  style={s.textarea}
-                  value={data.noel}
-                  onChange={e => maj('noel', e.target.value)}
-                  placeholder="Ex. : plutôt la 2ᵉ semaine ; je préfère travailler le 24-25 et être off le 31-1er…"
-                />
+            {/* Fêtes de fin d'année — réparties à la main */}
+            <div style={s.carte}>
+              <div style={s.titre}>Fêtes de fin d'année (Noël / Nouvel An)</div>
+              <div style={s.aide}>
+                Les 15 jours de fin d'année sont répartis <strong>à la main</strong> par le faiseur de planning,
+                dès la mise en place du planning de début d'année. Rien n'est automatisé ici : indiquez en
+                texte libre vos préférences selon les possibilités qu'il proposera — par exemple la 1ʳᵉ ou la
+                2ᵉ semaine, ou si vous préférez travailler le 24/25 décembre ou le 31/1ᵉʳ janvier.
               </div>
-            )}
+              <textarea
+                style={s.textarea}
+                value={data.noel}
+                onChange={e => maj('noel', e.target.value)}
+                placeholder="Ex. : plutôt la 2ᵉ semaine ; je préfère travailler le 24-25 et être off le 31-1er…"
+              />
+            </div>
 
-            {/* Trame principale — souhaits de colonne par semaine (sans objet l'été) */}
-            {!estEte && tramePrincipale && (
+            {/* Trame principale — souhaits de colonne par semaine */}
+            {tramePrincipale && (
               <div style={s.carte}>
                 <div style={s.titre}>Trame principale — souhaits de colonne</div>
                 <div style={s.aide}>

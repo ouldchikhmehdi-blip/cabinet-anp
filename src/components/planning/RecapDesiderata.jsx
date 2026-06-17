@@ -66,9 +66,13 @@ function SectionMois({ titre, items }) {
  *   initiales — string
  *   d         — objet desiderata
  *   annee     — number (pour libeller semaines / week-ends)
- *   estEte    — bool : recueil d'été (masque jours off et week-ends, sans objet l'été)
+ *   estEte    — bool : recueil d'été (masque les sections normales ; affiche le choix de colonnes)
  */
 export default function RecapDesiderata({ initiales, d, annee, estEte = false, ponts = [], pontsWeekend = [], ecartesSet = new Set() }) {
+  const colEte = d.colonnesEte ?? {}
+  const prioEte = (colEte.prioritaires ?? []).map((k, i) => `${i + 1}. ${k}`).join(' · ')
+  const possEte = (colEte.possibles ?? []).join(' · ')
+  const refusEte = (colEte.refusees ?? []).join(' · ')
   // num → { label, date } : la date (lundi / samedi) sert au regroupement par mois.
   const semaineInfo = useMemo(() => {
     const map = {}
@@ -132,15 +136,27 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false, p
         </div>
       )}
 
-      <SectionMois
-        titre="Vacances souhaitées"
-        items={d.vacancesSouhaitees.map(n => ({ label: semaineInfo[n]?.label ?? `S${n}`, date: semaineInfo[n]?.date }))}
-      />
+      {estEte && (
+        <>
+          <Ligne titre="Colonnes été — prioritaires (par ordre)" vide={!prioEte}>{prioEte}</Ligne>
+          <Ligne titre="Colonnes été — possibles" vide={!possEte}>{possEte}</Ligne>
+          <Ligne titre="Colonnes été — à éviter" vide={!refusEte}>{refusEte}</Ligne>
+        </>
+      )}
 
-      <SectionMois
-        titre="Vacances refusées"
-        items={d.vacancesRefusees.map(n => ({ label: semaineInfo[n]?.label ?? `S${n}`, date: semaineInfo[n]?.date }))}
-      />
+      {!estEte && (
+        <SectionMois
+          titre="Vacances souhaitées"
+          items={d.vacancesSouhaitees.map(n => ({ label: semaineInfo[n]?.label ?? `S${n}`, date: semaineInfo[n]?.date }))}
+        />
+      )}
+
+      {!estEte && (
+        <SectionMois
+          titre="Vacances refusées"
+          items={d.vacancesRefusees.map(n => ({ label: semaineInfo[n]?.label ?? `S${n}`, date: semaineInfo[n]?.date }))}
+        />
+      )}
 
       {!estEte && (
         <SectionMois
@@ -149,13 +165,17 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false, p
         />
       )}
 
-      <Ligne titre="Préférence vacances scolaires" vide={!prefVac}>
-        {prefVac}
-      </Ligne>
+      {!estEte && (
+        <Ligne titre="Préférence vacances scolaires" vide={!prefVac}>
+          {prefVac}
+        </Ligne>
+      )}
 
-      <Ligne titre="Toussaint" vide={!toussaint}>
-        {toussaint}
-      </Ligne>
+      {!estEte && (
+        <Ligne titre="Toussaint" vide={!toussaint}>
+          {toussaint}
+        </Ligne>
+      )}
 
       {!estEte && (
         <Ligne titre="Fêtes de fin d'année" vide={!(d.noel ?? '').trim()}>

@@ -32,6 +32,7 @@ export function desiderataVide() {
     weekendsIndispo: [],         // numéros de semaine ISO des week-ends indisponibles
     noel: '',                    // texte libre : préférences fêtes de fin d'année (réparties à la main)
     colonnesSouhaitees: {},      // { <numSemaineISO>: <index de colonne> } sur la trame principale
+    colonnesEte: { prioritaires: [], possibles: [], refusees: [] }, // choix de colonnes pour l'été (clés de colonne)
     commentaire: '',
   }
 }
@@ -49,6 +50,7 @@ function estWeekendISO(iso) {
 export function normaliser(data) {
   const fusion = { ...desiderataVide(), ...(data ?? {}) }
   fusion.joursOffSouhaites = (fusion.joursOffSouhaites ?? []).filter(iso => !estWeekendISO(iso))
+  fusion.colonnesEte = { prioritaires: [], possibles: [], refusees: [], ...(fusion.colonnesEte ?? {}) }
   return fusion
 }
 
@@ -66,6 +68,9 @@ export function estRempli(d, soumis = false) {
     d.weekendsIndispo.length > 0 ||
     (d.noel ?? '').trim() !== '' ||
     Object.keys(d.colonnesSouhaitees ?? {}).length > 0 ||
+    (d.colonnesEte?.prioritaires?.length ?? 0) > 0 ||
+    (d.colonnesEte?.possibles?.length ?? 0) > 0 ||
+    (d.colonnesEte?.refusees?.length ?? 0) > 0 ||
     d.commentaire.trim() !== ''
   )
 }

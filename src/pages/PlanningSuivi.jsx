@@ -15,6 +15,9 @@ import PanneauPonts from '../components/planning/PanneauPonts'
 import RecapVacancesScolaires from '../components/planning/RecapVacancesScolaires'
 import { aDesSouhaitsScolaires } from '../utils/vacancesScolaires'
 import PlanningTrames from './PlanningTrames'
+import TrameEteGrille from '../components/planning/TrameEteGrille'
+import { parserGrilleEte } from '../utils/trameEte'
+import { chargerTrameEte, sauverTrameEte, supprimerTrameEte } from '../utils/trameEteApi'
 
 export default function PlanningSuivi() {
   const { session, profile } = useAuth()
@@ -28,6 +31,10 @@ export default function PlanningSuivi() {
   const [ouvert, setOuvert] = useState(null)
   const [tramesOuvert, setTramesOuvert] = useState(false)
   const [tramesEteOuvert, setTramesEteOuvert] = useState(false)
+  const [trameEte, setTrameEte] = useState(null)       // grille d'été publiée pour le recueil d'été
+  const [apercuEte, setApercuEte] = useState(null)      // grille d'été collée, avant publication
+  const [texteEte, setTexteEte] = useState('')          // contenu de la zone de collage
+  const [msgEte, setMsgEte] = useState(null)
   const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
@@ -252,13 +259,62 @@ export default function PlanningSuivi() {
   const debutVal = semDebut ?? suggestionRecueil.debut
   const finVal = semFin ?? suggestionRecueil.fin ?? 13
 
-  // Un recueil « atteint l'été » s'il couvre la fin du bloc des vacances scolaires d'été (la 2ᵉ partie,
-  // proposée jusqu'aux vacances d'été incluses). Dans ce cas on affiche le panneau « Trame de l'été ».
-  const recueilEteExiste = useMemo(() => {
+  // Recueil « d'été » = celui qui couvre la fin du bloc des vacances scolaires d'été (la 2ᵉ partie,
+  // proposée jusqu'aux vacances d'été incluses). La grille d'été lui est rattachée (clé recueil_id).
+  const recueilEte = useMemo(() => {
     const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
-    if (!ete) return false
-    return recueils.some(r => r.semaine_debut <= ete.fin && r.semaine_fin >= ete.fin)
+    if (!ete) return null
+    return recueils.find(r => r.semaine_debut <= ete.fin && r.semaine_fin >= ete.fin) ?? null
   }, [recueils, calendrier])
+
+  // Grille d'été publiée pour ce recueil (rechargée à chaque changement de recueil d'été).
+  // chargerTrameEte(undefined) renvoie null → pas de setState synchrone (tout passe par la promesse).
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerTrameEte(recueilEte?.id)
+      .then(t => { if (!annule) setTrameEte(t) })
+      .catch(() => { if (!annule) setTrameEte(null) }) // table peut-être pas encore créée
+    return () => { annule = true }
+  }, [recueilEte, estFaiseur])
+
+  // Collage de la grille d'été depuis Excel (texte tabulé + HTML pour les couleurs de fond).
+  function collerGrilleEte(e) {
+    const html = e.clipboardData?.getData('text/html') ?? ''
+    const texte = e.clipboardData?.getData('text/plain') ?? ''
+    if (!texte) return
+    e.preventDefault()
+    setTexteEte(texte)
+    setApercuEte(parserGrilleEte(texte, html))
+  }
+
+  async function publierTrameEte() {
+    if (!recueilEte || !apercuEte || apercuEte.colonnes.length === 0) return
+    setErreur(null); setMsgEte(null)
+    try {
+      const data = { ...apercuEte, importeLe: new Date().toISOString() }
+      await sauverTrameEte(recueilEte.id, data, session.user.id)
+      setTrameEte(data)
+      setApercuEte(null)
+      setTexteEte('')
+      setMsgEte('Trame d\'été publiée. Les associés peuvent désormais choisir leurs colonnes.')
+      setTimeout(() => setMsgEte(null), 4000)
+    } catch {
+      setErreur('Publication impossible (réservée au faiseur).')
+    }
+  }
+
+  async function supprimerGrilleEte() {
+    if (!recueilEte) return
+    if (!confirm('Supprimer la trame d\'été publiée pour ce recueil ?')) return
+    setErreur(null)
+    try {
+      await supprimerTrameEte(recueilEte.id)
+      setTrameEte(null)
+    } catch {
+      setErreur('Suppression impossible (réservée au faiseur).')
+    }
+  }
 
   // Écarter / réintégrer un élément de pont (jour off ou week-end) — persisté dans la base calendrier.
   async function toggleEcart(cle) {
@@ -482,8 +538,8 @@ export default function PlanningSuivi() {
         )}
       </div>
 
-      {/* Trame de l'été — apparaît dès qu'un recueil atteignant les vacances d'été est créé */}
-      {recueilEteExiste && (
+      {/* Trame de l'été — apparaît dès qu'un recueil atteignant les vacances d'été existe */}
+      {recueilEte && (
         <div style={s.carteSection} className="no-print">
           <button
             type="button"
@@ -495,12 +551,62 @@ export default function PlanningSuivi() {
               Trame de l'été {annee}
             </span>
             <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
-              Trame spécifique à la période d'été. Le formulaire sera fourni ici.
+              Grille d'été pour « {recueilEte.nom} » (S{recueilEte.semaine_debut}→S{recueilEte.semaine_fin}).
+              Collez la grille depuis Excel : les associés y choisiront leur(s) colonne(s).
             </span>
           </button>
           {tramesEteOuvert && (
-            <div style={{ marginTop: 16, fontSize: 13, color: 'var(--color-text-secondary)' }}>
-              À définir.
+            <div style={{ marginTop: 16 }}>
+              {msgEte && <div style={{ fontSize: 12, color: 'var(--color-success)', marginBottom: 12 }}>{msgEte}</div>}
+
+              {/* Grille déjà publiée */}
+              {trameEte && trameEte.colonnes.length > 0 ? (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                    Trame d'été publiée ({trameEte.colonnes.length} colonne{trameEte.colonnes.length > 1 ? 's' : ''},
+                    {' '}{trameEte.lignes.length} jours).
+                    <button type="button" onClick={supprimerGrilleEte} style={{ ...s.boutonDanger, marginLeft: 10 }}>Supprimer</button>
+                  </div>
+                  <TrameEteGrille colonnes={trameEte.colonnes} lignes={trameEte.lignes} />
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
+                  Aucune trame d'été publiée pour ce recueil.
+                </div>
+              )}
+
+              {/* Zone de collage (importer / remplacer) */}
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 6 }}>
+                {trameEte ? 'Remplacer la trame d\'été' : 'Coller la grille d\'été depuis Excel'}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
+                Dans Excel, sélectionnez le bloc avec la <strong>colonne des dates en premier</strong>, puis les
+                colonnes B, C, D… et collez ci-dessous (Ctrl+V). Les <strong>fonds de couleur</strong>
+                (vacances, gardes, jour férié…) sont conservés tels quels.
+              </p>
+              <textarea
+                value={texteEte}
+                onChange={e => setTexteEte(e.target.value)}
+                onPaste={collerGrilleEte}
+                placeholder="Collez ici la grille d'été copiée depuis Excel…"
+                style={{
+                  width: '100%', minHeight: 80, padding: '10px 12px', fontSize: 13, fontFamily: 'monospace',
+                  border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', resize: 'vertical', boxSizing: 'border-box',
+                }}
+              />
+
+              {apercuEte && apercuEte.colonnes.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                      Aperçu : {apercuEte.colonnes.length} colonne{apercuEte.colonnes.length > 1 ? 's' : ''} · {apercuEte.lignes.length} jours
+                    </span>
+                    <button type="button" onClick={publierTrameEte} style={s.bouton}>Publier la trame d'été</button>
+                  </div>
+                  <TrameEteGrille colonnes={apercuEte.colonnes} lignes={apercuEte.lignes} />
+                </div>
+              )}
             </div>
           )}
         </div>
