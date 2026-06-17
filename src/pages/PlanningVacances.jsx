@@ -35,6 +35,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
+  const [voirNonRealises, setVoirNonRealises] = useState(false) // panneau souhaits de congé non réalisés
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -145,12 +146,12 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   const analyses = useMemo(() => {
     const m = {}
-    for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num), weekendAff, colonnesSouhaiteesParAssocie, semainesVacancesParAssocie)
+    for (const s of semaines) m[s.num] = analyserSemaine(s.num, vacances[s.num], refusParAssocie, scolairesSet.has(s.num), weekendAff, colonnesSouhaiteesParAssocie, semainesVacancesParAssocie, souhaitParAssocie)
     return m
-  }, [semaines, vacances, refusParAssocie, scolairesSet, weekendAff, colonnesSouhaiteesParAssocie, semainesVacancesParAssocie])
+  }, [semaines, vacances, refusParAssocie, scolairesSet, weekendAff, colonnesSouhaiteesParAssocie, semainesVacancesParAssocie, souhaitParAssocie])
 
   const recap = useMemo(() => {
-    let couvertes = 0, sans = 0, refus = 0, sous = 0, garde = 0, rappr = 0
+    let couvertes = 0, sans = 0, refus = 0, sous = 0, garde = 0, rappr = 0, nonRealise = 0
     for (const s of semaines) {
       const a = analyses[s.num]
       if ((vacances[s.num]?.length ?? 0) > 0) couvertes++
@@ -159,9 +160,32 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       if (a?.sousScolaire) sous++
       if (a?.gardeCollee?.length) garde++
       if (a?.rapprochees?.length) rappr++
+      if (a?.souhaitNonRealise?.length) nonRealise++
     }
-    return { total: semaines.length, couvertes, sans, refus, sous, garde, rappr }
+    return { total: semaines.length, couvertes, sans, refus, sous, garde, rappr, nonRealise }
   }, [semaines, vacances, analyses])
+
+  // Souhaits de congé non réalisés, par associé (semaines de la plage souhaitées mais non attribuées).
+  const souhaitsNonRealises = useMemo(() => {
+    const numsPlage = new Set(semaines.map(s => s.num))
+    const m = {}
+    for (const ini of ASSOCIES) {
+      const souh = souhaitParAssocie[ini]
+      if (!souh) continue
+      const manquants = [...souh].filter(n => numsPlage.has(n) && !(vacances[n]?.includes(ini))).sort((a, b) => a - b)
+      if (manquants.length) m[ini] = manquants
+    }
+    return m
+  }, [semaines, souhaitParAssocie, vacances])
+  const nbNonRealises = useMemo(
+    () => Object.values(souhaitsNonRealises).reduce((s, a) => s + a.length, 0),
+    [souhaitsNonRealises]
+  )
+  const labelSemaineMap = useMemo(() => {
+    const m = {}
+    for (const s of semaines) m[s.num] = s.label ?? `S${s.num}`
+    return m
+  }, [semaines])
 
   const compteParAssocie = useMemo(() => {
     const m = {}
@@ -415,6 +439,21 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
           >
             {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
           </button>
+          <button
+            type="button"
+            onClick={() => setVoirNonRealises(v => !v)}
+            disabled={!pret}
+            style={{
+              ...s.bouton, padding: '8px 14px', fontSize: 13,
+              background: voirNonRealises ? 'var(--color-danger)' : 'transparent',
+              color: voirNonRealises ? '#fff' : (nbNonRealises ? 'var(--color-danger)' : 'var(--color-text-secondary)'),
+              border: `0.5px solid ${nbNonRealises ? 'var(--color-danger)' : 'var(--color-border)'}`,
+              opacity: !pret ? 0.5 : 1,
+            }}
+            title="Souhaits de congé qui n'ont pas pu être attribués (capacité atteinte, verrous…)"
+          >
+            ⚠ Souhaits non réalisés ({nbNonRealises})
+          </button>
           {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         </div>
       </div>
@@ -422,6 +461,25 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
           {erreur}
+        </div>
+      )}
+
+      {voirNonRealises && (
+        <div className="no-print" style={{ ...s.carte, padding: '14px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)', marginBottom: 10 }}>
+            ⚠ Souhaits de congé non réalisés
+          </div>
+          {nbNonRealises === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--color-success)', fontWeight: 600 }}>
+              Tous les souhaits de congé de la période sont réalisés ✓
+            </div>
+          ) : (
+            ASSOCIES.filter(ini => souhaitsNonRealises[ini]?.length).map(ini => (
+              <div key={ini} style={{ fontSize: 13, color: 'var(--color-text)', marginBottom: 4 }}>
+                <strong>{ini}</strong> : {souhaitsNonRealises[ini].map(n => labelSemaineMap[n] ?? `S${n}`).join(' · ')}
+              </div>
+            ))
+          )}
         </div>
       )}
 
@@ -441,6 +499,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
             <span style={{ color: recap.sous ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.sous} scolaire &lt; 2</span>
             <span style={{ color: recap.garde ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.garde} garde collée</span>
             <span style={{ color: recap.rappr ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.rappr} rapprochée(s)</span>
+            <span style={{ color: recap.nonRealise ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }} title="Semaines où un souhait de congé n'a pas pu être attribué">🔴 {recap.nonRealise} souhait(s) non réalisé(s)</span>
             <span style={{ color: postesOuverts ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }} title="Postes de vacances ouverts non encore pourvus (à remplir à la main ou via « Proposer automatiquement »)">🟠 {postesOuverts} à pourvoir</span>
           </div>
 
@@ -484,11 +543,12 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {a.sansVacance && <span style={s.etat('var(--color-danger)')} title="Aucun associé en congé">🔴 vide</span>}
                       {a.refus.length > 0 && <span style={s.etat('var(--color-danger)')} title={`A refusé cette semaine : ${a.refus.join(', ')}`}>🔴 refus</span>}
+                      {a.souhaitNonRealise.length > 0 && <span style={s.etat('var(--color-danger)')} title={`Souhait de congé non réalisé (capacité atteinte / verrous) : ${a.souhaitNonRealise.join(', ')}`}>🔴 souhait non réalisé</span>}
                       {a.sousScolaire && <span style={s.etat('var(--color-amber)')} title="Semaine scolaire : moins de 2 associés en congé">🟠 scol&lt;2</span>}
                       {a.gardeCollee.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Vacances accolées à un week-end de garde : ${a.gardeCollee.join(', ')}`}>🟠 garde</span>}
                       {a.souhaitColonne.length > 0 && <span style={s.etat('var(--color-amber)')} title={`Souhait de colonne (veulent travailler) cette semaine : ${a.souhaitColonne.join(', ')}`}>🟠 colonne</span>}
                       {a.rapprochees.length > 0 && <span style={s.etat('var(--color-amber)')} title={`${a.rapprochees.join(', ')} : deux semaines de congé à moins de 4 semaines d'écart. Si c'est un souhait de l'associé (voir colonne Souhaité), c'est volontaire — l'alerte sert seulement à vous en informer.`}>🟠 rapprochées</span>}
-                      {!a.sansVacance && a.refus.length === 0 && !a.sousScolaire && a.gardeCollee.length === 0 && a.souhaitColonne.length === 0 && a.rapprochees.length === 0 && <span style={s.etat('var(--color-success)')}>✓</span>}
+                      {!a.sansVacance && a.refus.length === 0 && a.souhaitNonRealise.length === 0 && !a.sousScolaire && a.gardeCollee.length === 0 && a.souhaitColonne.length === 0 && a.rapprochees.length === 0 && <span style={s.etat('var(--color-success)')}>✓</span>}
                     </span>
                     <select value="" onChange={() => {}} style={s.selPetit} title="Associés ayant souhaité cette semaine (desiderata)">
                       <option value="">{souhaits.length} souhait{souhaits.length > 1 ? 's' : ''}</option>

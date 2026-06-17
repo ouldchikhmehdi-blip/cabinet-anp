@@ -54,7 +54,9 @@ export function normaliserVacances(data) {
 //                    semaine — le congé contredit ce souhait.
 //   rapprochees : associés ayant une AUTRE semaine de congé à moins de ESPACEMENT_VAC_MIN
 //                 (règle molle : on évite deux congés trop rapprochés ; alerte seulement).
-export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, semainesVacancesParAssocie = {}) {
+//   souhaitNonRealise : associés qui avaient SOUHAITÉ un congé cette semaine mais n'y sont pas placés
+//                       (capacité atteinte, verrous…) — souhait non réalisé.
+export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, semainesVacancesParAssocie = {}, souhaitParAssocie = {}) {
   const liste = inis ?? []
   return {
     sansVacance: liste.length === 0,
@@ -63,6 +65,7 @@ export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekend
     gardeCollee: liste.filter(i => weekendAff?.[num] === i || weekendAff?.[num - 1] === i),
     souhaitColonne: liste.filter(i => Number.isInteger(colonnesSouhaiteesParAssocie?.[i]?.[num])),
     rapprochees: liste.filter(i => (semainesVacancesParAssocie?.[i] ?? []).some(w => w !== num && Math.abs(w - num) < ESPACEMENT_VAC_MIN)),
+    souhaitNonRealise: ASSOCIES.filter(i => souhaitParAssocie?.[i]?.has(num) && !liste.includes(i)),
   }
 }
 
@@ -100,10 +103,19 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
     for (const ini of forces) { if (compte[ini] != null) compte[ini]++; semParAssocie[ini]?.push(num) }
   }
 
-  // 1) Souhaits ensuite (hors refus, sans doublon) — on respecte le souhait même rapproché.
+  // 1) Souhaits ensuite (hors refus, sans doublon) — DANS LA LIMITE DE LA CAPACITÉ de la semaine.
+  //    On ne crée jamais de poste au-delà de la capacité (postes ouverts) : si elle est déjà atteinte
+  //    (ex. verrous), le souhait reste non réalisé (signalé dans l'UI). À postes insuffisants, on sert
+  //    les moins chargés d'abord (déterministe).
   for (const num of nums) {
-    const souhaits = ASSOCIES.filter(ini => souhaitParAssocie?.[ini]?.has(num) && !refusParAssocie?.[ini]?.has(num) && !resultat[num].includes(ini))
-    for (const ini of souhaits) { resultat[num].push(ini); compte[ini]++; semParAssocie[ini].push(num) }
+    const cap = placesParSemaine?.[num] ?? (scolairesSet?.has(num) ? 2 : 1)
+    const souhaits = ASSOCIES
+      .filter(ini => souhaitParAssocie?.[ini]?.has(num) && !refusParAssocie?.[ini]?.has(num) && !resultat[num].includes(ini))
+      .sort((a, b) => (compte[a] - compte[b]) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
+    for (const ini of souhaits) {
+      if (resultat[num].length >= cap) break // capacité atteinte : souhait non réalisé
+      resultat[num].push(ini); compte[ini]++; semParAssocie[ini].push(num)
+    }
   }
 
   // 2) Couverture minimale (1, ou 2 en semaine scolaire) avec les moins chargés, hors refus.
