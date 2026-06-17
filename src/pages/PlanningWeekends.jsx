@@ -238,6 +238,9 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const affectations = useMemo(() => data?.affectations ?? {}, [data])
   const verrous = useMemo(() => new Set(data?.verrous ?? []), [data])
   const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
+  // Semaines de vacances SCOLAIRES (toutes périodes : février, Pâques, Toussaint, été, Noël…), mises en
+  // évidence sur la liste des week-ends. Source = base calendrier.
+  const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
 
   // Week-ends de garde IMPOSÉS par la grille de Noël (notamment ceux qui encadrent les 15 jours),
   // restreints aux semaines de l'année en cours : { <numSemaine>: ini }. Source unique = grille de Noël
@@ -404,8 +407,11 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     },
     ligne: {
       display: 'grid', gridTemplateColumns: '200px 46px 46px 84px 150px 150px',
-      gap: 8, alignItems: 'center', padding: '4px 0',
+      gap: 8, alignItems: 'center', padding: '4px 6px',
     },
+    // Mise en évidence des semaines de vacances scolaires (bleu « scolaire » du reste de l'app).
+    ligneScol: { background: 'rgba(45, 108, 181, 0.10)', borderRadius: 6, boxShadow: 'inset 3px 0 0 #2D6CB5' },
+    badgeScol: { marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#2D6CB5' },
     entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
     role: (statut) => ({
       height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -549,12 +555,16 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
               const impact = ini ? impactJourOffWE(w.num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours) : { bloque: false }
               const alerte = (a?.indispo || a?.jourOffWE) ? 'rouge' : (a?.tropProche != null || a?.vacancesCollee || a?.souhaitColonne != null || impact.bloque ? 'orange' : null)
               const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
+              const estScol = scolairesSet.has(w.num)
               return (
                 <Fragment key={w.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(w.samedi)}</div>}
-                  <div style={s.ligne}>
+                  <div style={{ ...s.ligne, ...(estScol ? s.ligneScol : {}) }}>
                     <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                       WE S{w.num} · {formatJJMM(w.samedi)} – {formatJJMM(w.dimanche)}
+                      {estScol && (
+                        <span style={s.badgeScol} title="Semaine de vacances scolaires">📚 scol.</span>
+                      )}
                       {accolesFerie[w.num] && (
                         <span
                           style={{ marginLeft: 5, cursor: 'help' }}

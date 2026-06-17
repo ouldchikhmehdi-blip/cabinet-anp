@@ -29,6 +29,30 @@ export function objectifsVide() {
   }
 }
 
+// Correspondance ligne d'objectif → clé renvoyée par parserTableauCompteurs (compteursRef.js).
+// Seuls ces 4 paramètres existent côté objectifs (pas de récup férié / vacances).
+export const MAP_OBJ_REF = { g_weekend: 'gWeekend', a_vendredi: 'aVendredi', g_vendredi: 'gVendredi', rea: 'rea' }
+
+// Remplit les 4 lignes d'objectif par défaut à partir d'un tableau de compteurs collé
+// ({ <associe>: { gWeekend, aVendredi, gVendredi, rea, … } }, format parserTableauCompteurs).
+// Renvoie un NOUVEAU data : valeur > 0 → posée ; sinon la clé est retirée (cohérent avec une case vide).
+// Les lignes personnalisées (custom-…) et la structure `lignes` ne sont pas touchées.
+export function appliquerCompteursAuxObjectifs(data, compteurs) {
+  const base = data && typeof data === 'object' ? data : objectifsVide()
+  const valeurs = {}
+  for (const a of Object.keys(base.valeurs ?? {})) valeurs[a] = { ...base.valeurs[a] }
+  for (const a of Object.keys(compteurs ?? {})) {
+    const ligneA = { ...(valeurs[a] ?? {}) }
+    for (const [ligneId, cleRef] of Object.entries(MAP_OBJ_REF)) {
+      const n = compteurs[a]?.[cleRef]
+      if (Number.isFinite(n) && n > 0) ligneA[ligneId] = Math.round(n)
+      else delete ligneA[ligneId]
+    }
+    valeurs[a] = ligneA
+  }
+  return { ...base, valeurs }
+}
+
 // Fusionne un data stocké (potentiellement partiel) avec la base par défaut.
 // - garantit la présence des 4 lignes par défaut, en tête, dans le bon ordre ;
 // - conserve les lignes personnalisées (id commençant par « custom- ») ;

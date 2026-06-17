@@ -4,6 +4,8 @@ import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { chargerObjectifs, sauverObjectifs } from '../utils/objectifsApi'
+import { appliquerCompteursAuxObjectifs } from '../utils/objectifs'
+import { parserTableauCompteurs } from '../utils/compteursRef'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 
@@ -19,6 +21,9 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onS
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
   const [nouvelleLigne, setNouvelleLigne] = useState('')
+  const [ouvertImport, setOuvertImport] = useState(false)
+  const [texteImport, setTexteImport] = useState('')
+  const [msgImport, setMsgImport] = useState(null)
 
   useEffect(() => {
     if (!estFaiseur) return
@@ -43,6 +48,23 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onS
       valeurs[associe] = ligneAssocie
       return { ...prev, valeurs }
     })
+  }
+
+  // Colle un tableau d'objectifs copié depuis Excel → remplit les 4 lignes par défaut (g_weekend, a_vendredi,
+  // g_vendredi, rea). Les autres paramètres du tableau et les lignes personnalisées sont ignorés.
+  function collerObjectifs(e) {
+    const brut = e.clipboardData?.getData('text/plain') ?? ''
+    if (!brut) return
+    e.preventDefault()
+    setTexteImport(brut)
+    const { compteurs, nbParams, nbAssocies } = parserTableauCompteurs(brut)
+    if (nbParams === 0) {
+      setMsgImport({ ok: false, texte: 'Aucun objectif reconnu — vérifiez les libellés (G week-end, A vendredi, G vendredi, Réa) et les initiales.' })
+      return
+    }
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => appliquerCompteursAuxObjectifs(prev, compteurs))
+    setMsgImport({ ok: true, texte: `Tableau lu : ${nbAssocies} associé${nbAssocies > 1 ? 's' : ''} reconnu${nbAssocies > 1 ? 's' : ''} — vérifiez puis Enregistrez.` })
   }
 
   function ajouterLigne() {
@@ -199,6 +221,43 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onS
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          {/* Collage du tableau d'objectifs depuis Excel (remplit les 4 lignes par défaut). */}
+          <div style={{ ...s.carte, overflowX: 'visible', padding: '12px 16px' }}>
+            <button
+              type="button"
+              onClick={() => setOuvertImport(o => !o)}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}
+            >
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{ouvertImport ? '▾' : '▸'}</span>
+              Coller depuis Excel
+            </button>
+            {ouvertImport && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
+                  Collez (Ctrl+V) votre tableau d'objectifs copié depuis Excel : lignes
+                  <strong> G week-end / A vendredi / G vendredi / Réa</strong> × associés. Seuls ces 4 paramètres
+                  sont repris ; ajustez les cases puis <strong>Enregistrez</strong>.
+                </p>
+                <textarea
+                  value={texteImport}
+                  onChange={e => setTexteImport(e.target.value)}
+                  onPaste={collerObjectifs}
+                  placeholder="Collez ici le tableau d'objectifs (paramètres × associés) copié depuis Excel…"
+                  style={{
+                    width: '100%', minHeight: 64, padding: '10px 12px', fontSize: 13, fontFamily: 'monospace',
+                    border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+                    background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', resize: 'vertical', boxSizing: 'border-box',
+                  }}
+                />
+                {msgImport && (
+                  <div style={{ fontSize: 12, marginTop: 8, color: msgImport.ok ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    {msgImport.texte}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div style={s.carte}>
             <table style={s.table}>
               <thead>

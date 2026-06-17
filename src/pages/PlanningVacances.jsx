@@ -354,8 +354,11 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
     },
     ligne: {
       display: 'grid', gridTemplateColumns: '190px 92px 116px 110px 1fr',
-      gap: 8, alignItems: 'center', padding: '5px 0',
+      gap: 8, alignItems: 'center', padding: '5px 6px',
     },
+    // Mise en évidence renforcée des semaines de vacances scolaires (bleu « scolaire »).
+    ligneScol: { background: 'rgba(45, 108, 181, 0.10)', borderRadius: 6, boxShadow: 'inset 3px 0 0 #2D6CB5' },
+    badgeScol: { marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#2D6CB5' },
     entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
     selPetit: {
       padding: '5px 6px', fontSize: 12, borderRadius: 'var(--radius-md)',
@@ -544,10 +547,10 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
               return (
                 <Fragment key={sem.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(jeudi)}</div>}
-                  <div style={s.ligne}>
+                  <div style={{ ...s.ligne, ...(estScol ? s.ligneScol : {}) }}>
                     <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                       S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
-                      {estScol && <span style={{ color: '#2D6CB5' }}> · scol.</span>}
+                      {estScol && <span style={s.badgeScol} title="Semaine de vacances scolaires">📚 scol.</span>}
                     </span>
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {a.sansVacance && <span style={s.etat('var(--color-danger)')} title="Aucun associé en congé">🔴 vide</span>}
