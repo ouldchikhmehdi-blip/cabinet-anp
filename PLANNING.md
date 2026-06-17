@@ -264,10 +264,12 @@ Puis, sur cette base :
 
 Chaque étape est un point de contrôle validé avant de continuer.
 
-> **Export borné à la période.** L'export Excel des étapes **Week-ends / Vacances / Réa** se limite
-> strictement à la **période du recueil sélectionné** (paramètre `periode` de `exporterCalendrierExcel`,
-> filtrage via `semainesDansPlage`) — aucune semaine au-delà n'apparaît, en cohérence avec les écrans
-> qui sont déjà bornés. Seules la **Base calendrier** et les **Objectifs** s'exportent sur l'année entière.
+> **Export sur l'année entière.** TOUS les exports Excel (Base calendrier, Objectifs, Week-ends, Vacances,
+> Réa, En semaine, et l'onglet **Noël**) déroulent la **colonne des dates sur l'année complète** (cases
+> associés vides là où il n'y a pas de données), avec en-têtes d'initiales à chaque changement de mois et
+> le **bloc Noël tout à la fin**. `construireClasseur` liste toujours `listerSemaines(annee)` ; le paramètre
+> `periode` ne borne plus le contenu (il ne sert qu'au nom de fichier). L'export de l'onglet Noël passe par
+> `exporterCalendrierExcel` (calendrier complet finissant par Noël), plus par un export Noël autonome.
 
 > **Distinction utile** : l'Étape 0 fixe le **rôle du groupe** (sommes-nous garde ou astreinte ce jour-là). L'Étape 1 décide **quelle personne** parmi nous prend chaque créneau.
 

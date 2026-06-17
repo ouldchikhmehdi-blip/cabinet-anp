@@ -16,12 +16,27 @@
 // ============================================================
 import { ASSOCIES } from '../data/associes'
 import { extraireCouleursHTML } from './trames'
+import { COULEURS_GRILLE } from './grilleSemaine'
 import { parseISO, formatISO, numeroSemaineISO, joursFeriesFR } from './calendrier'
 
 export const VERSION_NOEL = 1
 
-// Classifie une couleur de fond CSS pour Noël : 'G' (jaune=garde), 'A' (orange=astreinte),
-// 'C' (cyan bleu #00B0F0 = congé/repos), null sinon (blanc/vert férié/gris/transparent).
+// Palette EXACTE de l'outil (clé COULEURS_GRILLE → rôle Noël). On apparie par PLUS PROCHE couleur :
+// la grille de Noël est colorée avec ces teintes (jaune=garde, orange=astreinte, cyan=congé/repos,
+// vert=férié → récup), donc plus robuste que des seuils. weekend (gris) → null (pas un rôle).
+const PALETTE_NOEL = [
+  ['garde', 'G'],       // jaune  FFFF00
+  ['astreinte', 'A'],   // orange FFC000
+  ['conge', 'C'],       // bleu   00B0F0 (congé / repos)
+  ['ferie', 'F'],       // vert   92D050 (jour férié → récup)
+].map(([cle, role]) => {
+  const hex = COULEURS_GRILLE[cle]
+  return { role, r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16) }
+})
+const TOLERANCE_NOEL = 70 * 70 * 3 // distance² max avant de considérer la couleur « neutre »
+
+// Classifie une couleur de fond CSS pour Noël : 'G' (garde, jaune), 'A' (astreinte, orange),
+// 'C' (congé/repos, cyan), 'F' (jour férié → récup, vert), ou null (blanc/gris/transparent/inconnu).
 export function classifierCouleurNoel(css) {
   if (typeof css !== 'string') return null
   const m = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/i)
@@ -29,11 +44,12 @@ export function classifierCouleurNoel(css) {
   const r = Number(m[1]), g = Number(m[2]), b = Number(m[3])
   const a = m[4] === undefined ? 1 : Number(m[4])
   if (a === 0) return null
-  if (r > 240 && g > 240 && b > 240) return null         // blanc
-  if (r >= 200 && g >= 200 && b <= 120) return 'G'       // jaune
-  if (r >= 200 && g >= 120 && g <= 215 && b <= 120 && r - g >= 35) return 'A' // orange
-  if (r <= 120 && g >= 130 && b >= 190) return 'C'       // cyan bleu (#00B0F0)
-  return null
+  let best = null, bestD = Infinity
+  for (const p of PALETTE_NOEL) {
+    const d = (r - p.r) ** 2 + (g - p.g) ** 2 + (b - p.b) ** 2
+    if (d < bestD) { bestD = d; best = p.role }
+  }
+  return bestD <= TOLERANCE_NOEL ? best : null
 }
 
 // Poste « réel » : on ignore les cases purement numériques (« 10 », « 5 »… = bruit, pas un poste).
@@ -57,7 +73,7 @@ export function normaliserNoel(src) {
             const c = j.parAssocie?.[ini]
             if (!c) continue
             const poste = typeof c.poste === 'string' ? c.poste : ''
-            const role = (c.role === 'G' || c.role === 'A' || c.role === 'C') ? c.role : null
+            const role = (c.role === 'G' || c.role === 'A' || c.role === 'C' || c.role === 'F') ? c.role : null
             if (poste.trim() || role) parAssocie[ini] = { poste, role }
           }
           return { iso: j.iso, parAssocie }
@@ -158,12 +174,19 @@ export function parserCollageNoel(texte, html, annee) {
     if (r === headerRow) continue
     const iso = parseDateCellule(mat[r]?.[colDate], annee)
     if (!iso) continue
+    const dow = parseISO(iso).getUTCDay() // 0=dim … 6=sam
+    const estWeekend = dow === 0 || dow === 6
     const parAssocie = {}
     for (const c of Object.keys(colAssoc)) {
       const ci = Number(c)
       const ini = colAssoc[c]
-      const poste = nettoyerPoste(mat[r]?.[ci]) // chiffres seuls → '' (ignorés)
-      const role = couleurs?.[r]?.[ci] ?? null // 'G' | 'A' | 'C' | null
+      const brut = (mat[r]?.[ci] ?? '').trim()
+      let role = couleurs?.[r]?.[ci] ?? null // 'G' | 'A' | 'C' | 'F' | null
+      // Week-end : les cases « A5 »/« G5 » sont souvent collées SANS fond → on déduit le rôle du préfixe.
+      if (!role && estWeekend && /^[AG]\d*$/i.test(brut)) role = brut[0].toUpperCase()
+      // Récup (case verte = férié) : on CONSERVE le contenu numérique (le n° de récup) pour l'afficher ;
+      // ailleurs, une case purement numérique est du bruit et reste ignorée.
+      const poste = role === 'F' ? brut : nettoyerPoste(brut)
       if (poste || role) parAssocie[ini] = { poste, role }
     }
     jours.push({ iso, parAssocie })
@@ -232,14 +255,16 @@ export function bilanNoel(noelData, annee) {
       const cell = j.parAssocie?.[ini]
       const poste = (cell?.poste ?? '').trim()
       const role = cell?.role ?? null
+      // Récup JF : case verte (rôle 'F') = jour férié travaillé hors service → récupération.
+      if (role === 'F') par[ini].recupJF++
       // Jours ouvrés : gardes/astreintes + suivi "off" pour les vacances.
       if (estOuvre) {
         if (role === 'G') { if (dow === 5) par[ini].gVendredi++; else par[ini].gardeSemaine++ }
         else if (role === 'A') { if (dow === 5) par[ini].aVendredi++ }
-        // Off ce jour-là = ni garde/astreinte, et pas de vrai poste (congé bleu 'C' ou case vide).
-        const off = role !== 'G' && role !== 'A' && (role === 'C' || poste === '')
+        // Off ce jour-là = ni garde/astreinte/récup, et pas de vrai poste (congé bleu 'C' ou case vide).
+        const off = role !== 'G' && role !== 'A' && role !== 'F' && (role === 'C' || poste === '')
         if (off) ((ouvres[num].off[ini] ??= new Set())).add(dow)
-        // Récup JF : férié travaillé SANS être de service ni en congé (réa comprise → poste « Réa »).
+        // Repli récup JF : férié travaillé non coloré, sans être de service ni en congé (réa comprise).
         if (estFerie && poste && role == null) par[ini].recupJF++
         // Semaine de réa : au moins une case « réa » dans la semaine.
         if (estReaPoste(poste)) (reaSemaines[ini] ??= new Set()).add(num)
@@ -315,7 +340,7 @@ export function compteursNoel(noelData, annee, base = {}) {
     info.presents.add(dow)
     for (const ini of ASSOCIES) {
       const cell = j.parAssocie?.[ini]; const poste = (cell?.poste ?? '').trim(); const role = cell?.role ?? null
-      const off = role !== 'G' && role !== 'A' && (role === 'C' || poste === '')
+      const off = role !== 'G' && role !== 'A' && role !== 'F' && (role === 'C' || poste === '')
       if (off) { ((info.off[ini] ??= new Set())).add(dow); if (info.premier[ini] == null) info.premier[ini] = j.iso }
     }
   }

@@ -13,12 +13,13 @@ import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerNoel, sauverNoel } from '../utils/noelApi'
-import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel, compteursNoel } from '../utils/noel'
+import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel } from '../utils/noel'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerRea } from '../utils/reaApi'
 import { chargerVacances } from '../utils/vacancesApi'
-import { exporterNoelExcel } from '../utils/exportCalendrier'
-import { COULEURS_GRILLE } from '../utils/grilleSemaine'
+import { chargerCalendrier } from '../utils/calendrierApi'
+import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import { COULEURS_GRILLE, compteursAmont } from '../utils/grilleSemaine'
 
 const JOUR_LABEL = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'] // getUTCDay() : 0=dim … 6=sam
 
@@ -50,7 +51,9 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   const [profils, setProfils] = useState([])
   const [desideratas, setDesideratas] = useState([])
   const [data, setData] = useState(null) // { v, colle, jours } (grille committée)
-  // État annuel (hors Noël) pour PROLONGER les compteurs dans les cases de Noël.
+  // État annuel : base calendrier + week-ends/réa/vacances → export Noël = calendrier ANNÉE ENTIÈRE
+  // finissant par le bloc Noël (les compteurs continués sont calculés dans construireClasseur).
+  const [calendrier, setCalendrier] = useState(null)
   const [weekendsAnnee, setWeekendsAnnee] = useState(null)
   const [reaAnnee, setReaAnnee] = useState(null)
   const [vacAnnee, setVacAnnee] = useState(null)
@@ -93,9 +96,9 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerWeekends(annee), chargerRea(annee), chargerVacances(annee)])
-      .then(([w, r, v]) => { if (!annule) { setWeekendsAnnee(w); setReaAnnee(r); setVacAnnee(v) } })
-      .catch(() => { /* silencieux : sans ces données, Noël s'exporte sans numéros */ })
+    Promise.all([chargerCalendrier(annee), chargerWeekends(annee), chargerRea(annee), chargerVacances(annee)])
+      .then(([c, w, r, v]) => { if (!annule) { setCalendrier(c); setWeekendsAnnee(w); setReaAnnee(r); setVacAnnee(v) } })
+      .catch(() => { /* silencieux : sans ces données, l'export Noël reste possible mais incomplet */ })
     return () => { annule = true }
   }, [annee, estFaiseur])
 
@@ -134,24 +137,6 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   }, [data])
 
   const recap = useMemo(() => (data ? bilanNoel(data, annee) : null), [data, annee])
-
-  // Socle PRÉ-Noël par associé (totaux sur les semaines HORS Noël) → amorce le prolongement des compteurs.
-  const baseNoel = useMemo(() => {
-    const semNoel = recap?.semaines ?? new Set()
-    const weekend = {}, rea = {}, vac = {}
-    for (const ini of ASSOCIES) { weekend[ini] = 0; rea[ini] = 0; vac[ini] = 0 }
-    for (const [num, ini] of Object.entries(weekendsAnnee?.affectations ?? {})) {
-      if (!semNoel.has(Number(num)) && weekend[ini] != null) weekend[ini]++
-    }
-    for (const [num, ini] of Object.entries(reaAnnee?.rea ?? {})) {
-      if (!semNoel.has(Number(num)) && rea[ini] != null) rea[ini]++
-    }
-    for (const [num, inis] of Object.entries(vacAnnee?.vacances ?? {})) {
-      if (semNoel.has(Number(num))) continue
-      for (const ini of (inis ?? [])) if (vac[ini] != null) vac[ini]++
-    }
-    return { weekend, rea, vac }
-  }, [recap, weekendsAnnee, reaAnnee, vacAnnee])
   const joursCandidat = useMemo(() => {
     const js = (candidat?.jours ?? []).slice()
     js.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
@@ -204,13 +189,21 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
   useEffect(() => { onRegisterSave?.(enregistrer) })
 
-  // Export Excel : grille de Noël + tableau « Réalisé à ce stade » (gardes/astreintes de Noël).
+  // Export Excel : calendrier de l'année entière (dates continues) finissant par le bloc Noël.
   async function exporter() {
     if (!data) return
+    if (!calendrier) { setErreur('Base calendrier non chargée : réessayez dans un instant.'); return }
     setErreur(null); setExportEnCours(true)
     try {
-      // Compteurs continués (week-end/réa/vacances) affichés dans les cases, à partir du socle pré-Noël.
-      await exporterNoelExcel(annee, data, recap?.parAssocie ?? null, compteursNoel(data, annee, baseNoel))
+      // Calendrier ANNÉE ENTIÈRE (dates continues + week-ends/vacances/réa) finissant par le bloc Noël.
+      // Les compteurs (année-à-date) et le prolongement dans Noël sont calculés dans construireClasseur.
+      await exporterCalendrierExcel(
+        annee, calendrier, null,
+        weekendsAnnee?.affectations, vacAnnee?.vacances, reaAnnee?.rea,
+        null, null, null, null, null, null,
+        compteursAmont(annee, { weekendAff: weekendsAnnee?.affectations, vacanciers: vacAnnee?.vacances, reaAff: reaAnnee?.rea }),
+        data,
+      )
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

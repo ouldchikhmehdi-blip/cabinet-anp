@@ -4,12 +4,12 @@
 // Couleurs gérées via ExcelJS (la lib xlsx communautaire ne sait pas colorer).
 // ============================================================
 import ExcelJS from 'exceljs'
-import { listerSemaines, semainesDansPlage, joursFeriesFR, formatDateLongueFR, moisAnneeFR, parseISO, numeroSemaineISO } from './calendrier'
+import { listerSemaines, joursFeriesFR, formatDateLongueFR, moisAnneeFR, parseISO, numeroSemaineISO } from './calendrier'
 import { ASSOCIES } from '../data/associes'
 import {
   COULEURS_GRILLE, ctxJour, celluleAssocieJour, celluleRemplacantJour, celluleGroupeJour, celluleDateJour,
 } from './grilleSemaine'
-import { groupeJourNoel } from './noel'
+import { groupeJourNoel, compteursNoel } from './noel'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -86,7 +86,7 @@ function ecrireBlocNoel(ws, annee, joursNoel, enteteRempl = [], compteursNoel = 
       const c = j.parAssocie?.[ini]
       const poste = (c?.poste ?? '').trim()
       const role = c?.role ?? null
-      const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : role === 'C' ? 'conge' : null
+      const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : role === 'C' ? 'conge' : role === 'F' ? 'ferie' : null
       const num = compteursNoel?.[`${j.iso}|${ini}`]
       return { texte: num != null ? num : poste, fond, gras: role === 'G' || role === 'A' }
     })
@@ -186,8 +186,10 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
   const semainesNoel = new Set(joursNoel.map(j => numeroSemaineISO(parseISO(j.iso))))
 
-  const semaines = (periode ? semainesDansPlage(annee, periode.debut, periode.fin) : listerSemaines(annee))
-    .filter(s => !semainesNoel.has(s.num))
+  // Tous les exports couvrent l'ANNÉE ENTIÈRE : la colonne de gauche déroule toutes les dates en continu
+  // (cases associés vides là où il n'y a pas de données), avec en-têtes mensuels et bloc Noël à la fin.
+  // `periode` ne borne donc plus le contenu (il ne sert plus qu'au nom de fichier).
+  const semaines = listerSemaines(annee).filter(s => !semainesNoel.has(s.num))
   let moisPrec = null
   for (const sem of semaines) {
     // Ligne d'en-tête (initiales) à la FRONTIÈRE de semaine : juste avant le lundi, quand le mois du lundi
@@ -252,7 +254,15 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   }
 
   // ── Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au même format que le calendrier ──
-  ecrireBlocNoel(ws, annee, joursNoel, enteteRempl)
+  // Socle PRÉ-Noël (totaux par associé hors semaines de Noël) à partir des données disponibles
+  // (week-ends / vacances / réa) → les cases de Noël affichent un n° qui CONTINUE le cumul annuel.
+  const baseNoel = { weekend: {}, rea: {}, vac: {} }
+  for (const ini of ASSOCIES) { baseNoel.weekend[ini] = 0; baseNoel.rea[ini] = 0; baseNoel.vac[ini] = 0 }
+  for (const [num, ini] of Object.entries(weekends ?? {})) if (!semainesNoel.has(Number(num)) && baseNoel.weekend[ini] != null) baseNoel.weekend[ini]++
+  for (const [num, ini] of Object.entries(rea ?? {})) if (!semainesNoel.has(Number(num)) && baseNoel.rea[ini] != null) baseNoel.rea[ini]++
+  for (const [num, inis] of Object.entries(conges ?? {})) { if (semainesNoel.has(Number(num))) continue; for (const ini of (inis ?? [])) if (baseNoel.vac[ini] != null) baseNoel.vac[ini]++ }
+  const cptNoel = joursNoel.length ? compteursNoel(noelData, annee, baseNoel) : null
+  ecrireBlocNoel(ws, annee, joursNoel, enteteRempl, cptNoel)
 
   // ── Bloc « Objectifs » en bas (cf. PLANNING.md §16, photo « Objectifs 2025 ») ──
   // Aligné sur les colonnes du calendrier : libellé | 8 associés | libellé.
@@ -316,9 +326,8 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
     }
   }
 
-  const nomFichier = periode
-    ? `Planning_${annee}_S${periode.debut}-S${periode.fin}.xlsx`
-    : `Base_calendrier_${annee}.xlsx`
+  // Le contenu couvre toujours l'année entière → nom de fichier sans sous-plage.
+  const nomFichier = periode ? `Planning_${annee}.xlsx` : `Base_calendrier_${annee}.xlsx`
   return { wb, nomFichier }
 }
 
@@ -333,19 +342,4 @@ export async function genererClasseurBuffer(...args) {
   const { wb, nomFichier } = await construireClasseur(...args)
   const buffer = await wb.xlsx.writeBuffer()
   return { buffer, nomFichier }
-}
-
-// Export autonome de l'onglet Noël : la grille de Noël (jours fournis tels quels) + le tableau
-// « Réalisé à ce stade » alimenté par les gardes/astreintes de Noël (bilanNoel). Zéros conservés.
-export async function exporterNoelExcel(annee, noelData, bilan = null, compteursNoel = null) {
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet(`Noël ${annee}`)
-  // Mêmes largeurs que le calendrier (sans colonnes remplaçant) : Date | 8 associés | Date | G/A.
-  ws.columns = [{ width: 35 }, ...ASSOCIES.map(() => ({ width: 24 })), { width: 35 }, { width: 8 }]
-
-  const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
-  ecrireBlocNoel(ws, annee, joursNoel, [], compteursNoel)
-  ecrireBilan(ws, annee, bilan)
-
-  await telecharger(wb, `Noel_${annee}.xlsx`)
 }
