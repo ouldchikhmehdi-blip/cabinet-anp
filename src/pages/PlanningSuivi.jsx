@@ -548,8 +548,8 @@ export default function PlanningSuivi() {
         )}
       </div>
 
-      {/* Trame de l'été — apparaît dès qu'un recueil atteignant les vacances d'été existe */}
-      {recueilEte && (
+      {/* Trame de l'été — seulement quand le recueil SÉLECTIONNÉ est celui qui couvre l'été */}
+      {estEteSelection && (
         <div style={s.carteSection} className="no-print">
           <button
             type="button"
