@@ -44,20 +44,36 @@ export function normaliserNoel(src) {
   return { v: VERSION_NOEL, colle: typeof src.colle === 'string' ? src.colle : '', jours }
 }
 
-// Parse une date de cellule tolérante : « 25/12 », « 25/12/2026 », « lun. 25/12 », « 25.12.26 ».
-// Année déduite si absente : nov/déc → annee ; jan/fév → annee+1 ; sinon annee (Noël chevauche l'an).
-function parseDateCellule(txt, annee) {
-  if (typeof txt !== 'string') return null
-  const m = txt.match(/(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?/)
-  if (!m) return null
-  const jour = Number(m[1]); const mois = Number(m[2])
+// Mois français (accents retirés) → numéro de mois.
+const MOIS_FR = {
+  janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6,
+  juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12,
+}
+
+// Construit un ISO à partir de jour/mois (+ année éventuelle), avec déduction d'année si absente
+// (nov/déc → annee ; jan/fév → annee+1 ; sinon annee, car Noël chevauche l'année civile).
+function isoDepuis(jour, mois, anExplicite, annee) {
   if (jour < 1 || jour > 31 || mois < 1 || mois > 12) return null
-  let an
-  if (m[3] != null) { an = Number(m[3]); if (an < 100) an += 2000 }
-  else an = mois >= 11 ? annee : (mois <= 2 ? annee + 1 : annee)
+  let an = anExplicite
+  if (an == null) an = mois >= 11 ? annee : (mois <= 2 ? annee + 1 : annee)
+  else if (an < 100) an += 2000
   const d = new Date(Date.UTC(an, mois - 1, jour))
   if (d.getUTCMonth() !== mois - 1) return null // date invalide (ex. 31/02)
   return formatISO(d)
+}
+
+// Parse une date de cellule, tolérante à deux formats :
+//   - numérique : « 25/12 », « 25/12/2026 », « lun. 25/12 », « 25.12.26 » ;
+//   - texte FR  : « jeudi 17 décembre 2026 », « 1 janvier 2027 » (jour + mois en lettres + année).
+function parseDateCellule(txt, annee) {
+  if (typeof txt !== 'string') return null
+  const num = txt.match(/(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?/)
+  if (num) return isoDepuis(Number(num[1]), Number(num[2]), num[3] != null ? Number(num[3]) : null, annee)
+  // Format texte : on retire les accents puis on cherche « <jour> <mois> [<année>] ».
+  const norm = txt.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const t = norm.match(/(\d{1,2})\s+([a-z]+)\.?\s*(\d{4})?/)
+  if (t && MOIS_FR[t[2]]) return isoDepuis(Number(t[1]), MOIS_FR[t[2]], t[3] != null ? Number(t[3]) : null, annee)
+  return null
 }
 
 // Découpe le collage en matrice [ligne][colonne] de texte (tabs / retours ligne), sans rogner.
@@ -69,32 +85,43 @@ function matriceTexte(texte) {
 }
 
 // Parse la grille de Noël (texte + HTML du presse-papiers) → { jours, colle }.
-//   - 1ʳᵉ ligne = en-tête : on mappe les colonnes aux ASSOCIES par leurs initiales (repli positionnel) ;
-//   - colonne « dates » = 1ʳᵉ colonne dont les lignes de données parsent comme des dates (repli col 0) ;
+//   - LIGNE D'EN-TÊTE = la ligne contenant le plus d'initiales d'ASSOCIES (où qu'elle soit) → mapping
+//     colonne→associé (repli positionnel sinon) ;
+//   - COLONNE DATES = la colonne (hors colonnes associés) qui parse le plus de dates ;
+//   - JOURS = toutes les lignes (sauf l'en-tête) dont la cellule date parse — y compris au-dessus de
+//     l'en-tête (Excel place parfois une date avant la ligne d'initiales) ;
 //   - couleur de fond (HTML) → role 'G'/'A'/null via classifierCouleur.
 export function parserCollageNoel(texte, html, annee) {
   const mat = matriceTexte(texte)
-  if (mat.length < 2) return { jours: [], colle: texte ?? '' }
-  const couleurs = extraireCouleursHTML(html) // [ligne][col] de 'G'|'A'|null (en-tête inclus)
+  if (!mat.length) return { jours: [], colle: texte ?? '' }
+  const couleurs = extraireCouleursHTML(html) // [ligne][col] de 'G'|'A'|null (aligné par index de ligne)
   const nbCol = mat.reduce((m, l) => Math.max(m, l.length), 0)
+  const estIni = (v) => ASSOCIES.some(a => a.toUpperCase() === (v ?? '').trim().toUpperCase())
 
-  // Mapping colonne → associé via l'en-tête (initiales), repli positionnel ensuite.
-  const entete = mat[0]
-  const colAssoc = {}
-  for (let c = 0; c < nbCol; c++) {
-    const v = (entete[c] ?? '').trim().toUpperCase()
-    const ini = ASSOCIES.find(a => a.toUpperCase() === v)
-    if (ini && !Object.values(colAssoc).includes(ini)) colAssoc[c] = ini
+  // Ligne d'en-tête = celle qui contient le plus d'initiales (≥ 2).
+  let headerRow = -1, meilleur = 1
+  for (let r = 0; r < mat.length; r++) {
+    const n = mat[r].filter(estIni).length
+    if (n >= 2 && n > meilleur) { meilleur = n; headerRow = r }
   }
-  // Colonne dates : 1ʳᵉ colonne (hors colonnes associés) qui parse comme date sur les lignes de données.
-  let colDate = -1
-  for (let c = 0; c < nbCol && colDate === -1; c++) {
+  const colAssoc = {}
+  if (headerRow >= 0) {
+    mat[headerRow].forEach((v, c) => {
+      const ini = ASSOCIES.find(a => a.toUpperCase() === (v ?? '').trim().toUpperCase())
+      if (ini && !Object.values(colAssoc).includes(ini)) colAssoc[c] = ini
+    })
+  }
+
+  // Colonne dates = colonne (hors associés) avec le plus de cellules qui parsent en date.
+  let colDate = -1, meilleurDates = 0
+  for (let c = 0; c < nbCol; c++) {
     if (colAssoc[c]) continue
-    for (let r = 1; r < mat.length; r++) {
-      if (parseDateCellule(mat[r]?.[c], annee)) { colDate = c; break }
-    }
+    let n = 0
+    for (let r = 0; r < mat.length; r++) { if (r !== headerRow && parseDateCellule(mat[r]?.[c], annee)) n++ }
+    if (n > meilleurDates) { meilleurDates = n; colDate = c }
   }
   if (colDate === -1) colDate = 0
+
   // Repli positionnel : aucun en-tête reconnu → colonnes après la colonne dates = ASSOCIES dans l'ordre.
   if (Object.keys(colAssoc).length === 0) {
     let k = 0
@@ -105,7 +132,8 @@ export function parserCollageNoel(texte, html, annee) {
   }
 
   const jours = []
-  for (let r = 1; r < mat.length; r++) {
+  for (let r = 0; r < mat.length; r++) {
+    if (r === headerRow) continue
     const iso = parseDateCellule(mat[r]?.[colDate], annee)
     if (!iso) continue
     const parAssocie = {}
