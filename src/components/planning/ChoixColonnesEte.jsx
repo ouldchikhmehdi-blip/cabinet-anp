@@ -10,7 +10,7 @@ import {
   monter, descendre, toutesPossibles, reinitialiserPref,
 } from '../../utils/trameEte'
 
-export default function ChoixColonnesEte({ trameEte, valeur, onChange, lectureSeule = false }) {
+export default function ChoixColonnesEte({ trameEte, valeur, onChange, lectureSeule = false, enteteSeule = false }) {
   const colonnes = trameEte?.colonnes ?? []
   const lignes = trameEte?.lignes ?? []
 
@@ -53,6 +53,7 @@ export default function ChoixColonnesEte({ trameEte, valeur, onChange, lectureSe
         niveauParColonne={niveauParColonne}
         rangParColonne={rangParColonne}
         onSelectColonne={lectureSeule ? null : cyclerColonne}
+        enteteSeule={enteteSeule}
       />
 
       {!lectureSeule && (

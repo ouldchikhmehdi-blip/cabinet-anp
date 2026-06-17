@@ -18,17 +18,21 @@ export default function TrameEteGrille({
   niveauParColonne = {},
   rangParColonne = {},
   onSelectColonne = null,
+  enteteSeule = false, // n'afficher que la ligne d'en-tête des colonnes (sans les dates), en plus grand
 }) {
-  if (colonnes.length === 0 || lignes.length === 0) {
+  // En mode « en-tête seul », on n'a pas besoin des lignes datées.
+  if (colonnes.length === 0 || (!enteteSeule && lignes.length === 0)) {
     return <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>Grille vide.</div>
   }
 
   const thBase = {
-    padding: '6px 8px', fontSize: 12, fontWeight: 600, textAlign: 'center',
-    borderBottom: '0.5px solid var(--color-border)', borderLeft: '0.5px solid var(--color-border)',
-    color: 'var(--color-text)', whiteSpace: 'nowrap', position: 'sticky', top: 0,
-    background: 'var(--color-surface)', zIndex: 1,
+    padding: enteteSeule ? '12px 14px' : '6px 8px', fontSize: enteteSeule ? 18 : 12, fontWeight: 700,
+    textAlign: 'center', borderBottom: '0.5px solid var(--color-border)', borderLeft: '0.5px solid var(--color-border)',
+    color: 'var(--color-text)', whiteSpace: 'nowrap', position: enteteSeule ? 'static' : 'sticky', top: 0,
+    background: 'var(--color-surface)', zIndex: 1, minWidth: enteteSeule ? 64 : undefined,
   }
+  const tailleBadge = enteteSeule ? 14 : 10
+  const margeBadge = enteteSeule ? 6 : 4
   const tdDate = {
     padding: '3px 8px', fontSize: 11, color: 'var(--color-text-secondary)',
     borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap',
@@ -44,7 +48,7 @@ export default function TrameEteGrille({
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
-            <th style={{ ...thBase, textAlign: 'left' }}>Date</th>
+            {!enteteSeule && <th style={{ ...thBase, textAlign: 'left' }}>Date</th>}
             {colonnes.map(col => {
               const niveau = niveauParColonne[col.key] || ''
               const accent = ACCENT[niveau]
@@ -63,30 +67,32 @@ export default function TrameEteGrille({
                 >
                   {col.label}
                   {niveau === 'prioritaire' && rang != null && (
-                    <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--color-success)' }}>#{rang}</span>
+                    <span style={{ marginLeft: margeBadge, fontSize: tailleBadge, color: 'var(--color-success)' }}>⭐{rang}</span>
                   )}
-                  {niveau === 'possible' && <span style={{ marginLeft: 4, fontSize: 10 }}>👍</span>}
-                  {niveau === 'refus' && <span style={{ marginLeft: 4, fontSize: 10 }}>🚫</span>}
+                  {niveau === 'possible' && <span style={{ marginLeft: margeBadge, fontSize: tailleBadge }}>👍</span>}
+                  {niveau === 'refus' && <span style={{ marginLeft: margeBadge, fontSize: tailleBadge }}>🚫</span>}
                 </th>
               )
             })}
           </tr>
         </thead>
-        <tbody>
-          {lignes.map((ligne, r) => (
-            <tr key={r}>
-              <td style={tdDate}>{ligne.dateLabel}</td>
-              {colonnes.map((col, c) => {
-                const cell = ligne.cells[c] ?? { texte: '', couleur: '' }
-                return (
-                  <td key={col.key} style={{ ...tdCell, background: cell.couleur || 'transparent' }}>
-                    {cell.texte}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
+        {!enteteSeule && (
+          <tbody>
+            {lignes.map((ligne, r) => (
+              <tr key={r}>
+                <td style={tdDate}>{ligne.dateLabel}</td>
+                {colonnes.map((col, c) => {
+                  const cell = ligne.cells[c] ?? { texte: '', couleur: '' }
+                  return (
+                    <td key={col.key} style={{ ...tdCell, background: cell.couleur || 'transparent' }}>
+                      {cell.texte}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        )}
       </table>
     </div>
   )

@@ -694,7 +694,7 @@ export default function PlanningSuivi() {
               {estEteSelection && trameEte ? (
                 <>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 12 }}>{ouvert} — choix de colonnes</div>
-                  <ChoixColonnesEte trameEte={trameEte} valeur={lignes.find(l => l.ini === ouvert).data.colonnesEte} lectureSeule />
+                  <ChoixColonnesEte trameEte={trameEte} valeur={lignes.find(l => l.ini === ouvert).data.colonnesEte} lectureSeule enteteSeule />
                 </>
               ) : (
                 <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={estEteSelection} />
