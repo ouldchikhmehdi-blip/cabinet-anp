@@ -16,6 +16,8 @@ import RecapVacancesScolaires from '../components/planning/RecapVacancesScolaire
 import { aDesSouhaitsScolaires } from '../utils/vacancesScolaires'
 import PlanningTrames from './PlanningTrames'
 import TrameEteGrille from '../components/planning/TrameEteGrille'
+import ChoixColonnesEte from '../components/planning/ChoixColonnesEte'
+import SyntheseColonnesEte from '../components/planning/SyntheseColonnesEte'
 import { parserGrilleEte } from '../utils/trameEte'
 import { chargerTrameEte, sauverTrameEte, supprimerTrameEte } from '../utils/trameEteApi'
 
@@ -266,6 +268,14 @@ export default function PlanningSuivi() {
     if (!ete) return null
     return recueils.find(r => r.semaine_debut <= ete.fin && r.semaine_fin >= ete.fin) ?? null
   }, [recueils, calendrier])
+
+  // Le recueil actuellement affiché EST le recueil d'été → restitution adaptée (choix de colonnes).
+  const estEteSelection = !!recueilEte && !!recueil && recueilEte.id === recueil.id
+  // Préférences de colonnes par associé relié (pour la synthèse).
+  const associesEte = useMemo(
+    () => lignes.filter(l => l.relie).map(l => ({ ini: l.ini, pref: l.data.colonnesEte })),
+    [lignes]
+  )
 
   // Grille d'été publiée pour ce recueil (rechargée à chaque changement de recueil d'été).
   // chargerTrameEte(undefined) renvoie null → pas de setState synchrone (tout passe par la promesse).
@@ -678,29 +688,51 @@ export default function PlanningSuivi() {
             ))}
           </div>
 
-          {/* Panneau récap */}
+          {/* Panneau récap au clic d'un associé */}
           {ouvert && (
             <div style={s.panneau} className="no-print">
-              <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} />
+              {estEteSelection && trameEte ? (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 12 }}>{ouvert} — choix de colonnes</div>
+                  <ChoixColonnesEte trameEte={trameEte} valeur={lignes.find(l => l.ini === ouvert).data.colonnesEte} lectureSeule />
+                </>
+              ) : (
+                <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={estEteSelection} />
+              )}
             </div>
           )}
 
-          {/* Ponts / jours fériés — alerte précoce, avant l'attribution des week-ends */}
-          <div className="no-print">
-            <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} joursOffParAssocie={joursOffParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
-          </div>
+          {/* Synthèse par colonne (recueil d'été) — aide à la décision, sous le board */}
+          {estEteSelection && (
+            <div style={s.panneau}>
+              <SyntheseColonnesEte colonnes={trameEte?.colonnes ?? []} associes={associesEte} />
+            </div>
+          )}
+
+          {/* Ponts / jours fériés — alerte précoce, avant l'attribution des week-ends (sans objet l'été) */}
+          {!estEteSelection && (
+            <div className="no-print">
+              <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} joursOffParAssocie={joursOffParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
+            </div>
+          )}
 
           {/* Vue imprimable */}
           <div className="zone-impression">
             <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>
               Desiderata — {recueil.nom} ({annee}, S{recueil.semaine_debut}→S{recueil.semaine_fin})
             </h2>
+            {estEteSelection && (
+              <div style={{ marginBottom: 24 }}>
+                <SyntheseColonnesEte colonnes={trameEte?.colonnes ?? []} associes={associesEte} />
+              </div>
+            )}
             {lignes.map(l => (
               <div key={l.ini} style={{ marginBottom: 24 }}>
                 <RecapDesiderata
                   initiales={l.ini}
                   d={l.data}
                   annee={annee}
+                  estEte={estEteSelection}
                   ponts={pontsParAssocie[l.ini] ?? []}
                   pontsWeekend={pontsWeekendParAssocie[l.ini] ?? []}
                   ecartesSet={ecartesSet}
