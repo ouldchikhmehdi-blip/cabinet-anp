@@ -75,10 +75,11 @@ export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekend
 // - scolairesSet : Set(nums) des semaines de vacances scolaires (couverture min = 2)
 // - vacancesHorsPlage : { num: [inis] } des autres périodes (pour l'équilibrage)
 // - weekendAff : { num: ini } affectations week-end (pour éviter une garde collée)
-// - placesParSemaine : { num: N } postes ouverts par le faiseur (sinon défaut 1, ou 2 en scolaire)
+// - placesParSemaine : { num: N } postes ouverts par le faiseur (sinon défaut 1, 2 en scolaire, 3 Toussaint)
 // - verrousParSemaine : { num: [inis] } associés FORCÉS (verrouillés) → préservés, posés en premier
+// - toussaintSet : Set(nums) des semaines de vacances de la Toussaint (couverture par défaut = 3)
 // Renvoie { num: [inis] } pour la plage.
-export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, placesParSemaine = {}, verrousParSemaine = {}) {
+export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, placesParSemaine = {}, verrousParSemaine = {}, toussaintSet = new Set()) {
   const resultat = {}
   // Compteur de semaines par associé (hors-plage + ce qu'on attribue) pour l'équilibrage.
   const compte = {}
@@ -108,7 +109,7 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   //    (ex. verrous), le souhait reste non réalisé (signalé dans l'UI). À postes insuffisants, on sert
   //    les moins chargés d'abord (déterministe).
   for (const num of nums) {
-    const cap = placesParSemaine?.[num] ?? (scolairesSet?.has(num) ? 2 : 1)
+    const cap = placesParSemaine?.[num] ?? (toussaintSet?.has(num) ? 3 : scolairesSet?.has(num) ? 2 : 1)
     const souhaits = ASSOCIES
       .filter(ini => souhaitParAssocie?.[ini]?.has(num) && !refusParAssocie?.[ini]?.has(num) && !resultat[num].includes(ini))
       .sort((a, b) => (compte[a] - compte[b]) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
@@ -120,8 +121,8 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
 
   // 2) Couverture minimale (1, ou 2 en semaine scolaire) avec les moins chargés, hors refus.
   for (const num of nums) {
-    // Cible = postes ouverts par le faiseur, sinon couverture minimale (2 en scolaire, 1 sinon).
-    const min = placesParSemaine?.[num] ?? (scolairesSet?.has(num) ? 2 : 1)
+    // Cible = postes ouverts par le faiseur, sinon couverture minimale (3 Toussaint, 2 scolaire, 1 sinon).
+    const min = placesParSemaine?.[num] ?? (toussaintSet?.has(num) ? 3 : scolairesSet?.has(num) ? 2 : 1)
     const gardeCollee = (ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
     const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
     // Règle molle : éviter deux congés du même associé à moins de ESPACEMENT_VAC_MIN.

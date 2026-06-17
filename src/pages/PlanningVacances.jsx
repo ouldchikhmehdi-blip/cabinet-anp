@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
@@ -123,6 +123,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   }, [desideratas, profils])
 
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
+  // Semaines de la Toussaint : capacité par défaut = 3 (vs 2 pour les autres semaines scolaires).
+  const toussaintSet = useMemo(() => new Set(blocToussaint(annee, calendrier?.vacancesScolaires ?? [])), [annee, calendrier])
 
   const semaines = useMemo(
     () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
@@ -250,9 +252,9 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   }
 
   // ── Postes de vacances ouverts (capacité par semaine) ──
-  // Défaut = couverture minimale (2 en vacances scolaires, 1 sinon). La capacité effective ne
-  // descend jamais sous le nombre d'associés déjà placés.
-  const defautCapacite = (num) => (scolairesSet.has(num) ? 2 : 1)
+  // Défaut = couverture minimale (3 à la Toussaint, 2 en vacances scolaires, 1 sinon). La capacité
+  // effective ne descend jamais sous le nombre d'associés déjà placés.
+  const defautCapacite = (num) => (toussaintSet.has(num) ? 3 : scolairesSet.has(num) ? 2 : 1)
   const capacite = (num) => Math.max(places[num] ?? defautCapacite(num), vacances[num]?.length ?? 0)
   function majPlaces(num, n) {
     setEnregistre(false); onStatut?.('modifie')
@@ -279,7 +281,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = inis
       }
-      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {})
+      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {}, toussaintSet)
       return { ...prev, vacances: { ...horsPlage, ...proposees } }
     })
   }

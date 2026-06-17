@@ -245,15 +245,16 @@ export default function PlanningSuivi() {
   }, [lignes])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
-  // Suggestion de période pour un nouveau recueil normal : reprend après le dernier recueil (hors « été »)
-  // et va jusqu'aux vacances d'été incluses (dernière semaine du bloc d'été).
+  // Suggestion de période pour un nouveau recueil : reprend après le dernier recueil. La fin proposée
+  // est la fin des vacances d'été tant qu'on n'a pas dépassé l'été (2ᵉ partie), sinon la dernière
+  // semaine de l'année (3ᵉ partie : automne → fin d'année, Noël inclus).
   const suggestionRecueil = useMemo(() => {
-    const normaux = recueils.filter(r => r.type !== 'ete')
-    const dernierFin = normaux.length ? Math.max(...normaux.map(r => r.semaine_fin)) : 0
+    const dernierFin = recueils.length ? Math.max(...recueils.map(r => r.semaine_fin)) : 0
     const dernierNum = semainesAnnee.length ? semainesAnnee[semainesAnnee.length - 1].num : 53
     const debut = Math.min(Math.max(dernierFin + 1, 1), dernierNum)
     const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
-    return { debut, fin: ete ? ete.fin : null }
+    const fin = (ete && debut <= ete.fin) ? ete.fin : dernierNum
+    return { debut, fin, jusquEte: !!(ete && debut <= ete.fin) }
   }, [recueils, calendrier, semainesAnnee])
 
   // Valeurs effectives du formulaire : override manuel s'il existe, sinon la suggestion (qui se recalcule
@@ -491,7 +492,7 @@ export default function PlanningSuivi() {
           </div>
           {suggestionRecueil.fin != null && (
             <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 12, color: 'var(--color-text-tertiary)', maxWidth: 280 }}>
-              Suggéré : reprend après le dernier recueil, jusqu'aux vacances d'été incluses (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
+              Suggéré : reprend après le dernier recueil, {suggestionRecueil.jusquEte ? 'jusqu\'aux vacances d\'été incluses' : 'jusqu\'à la fin de l\'année'} (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
             </div>
           )}
           <button type="button" onClick={creer} style={s.bouton}>Créer le recueil</button>

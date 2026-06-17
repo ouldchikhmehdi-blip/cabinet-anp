@@ -133,6 +133,26 @@ export function blocEteVacancesScolaires(vacancesScolaires = []) {
   return { debut: best[0], fin: best[best.length - 1], semaines: best }
 }
 
+// ── Bloc des vacances scolaires de la Toussaint (automne) ──
+// On ancre sur la semaine du 1ᵉʳ novembre (férié Toussaint), puis on étend aux semaines scolaires
+// contiguës. Isolé de l'été (juil-août) et de Noël (fin décembre). Renvoie la liste des n° ISO (ou []).
+export function blocToussaint(annee, vacancesScolaires = []) {
+  const set = new Set(vacancesScolaires.filter(n => Number.isInteger(n)))
+  if (set.size === 0) return []
+  const cible = numeroSemaineISO(new Date(Date.UTC(annee, 10, 1))) // 1ᵉʳ novembre
+  // Semaine scolaire d'ancrage : la cible, sinon la plus proche (± quelques semaines).
+  let ancre = null
+  for (let d = 0; d <= 3 && ancre == null; d++) {
+    if (set.has(cible - d)) ancre = cible - d
+    else if (set.has(cible + d)) ancre = cible + d
+  }
+  if (ancre == null) return []
+  const bloc = [ancre]
+  for (let x = ancre - 1; set.has(x); x--) bloc.unshift(x)
+  for (let x = ancre + 1; set.has(x); x++) bloc.push(x)
+  return bloc
+}
+
 // ── Vacances scolaires (indicatif, À CONFIRMER selon la zone de la clinique) ──
 // Les numéros de semaine ISO sont approximatifs et doivent être validés.
 export const VACANCES_SCOLAIRES_2026 = {

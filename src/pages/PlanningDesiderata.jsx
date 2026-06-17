@@ -82,6 +82,9 @@ export default function PlanningDesiderata() {
     () => !!recueil && !!eteBloc && recueil.semaine_debut <= eteBloc.fin && recueil.semaine_fin >= eteBloc.fin,
     [recueil, eteBloc]
   )
+  // 1ᵉʳ recueil de l'année (le plus tôt par semaine de début) : seule la section « Fêtes de fin d'année »
+  // (Noël) y est proposée — Noël se cale en début d'année, pas sur les recueils suivants.
+  const estPremierRecueil = recueils.length > 0 && recueils[0].id === recueilId
 
   // Archive (planning validé) du recueil courant — la plus récente (liste triée created_at desc).
   const archiveRecueil = useMemo(
@@ -616,22 +619,24 @@ export default function PlanningDesiderata() {
             </div>
             )}
 
-            {/* Fêtes de fin d'année — réparties à la main */}
-            <div style={s.carte}>
-              <div style={s.titre}>Fêtes de fin d'année (Noël / Nouvel An)</div>
-              <div style={s.aide}>
-                Les 15 jours de fin d'année sont répartis <strong>à la main</strong> par le faiseur de planning,
-                dès la mise en place du planning de début d'année. Rien n'est automatisé ici : indiquez en
-                texte libre vos préférences selon les possibilités qu'il proposera — par exemple la 1ʳᵉ ou la
-                2ᵉ semaine, ou si vous préférez travailler le 24/25 décembre ou le 31/1ᵉʳ janvier.
+            {/* Fêtes de fin d'année — réparties à la main, recueillies sur le 1ᵉʳ recueil de l'année */}
+            {estPremierRecueil && (
+              <div style={s.carte}>
+                <div style={s.titre}>Fêtes de fin d'année (Noël / Nouvel An)</div>
+                <div style={s.aide}>
+                  Les 15 jours de fin d'année sont répartis <strong>à la main</strong> par le faiseur de planning,
+                  dès la mise en place du planning de début d'année. Rien n'est automatisé ici : indiquez en
+                  texte libre vos préférences selon les possibilités qu'il proposera — par exemple la 1ʳᵉ ou la
+                  2ᵉ semaine, ou si vous préférez travailler le 24/25 décembre ou le 31/1ᵉʳ janvier.
+                </div>
+                <textarea
+                  style={s.textarea}
+                  value={data.noel}
+                  onChange={e => maj('noel', e.target.value)}
+                  placeholder="Ex. : plutôt la 2ᵉ semaine ; je préfère travailler le 24-25 et être off le 31-1er…"
+                />
               </div>
-              <textarea
-                style={s.textarea}
-                value={data.noel}
-                onChange={e => maj('noel', e.target.value)}
-                placeholder="Ex. : plutôt la 2ᵉ semaine ; je préfère travailler le 24-25 et être off le 31-1er…"
-              />
-            </div>
+            )}
 
             {/* Trame principale — souhaits de colonne par semaine */}
             {tramePrincipale && (
