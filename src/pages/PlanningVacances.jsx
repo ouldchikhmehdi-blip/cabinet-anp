@@ -11,6 +11,7 @@ import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
+import PanneauVacances from '../components/planning/PanneauVacances'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -88,6 +89,18 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       refus[ini] = new Set(d.vacancesRefusees ?? [])
     }
     return { souhaitParAssocie: souhait, refusParAssocie: refus }
+  }, [desideratas, profils])
+
+  // Desiderata complets (normalisés) par associé — pour le panneau récap des souhaits.
+  const desiderataParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const m = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (ini) m[ini] = normaliser(row.data)
+    }
+    return m
   }, [desideratas, profils])
 
   // Souhaits de colonne par associé : { ini: { numSemaine: colIndex } } (trame principale).
@@ -410,6 +423,9 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
               <span key={ini} style={s.pastilleChip}><strong>{ini}</strong> : {compteParAssocie[ini]}</span>
             ))}
           </div>
+
+          {/* Récap visuel des souhaits de congés par associé (hors scolaires) + vue scolaire */}
+          <PanneauVacances desiderataParAssocie={desiderataParAssocie} scolairesSet={scolairesSet} annee={annee} />
 
           {/* Tableau des semaines */}
           <div style={s.carte}>
