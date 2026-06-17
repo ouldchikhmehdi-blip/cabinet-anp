@@ -4,7 +4,7 @@ import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, p
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
-import { chargerCalendrier } from '../utils/calendrierApi'
+import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
@@ -93,6 +93,23 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
 
   // Jours off de pont écartés par le faiseur : Set('INI|YYYY-MM-DD') (base calendrier).
   const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
+
+  // Écarter / réintégrer un élément (pont, indispo week-end…) — persisté dans la base calendrier.
+  // Source unique partagée avec « Ouverture du planning » : ce qui est écarté ici l'est partout.
+  async function toggleEcart(cle) {
+    if (!calendrier) return
+    const actuel = calendrier.pontsEcartes ?? []
+    const nouveau = actuel.includes(cle) ? actuel.filter(c => c !== cle) : [...actuel, cle]
+    const maj = { ...calendrier, pontsEcartes: nouveau }
+    const precedent = calendrier
+    setCalendrier(maj) // optimiste
+    try {
+      await sauverCalendrier(annee, maj, session.user.id)
+    } catch {
+      setCalendrier(precedent)
+      setErreur('Écartement impossible (réservé au faiseur).')
+    }
+  }
 
   // Jours off COMPLETS par associé : { ini: ['YYYY-MM-DD', …] } (avant écartement).
   const joursOffParAssocie = useMemo(() => {
@@ -275,14 +292,6 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return { total: weekends.length, attribues, indispo, proches, vac }
   }, [weekends, affectations, weekendsNoel, analyses])
 
-  // Compteur de week-ends par associé sur la période (week-ends imposés par Noël inclus → taux réel).
-  const compteParAssocie = useMemo(() => {
-    const m = {}
-    for (const ini of ASSOCIES) m[ini] = 0
-    for (const w of weekends) { const ini = weekendsNoel[w.num] ?? affectations[w.num]; if (ini && m[ini] != null) m[ini]++ }
-    return m
-  }, [weekends, affectations, weekendsNoel])
-
   // Placer un associé à la main VERROUILLE le week-end (forcé) ; « — » le remet en automatique.
   function majAffectation(num, ini) {
     setEnregistre(false); onStatut?.('modifie')
@@ -400,8 +409,6 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       padding: '12px 0 4px', marginTop: 4, borderTop: '0.5px solid var(--color-border)',
     },
     etat: (couleur) => ({ fontSize: 12, color: couleur, display: 'flex', alignItems: 'center', gap: 6 }),
-    compteurs: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 },
-    chip: { fontSize: 12, padding: '6px 10px', borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-surface)' },
   }
 
   if (!estFaiseur) {
@@ -493,7 +500,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
-          <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} ecartesSet={ecartesSet} />
+          <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
 
           <PanneauConflits conflits={conflits} />
 
@@ -503,16 +510,6 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
             <span style={{ color: recap.indispo ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}>🔴 {recap.indispo} indisponibilité(s)</span>
             <span style={{ color: recap.proches ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.proches} trop rapproché(s)</span>
             <span style={{ color: recap.vac ? 'var(--color-amber)' : 'var(--color-text-tertiary)' }}>🟠 {recap.vac} vacances collée(s)</span>
-          </div>
-
-          {/* Compteurs par associé */}
-          <div style={s.compteurs}>
-            {ASSOCIES.map(ini => (
-              <span key={ini} style={s.chip}>
-                <strong>{ini}</strong> : {compteParAssocie[ini]}
-                {objectifGW[ini] != null && <span style={{ color: 'var(--color-text-tertiary)' }}> / {objectifGW[ini]}</span>}
-              </span>
-            ))}
           </div>
 
           {/* Tableau des week-ends */}

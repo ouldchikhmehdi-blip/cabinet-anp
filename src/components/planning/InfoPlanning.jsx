@@ -5,7 +5,7 @@ import { useState } from 'react'
  * le planning : ce qui est automatique vs ce que fait le faiseur (cf. PLANNING.md §13).
  */
 export default function InfoPlanning() {
-  const [ouvert, setOuvert] = useState(true)
+  const [ouvert, setOuvert] = useState(false) // caché par défaut : on clique « Afficher » pour le lire
 
   const s = {
     carte: {

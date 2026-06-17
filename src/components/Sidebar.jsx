@@ -37,7 +37,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
 
   const items = [
     ...navItems,
-    ...(isFaiseur ? [calendrierItem, suiviItem] : []),
+    ...(isFaiseur ? [suiviItem, calendrierItem] : []),
     ...(isAdmin ? [adminItem] : []),
   ]
 

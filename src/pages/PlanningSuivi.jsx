@@ -491,7 +491,7 @@ export default function PlanningSuivi() {
           {/* Ponts / jours fériés — alerte précoce, avant l'attribution des week-ends */}
           {recueil.type !== 'ete' && (
             <div className="no-print">
-              <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} ecartesSet={ecartesSet} onToggle={toggleEcart} />
+              <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} joursOffParAssocie={joursOffParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
             </div>
           )}
 
