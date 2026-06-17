@@ -10,11 +10,23 @@ import { normaliser } from './desiderata'
 export async function listerRecueils(annee) {
   const { data, error } = await supabase
     .from('planning_recueils')
-    .select('id, annee, nom, semaine_debut, semaine_fin, statut, type')
+    .select('id, annee, nom, semaine_debut, semaine_fin, statut, type, created_at')
     .eq('annee', annee)
     .order('semaine_debut')
   if (error) throw error
   return data ?? []
+}
+
+// Id du recueil le plus récemment créé (created_at desc, repli sur la semaine de début la plus élevée).
+// Sert de sélection par défaut : on atterrit d'emblée sur la dernière période ouverte par le faiseur.
+export function idRecueilPlusRecent(recueils) {
+  if (!recueils?.length) return null
+  return [...recueils].sort((a, b) => {
+    const ta = a.created_at ? Date.parse(a.created_at) : 0
+    const tb = b.created_at ? Date.parse(b.created_at) : 0
+    if (tb !== ta) return tb - ta
+    return (b.semaine_debut ?? 0) - (a.semaine_debut ?? 0)
+  })[0].id
 }
 
 export async function creerRecueil({ annee, nom, semaineDebut, semaineFin, type = 'normal', userId }) {

@@ -6,10 +6,11 @@
 // ============================================================
 
 // Couleur d'accent par niveau de préférence (en-tête de colonne).
+// Fonds via variables CSS thème-aware (clair en mode clair, sombre en mode sombre) pour rester lisibles.
 const ACCENT = {
-  prioritaire: { bord: 'var(--color-success)', fond: 'var(--color-success-light, #e7f6ee)' },
-  possible: { bord: '#2D6CB5', fond: '#e8f0fa' },
-  refus: { bord: 'var(--color-danger)', fond: 'var(--color-danger-light, #fdecec)' },
+  prioritaire: { bord: 'var(--color-success)', fond: 'var(--color-success-light)' },
+  possible: { bord: 'var(--color-primary)', fond: 'var(--color-primary-light)' },
+  refus: { bord: 'var(--color-danger)', fond: 'var(--color-danger-light)' },
 }
 
 export default function TrameEteGrille({

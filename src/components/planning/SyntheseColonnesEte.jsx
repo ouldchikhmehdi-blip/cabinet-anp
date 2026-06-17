@@ -7,10 +7,11 @@
 // ============================================================
 
 // Statut d'une colonne selon le nombre de prioritaires / possibles.
+// Fonds via variables CSS thème-aware (lisibles en clair comme en sombre).
 function statutColonne(nbPrio, nbPoss) {
-  if (nbPrio >= 2) return { cle: 'conflit', label: 'Conflit', couleur: 'var(--color-danger)', fond: 'var(--color-danger-light, #fdecec)', icone: '🔴' }
-  if (nbPrio === 1) return { cle: 'ok', label: 'Attribuable', couleur: 'var(--color-success)', fond: 'var(--color-success-light, #e7f6ee)', icone: '🟢' }
-  if (nbPoss > 0) return { cle: 'dispo', label: 'Disponible', couleur: '#2D6CB5', fond: '#e8f0fa', icone: '🔵' }
+  if (nbPrio >= 2) return { cle: 'conflit', label: 'Conflit', couleur: 'var(--color-danger)', fond: 'var(--color-danger-light)', icone: '🔴' }
+  if (nbPrio === 1) return { cle: 'ok', label: 'Attribuable', couleur: 'var(--color-success)', fond: 'var(--color-success-light)', icone: '🟢' }
+  if (nbPoss > 0) return { cle: 'dispo', label: 'Disponible', couleur: 'var(--color-primary)', fond: 'var(--color-primary-light)', icone: '🔵' }
   return { cle: 'vide', label: 'Sans preneur', couleur: 'var(--color-amber)', fond: 'var(--color-amber-light)', icone: '🟠' }
 }
 

@@ -5,7 +5,7 @@ import { ANNEES, listerSemaines, blocEteVacancesScolaires } from '../utils/calen
 import { desiderataVide, normaliser, estRempli, ANNEE_DEFAUT } from '../utils/desiderata'
 import {
   chargerTousDesiderata, chargerProfilsAvecInitiales,
-  listerRecueils, creerRecueil, definirStatutRecueil, supprimerRecueil,
+  listerRecueils, creerRecueil, definirStatutRecueil, supprimerRecueil, idRecueilPlusRecent,
 } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import { listerArchives, urlArchive, supprimerArchive } from '../utils/archivesApi'
@@ -72,7 +72,7 @@ export default function PlanningSuivi() {
       .then(rs => {
         if (annule) return
         setRecueils(rs)
-        setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : (rs[0]?.id ?? null)))
+        setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : idRecueilPlusRecent(rs)))
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
     return () => { annule = true }
@@ -133,7 +133,7 @@ export default function PlanningSuivi() {
     const rs = await listerRecueils(annee)
     setRecueils(rs)
     if (selId !== undefined) setRecueilId(selId)
-    else setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : (rs[0]?.id ?? null)))
+    else setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : idRecueilPlusRecent(rs)))
   }
 
   async function recupererVacances() {

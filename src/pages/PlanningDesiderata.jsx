@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026, blocEteVacancesScolaires } from '../utils/calendrier'
 import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES, normaliser } from '../utils/desiderata'
-import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../utils/desiderataApi'
+import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { charger as chargerLocal, sauver as sauverLocal } from '../utils/stockage'
 import { definirGardeNavigation } from '../utils/gardeNavigation'
 import { chargerCalendrier } from '../utils/calendrierApi'
@@ -141,7 +141,8 @@ export default function PlanningDesiderata() {
       .then(rs => {
         if (annule) return
         setRecueils(rs)
-        setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : (rs[0]?.id ?? null)))
+        // Défaut : le recueil le plus récemment créé (dernière période ouverte par le faiseur).
+        setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : idRecueilPlusRecent(rs)))
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
     return () => { annule = true }
