@@ -260,3 +260,72 @@ export function bilanNoel(noelData, annee) {
   }
   return { parAssocie: par, semaines }
 }
+
+// Compteurs cumulés AFFICHÉS dans les cases de Noël, en PROLONGEMENT du cumul annuel (week-end, réa,
+// vacances uniquement — cf. décision : les gardes de semaine de Noël ne sont pas numérotées car leur
+// continuité exigerait le planning assemblé complet).
+//   base = { weekend:{ini:n}, rea:{ini:n}, vac:{ini:n} } = totaux PRÉ-Noël (hors semaines de Noël).
+//   → { '<iso>|<ini>': '<texte à afficher>' } : week-end « G6 »/« A6 », réa « Réa3 », vacances « 2 ».
+export function compteursNoel(noelData, annee, base = {}) {
+  const data = normaliserNoel(noelData)
+  const joursTries = data.jours.slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+  const out = {}
+  const cWE = {}, cRea = {}, cVac = {}
+  for (const ini of ASSOCIES) {
+    cWE[ini] = base?.weekend?.[ini] ?? 0
+    cRea[ini] = base?.rea?.[ini] ?? 0
+    cVac[ini] = base?.vac?.[ini] ?? 0
+  }
+
+  // ── Week-ends : +1 par week-end tenu (détenteur via weekendsGardeNoel), n° affiché sur sam ET dim. ──
+  const weHolder = weekendsGardeNoel(noelData) // { num: ini }
+  const weNumParSemaine = {}
+  const numsWE = [...new Set(joursTries
+    .map(j => numeroSemaineISO(parseISO(j.iso)))
+    .filter(n => weHolder[n] != null))].sort((a, b) => a - b)
+  for (const num of numsWE) { const ini = weHolder[num]; cWE[ini] = (cWE[ini] ?? 0) + 1; weNumParSemaine[num] = cWE[ini] }
+  for (const j of joursTries) {
+    const d = parseISO(j.iso); const dow = d.getUTCDay(); const num = numeroSemaineISO(d)
+    if ((dow === 0 || dow === 6) && weHolder[num]) {
+      const ini = weHolder[num]
+      const role = j.parAssocie?.[ini]?.role
+      const prefixe = role === 'A' ? 'A' : role === 'G' ? 'G' : (dow === 6 ? 'A' : 'G') // sam=A, dim=G par défaut
+      out[`${j.iso}|${ini}`] = `${prefixe}${weNumParSemaine[num]}`
+    }
+  }
+
+  // ── Réa : 1ʳᵉ case « réa » de chaque semaine ISO (par associé) → +1, « RéaN » sur cette case. ──
+  const reaVue = {}
+  for (const j of joursTries) {
+    const num = numeroSemaineISO(parseISO(j.iso))
+    for (const ini of ASSOCIES) {
+      if (!estReaPoste((j.parAssocie?.[ini]?.poste ?? '').trim())) continue
+      const vu = (reaVue[ini] ??= new Set())
+      if (!vu.has(num)) { vu.add(num); cRea[ini] = (cRea[ini] ?? 0) + 1 }
+      out[`${j.iso}|${ini}`] = `Réa${cRea[ini]}`
+    }
+  }
+
+  // ── Vacances : semaine off 5/5 (détection identique à bilanNoel) → +1, n° sur le 1ᵉʳ jour ouvré off. ──
+  const ouvres = {} // num → { presents:Set, off:{ini:Set}, premier:{ini:iso} }
+  for (const j of joursTries) {
+    const d = parseISO(j.iso); const dow = d.getUTCDay(); const num = numeroSemaineISO(d)
+    if (dow < 1 || dow > 5) continue
+    const info = (ouvres[num] ??= { presents: new Set(), off: {}, premier: {} })
+    info.presents.add(dow)
+    for (const ini of ASSOCIES) {
+      const cell = j.parAssocie?.[ini]; const poste = (cell?.poste ?? '').trim(); const role = cell?.role ?? null
+      const off = role !== 'G' && role !== 'A' && (role === 'C' || poste === '')
+      if (off) { ((info.off[ini] ??= new Set())).add(dow); if (info.premier[ini] == null) info.premier[ini] = j.iso }
+    }
+  }
+  for (const num of Object.keys(ouvres).map(Number).sort((a, b) => a - b)) {
+    const info = ouvres[num]
+    if (info.presents.size < 5) continue
+    for (const ini of ASSOCIES) {
+      if ((info.off[ini]?.size ?? 0) >= 5) { cVac[ini] = (cVac[ini] ?? 0) + 1; out[`${info.premier[ini]}|${ini}`] = String(cVac[ini]) }
+    }
+  }
+
+  return out
+}

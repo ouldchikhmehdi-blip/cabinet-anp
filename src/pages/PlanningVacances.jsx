@@ -11,6 +11,7 @@ import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
 import { cleEcartVacances } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import { compteursAmont } from '../utils/grilleSemaine'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauVacances from '../components/planning/PanneauVacances'
 
@@ -323,7 +324,13 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
     setErreur(null); setExportEnCours(true)
     try {
       // Étape 4 : base calendrier + objectifs + week-ends + vacances (incrémental), borné à la période du recueil.
-      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, data.vacances, null, recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null)
+      // 13ᵉ arg = compteurs cumulés (n° de week-end + n° de semaine de vacances année-à-date dans chaque case).
+      await exporterCalendrierExcel(
+        annee, calendrier, objectifs, weekends?.affectations, data.vacances, null,
+        recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
+        null, null, null, null, null,
+        compteursAmont(annee, { weekendAff: weekends?.affectations, vacanciers: data.vacances }),
+      )
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

@@ -67,7 +67,9 @@ function ligneEnteteInitiales(ws, date, enteteRempl = []) {
 }
 
 // Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au format du calendrier.
-function ecrireBlocNoel(ws, annee, joursNoel, enteteRempl = []) {
+// compteursNoel (facultatif) = { '<iso>|<ini>': '<texte>' } : n° cumulés à afficher (week-end/réa/vacances),
+// en prolongement du cumul annuel ; remplace le poste de la case quand présent.
+function ecrireBlocNoel(ws, annee, joursNoel, enteteRempl = [], compteursNoel = null) {
   if (!joursNoel.length) return
   const feriesNoel = {}
   for (const f of [...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)]) feriesNoel[f.iso] = f.nom
@@ -85,7 +87,8 @@ function ecrireBlocNoel(ws, annee, joursNoel, enteteRempl = []) {
       const poste = (c?.poste ?? '').trim()
       const role = c?.role ?? null
       const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : role === 'C' ? 'conge' : null
-      return { texte: poste, fond, gras: role === 'G' || role === 'A' }
+      const num = compteursNoel?.[`${j.iso}|${ini}`]
+      return { texte: num != null ? num : poste, fond, gras: role === 'G' || role === 'A' }
     })
     const groupeTxt = groupeJourNoel(j)
     const dateFond = estFerie ? 'ferie' : estWeekend ? 'weekend' : null
@@ -334,14 +337,14 @@ export async function genererClasseurBuffer(...args) {
 
 // Export autonome de l'onglet Noël : la grille de Noël (jours fournis tels quels) + le tableau
 // « Réalisé à ce stade » alimenté par les gardes/astreintes de Noël (bilanNoel). Zéros conservés.
-export async function exporterNoelExcel(annee, noelData, bilan = null) {
+export async function exporterNoelExcel(annee, noelData, bilan = null, compteursNoel = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Noël ${annee}`)
   // Mêmes largeurs que le calendrier (sans colonnes remplaçant) : Date | 8 associés | Date | G/A.
   ws.columns = [{ width: 35 }, ...ASSOCIES.map(() => ({ width: 24 })), { width: 35 }, { width: 8 }]
 
   const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
-  ecrireBlocNoel(ws, annee, joursNoel, [])
+  ecrireBlocNoel(ws, annee, joursNoel, [], compteursNoel)
   ecrireBilan(ws, annee, bilan)
 
   await telecharger(wb, `Noel_${annee}.xlsx`)

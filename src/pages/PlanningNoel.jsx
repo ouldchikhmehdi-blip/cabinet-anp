@@ -13,7 +13,10 @@ import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerNoel, sauverNoel } from '../utils/noelApi'
-import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel } from '../utils/noel'
+import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel, compteursNoel } from '../utils/noel'
+import { chargerWeekends } from '../utils/weekendsApi'
+import { chargerRea } from '../utils/reaApi'
+import { chargerVacances } from '../utils/vacancesApi'
 import { exporterNoelExcel } from '../utils/exportCalendrier'
 import { COULEURS_GRILLE } from '../utils/grilleSemaine'
 
@@ -47,6 +50,10 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   const [profils, setProfils] = useState([])
   const [desideratas, setDesideratas] = useState([])
   const [data, setData] = useState(null) // { v, colle, jours } (grille committée)
+  // État annuel (hors Noël) pour PROLONGER les compteurs dans les cases de Noël.
+  const [weekendsAnnee, setWeekendsAnnee] = useState(null)
+  const [reaAnnee, setReaAnnee] = useState(null)
+  const [vacAnnee, setVacAnnee] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
@@ -80,6 +87,17 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
       .catch(() => { if (!annule) setErreur('Impossible de charger la grille de Noël.') })
     return () => { annule = true }
   }, [annee, estFaiseur, onStatut])
+
+  // État annuel des week-ends / réa / vacances : sert à calculer le socle PRÉ-Noël (totaux hors Noël),
+  // pour que les cases de Noël affichent un n° qui CONTINUE le cumul de l'année.
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    Promise.all([chargerWeekends(annee), chargerRea(annee), chargerVacances(annee)])
+      .then(([w, r, v]) => { if (!annule) { setWeekendsAnnee(w); setReaAnnee(r); setVacAnnee(v) } })
+      .catch(() => { /* silencieux : sans ces données, Noël s'exporte sans numéros */ })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
 
   // Desiderata du recueil sélectionné (pour le texte « Fêtes de fin d'année » des badges).
   useEffect(() => {
@@ -116,6 +134,24 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   }, [data])
 
   const recap = useMemo(() => (data ? bilanNoel(data, annee) : null), [data, annee])
+
+  // Socle PRÉ-Noël par associé (totaux sur les semaines HORS Noël) → amorce le prolongement des compteurs.
+  const baseNoel = useMemo(() => {
+    const semNoel = recap?.semaines ?? new Set()
+    const weekend = {}, rea = {}, vac = {}
+    for (const ini of ASSOCIES) { weekend[ini] = 0; rea[ini] = 0; vac[ini] = 0 }
+    for (const [num, ini] of Object.entries(weekendsAnnee?.affectations ?? {})) {
+      if (!semNoel.has(Number(num)) && weekend[ini] != null) weekend[ini]++
+    }
+    for (const [num, ini] of Object.entries(reaAnnee?.rea ?? {})) {
+      if (!semNoel.has(Number(num)) && rea[ini] != null) rea[ini]++
+    }
+    for (const [num, inis] of Object.entries(vacAnnee?.vacances ?? {})) {
+      if (semNoel.has(Number(num))) continue
+      for (const ini of (inis ?? [])) if (vac[ini] != null) vac[ini]++
+    }
+    return { weekend, rea, vac }
+  }, [recap, weekendsAnnee, reaAnnee, vacAnnee])
   const joursCandidat = useMemo(() => {
     const js = (candidat?.jours ?? []).slice()
     js.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
@@ -173,7 +209,8 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
     if (!data) return
     setErreur(null); setExportEnCours(true)
     try {
-      await exporterNoelExcel(annee, data, recap?.parAssocie ?? null)
+      // Compteurs continués (week-end/réa/vacances) affichés dans les cases, à partir du socle pré-Noël.
+      await exporterNoelExcel(annee, data, recap?.parAssocie ?? null, compteursNoel(data, annee, baseNoel))
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

@@ -15,6 +15,7 @@ import { JOURS } from '../utils/trames'
 import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
 import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleEcart, cleEcartWeekend } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import { compteursAmont } from '../utils/grilleSemaine'
 import PanneauConflits from '../components/planning/PanneauConflits'
 import PanneauPonts from '../components/planning/PanneauPonts'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
@@ -362,7 +363,13 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     setErreur(null); setExportEnCours(true)
     try {
       // Étape 3 : base calendrier + objectifs + week-ends (incrémental), borné à la période du recueil.
-      await exporterCalendrierExcel(annee, calendrier, objectifs, data.affectations, null, null, recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null)
+      // 13ᵉ arg = compteurs cumulés (n° de week-end année-à-date affiché dans chaque case).
+      await exporterCalendrierExcel(
+        annee, calendrier, objectifs, data.affectations, null, null,
+        recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
+        null, null, null, null, null,
+        compteursAmont(annee, { weekendAff: data.affectations }),
+      )
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

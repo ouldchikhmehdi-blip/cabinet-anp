@@ -11,6 +11,7 @@ import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea, sauverRea } from '../utils/reaApi'
 import { proposerRea, analyserRea } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
+import { compteursAmont } from '../utils/grilleSemaine'
 import PanneauConflits from '../components/planning/PanneauConflits'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 
@@ -248,10 +249,12 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     try {
       // Étape 5 : base calendrier + objectifs + week-ends + vacances + réa (incrémental), borné à la période du recueil.
       // + tableau « Réalisé à ce stade » en bas (10ᵉ argument) : G week-end / Réa / vacances remplis, le reste à 0.
+      // 13ᵉ arg = compteurs cumulés (n° de week-end, vacances et réa année-à-date dans chaque case).
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, data.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        null, null, bilanRea,
+        null, null, bilanRea, null, null,
+        compteursAmont(annee, { weekendAff: weekends?.affectations, vacanciers: vacancesData?.vacances, reaAff: data.rea }),
       )
     } catch {
       setErreur('Export Excel impossible.')

@@ -10,8 +10,9 @@
 //   - gras  : bool (mise en gras des cases de service).
 // L'export mappe fond → ARGB ('FF' + hex) ; l'aperçu mappe fond → '#' + hex (CSS).
 // ============================================================
-import { typeDuJour, formatISO } from './calendrier'
+import { typeDuJour, formatISO, listerSemaines } from './calendrier'
 import { JOURS } from './trames'
+import { ASSOCIES } from '../data/associes'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -115,9 +116,16 @@ export function celluleAssocieJour(a, ctx) {
     return { texte: poste, fond: null, gras: false }
   }
 
-  // ── Autres exports (Vacances / Réa) : réa porte « Réa », vacancier en semaine → bleu.
-  if (iniRea && a === iniRea && !congesSemaine.includes(a)) return { texte: 'Réa', fond: null, gras: false }
-  if (congesSemaine.includes(a)) return { texte: '', fond: 'conge', gras: false }
+  // ── Autres exports (Vacances / Réa) : réa porte « Réa » (+ n° cumulé si fourni), vacancier en semaine
+  // → bleu avec le n° de semaine de vacances posé sur le LUNDI (offset 0), comme l'export En semaine.
+  if (iniRea && a === iniRea && !congesSemaine.includes(a)) {
+    const n = compteurs?.rea?.[sem.num]
+    return { texte: n != null ? `Réa${n}` : 'Réa', fond: null, gras: false }
+  }
+  if (congesSemaine.includes(a)) {
+    const n = offset === 0 ? compteurs?.vac?.[sem.num]?.[a] : null
+    return { texte: n != null ? String(n) : '', fond: 'conge', gras: false }
+  }
   return { texte: '', fond: null, gras: false }
 }
 
@@ -146,4 +154,21 @@ export function celluleDateJour(ctx) {
   if (estWeekend) return { fond: 'weekend' }
   if (enVac) return { fond: 'vacances' }
   return { fond: null }
+}
+
+// Compteurs cumulés ANNÉE-À-DATE par associé pour les exports Week-end / Vacances / Réa (qui n'ont pas
+// le planning assemblé). On parcourt les semaines ISO dans l'ordre et on mémorise, à chaque occurrence,
+// le n° courant à afficher dans la case (même logique que la boucle de PlanningSemaines).
+//   amont = { weekendAff:{num:ini}, reaAff:{num:ini}, vacanciers:{num:[ini]} } (chacun facultatif)
+//   → { weekend:{num:n}, rea:{num:n}, vac:{num:{ini:n}} }
+export function compteursAmont(annee, { weekendAff = {}, reaAff = {}, vacanciers = {} } = {}) {
+  const cWE = {}, cRea = {}, cVac = {}
+  for (const ini of ASSOCIES) { cWE[ini] = 0; cRea[ini] = 0; cVac[ini] = 0 }
+  const weekend = {}, rea = {}, vac = {}
+  for (const { num } of listerSemaines(annee)) {
+    const wk = weekendAff[num]; if (wk && cWE[wk] != null) { cWE[wk]++; weekend[num] = cWE[wk] }
+    const r = reaAff[num]; if (r && cRea[r] != null) { cRea[r]++; rea[num] = cRea[r] }
+    for (const ini of (vacanciers[num] ?? [])) if (cVac[ini] != null) { cVac[ini]++; (vac[num] ??= {})[ini] = cVac[ini] }
+  }
+  return { weekend, rea, vac }
 }
