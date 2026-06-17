@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026 } from '../utils/calendrier'
+import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026, blocEteVacancesScolaires } from '../utils/calendrier'
 import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES, normaliser } from '../utils/desiderata'
 import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../utils/desiderataApi'
 import { charger as chargerLocal, sauver as sauverLocal } from '../utils/stockage'
@@ -74,8 +74,14 @@ export default function PlanningDesiderata() {
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const ferme = recueil?.statut === 'ferme'
-  // « Mode été » : une grille d'été a été publiée pour ce recueil → la saisie devient un choix de colonnes.
-  const modeEte = trameEte != null
+  // « Mode été » : le recueil couvre la fin du bloc des vacances scolaires d'été (même règle que le
+  // faiseur, cf. recueilEte dans PlanningSuivi). La saisie devient alors un choix de colonnes — que la
+  // grille soit déjà publiée ou non (sinon, message d'attente). Indépendant de la présence de trameEte.
+  const eteBloc = useMemo(() => blocEteVacancesScolaires(semainesScolaires), [semainesScolaires])
+  const modeEte = useMemo(
+    () => !!recueil && !!eteBloc && recueil.semaine_debut <= eteBloc.fin && recueil.semaine_fin >= eteBloc.fin,
+    [recueil, eteBloc]
+  )
 
   // Archive (planning validé) du recueil courant — la plus récente (liste triée created_at desc).
   const archiveRecueil = useMemo(
@@ -407,8 +413,13 @@ export default function PlanningDesiderata() {
         // ── Mode édition « été » : uniquement le choix de colonnes (+ commentaire) ──
         <>
           <div style={s.banniere('var(--color-text-secondary)', 'var(--color-bg)')}>
-            <strong>Recueil d'été.</strong> Tout est déjà placé dans la grille ci-dessous (vacances, gardes,
-            week-ends, jour férié). Indiquez seulement <strong>quelle(s) colonne(s)</strong> vous souhaitez faire.
+            {trameEte ? (
+              <><strong>Recueil d'été.</strong> Tout est déjà placé dans la grille ci-dessous (vacances, gardes,
+              week-ends, jour férié). Indiquez seulement <strong>quelle(s) colonne(s)</strong> vous souhaitez faire.</>
+            ) : (
+              <><strong>Recueil d'été.</strong> La trame d'été sera publiée par le faiseur ; vous pourrez alors
+              choisir vos colonnes. Rien d'autre n'est à saisir ici.</>
+            )}
           </div>
 
           <div style={s.carte}>
