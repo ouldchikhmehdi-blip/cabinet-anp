@@ -263,9 +263,6 @@ export default function PlanningSuivi() {
   }, [lignes])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
-  // Aperçu de la période d'été (bloc des grandes vacances) pour le formulaire de création.
-  const apercuEte = useMemo(() => blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? []), [calendrier])
-
   // Suggestion de période pour un nouveau recueil normal : reprend après le dernier recueil (hors « été »)
   // et va jusqu'aux vacances d'été incluses (dernière semaine du bloc d'été).
   const suggestionRecueil = useMemo(() => {
@@ -458,13 +455,11 @@ export default function PlanningSuivi() {
             </>
           )}
           {estEte && (
-            <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 320 }}>
-              {apercuEte
-                ? `Période : S${apercuEte.debut} → S${apercuEte.fin} (vacances scolaires d'été)`
-                : "Période : vacances scolaires d'été (récupérées automatiquement à la création)"}
+            <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 360 }}>
+              Recueil d'été : pas de semaines de début/fin à saisir — un formulaire de desiderata spécifique sera utilisé.
             </div>
           )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', paddingBottom: 9, cursor: 'pointer' }} title="Période = vacances scolaires d'été (automatique). Saisie simplifiée : pas de week-ends ni de jours off (congés répartis par colonnes)">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', paddingBottom: 9, cursor: 'pointer' }} title="Recueil d'été : pas de semaines à saisir ; un formulaire de desiderata spécifique sera utilisé (fourni ici à l'ouverture du planning).">
             <input type="checkbox" checked={estEte} onChange={e => setEstEte(e.target.checked)} style={{ accentColor: 'var(--color-primary)' }} />
             Période d'été
           </label>
