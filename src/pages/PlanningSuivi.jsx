@@ -20,6 +20,8 @@ import ChoixColonnesEte from '../components/planning/ChoixColonnesEte'
 import SyntheseColonnesEte from '../components/planning/SyntheseColonnesEte'
 import { parserGrilleEte } from '../utils/trameEte'
 import { chargerTrameEte, sauverTrameEte, supprimerTrameEte } from '../utils/trameEteApi'
+import CompteursReference from '../components/planning/CompteursReference'
+import { chargerCompteursRef, sauverCompteursRef, supprimerCompteursRef } from '../utils/compteursRefApi'
 
 export default function PlanningSuivi() {
   const { session, profile } = useAuth()
@@ -37,6 +39,8 @@ export default function PlanningSuivi() {
   const [apercuEte, setApercuEte] = useState(null)      // grille d'été collée, avant publication
   const [texteEte, setTexteEte] = useState('')          // contenu de la zone de collage
   const [msgEte, setMsgEte] = useState(null)
+  const [compteursRef, setCompteursRef] = useState(null) // compteurs de référence (cumul) de l'année
+  const [enregistrementRef, setEnregistrementRef] = useState(false)
   const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
@@ -107,6 +111,41 @@ export default function PlanningSuivi() {
       .catch(() => { /* table d'archives peut-être pas encore créée : section simplement vide */ })
     return () => { annule = true }
   }, [annee, estFaiseur])
+
+  // Compteurs de référence (cumul à ce stade) de l'année — socle pour construire la suite.
+  // chargerCompteursRef(undefined) renvoie null → pas de setState synchrone (tout passe par la promesse).
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerCompteursRef(annee)
+      .then(c => { if (!annule) setCompteursRef(c) })
+      .catch(() => { if (!annule) setCompteursRef(null) }) // table peut-être pas encore créée
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
+  async function enregistrerCompteursRef(data) {
+    setErreur(null); setEnregistrementRef(true)
+    try {
+      await sauverCompteursRef(annee, data, session.user.id)
+      const c = await chargerCompteursRef(annee)
+      setCompteursRef(c)
+    } catch {
+      setErreur('Enregistrement des compteurs impossible (réservé au faiseur).')
+    } finally {
+      setEnregistrementRef(false)
+    }
+  }
+
+  async function supprimerCompteursRefH() {
+    if (!confirm('Supprimer les compteurs de référence enregistrés pour cette année ?')) return
+    setErreur(null)
+    try {
+      await supprimerCompteursRef(annee)
+      setCompteursRef(null)
+    } catch {
+      setErreur('Suppression impossible (réservée au faiseur).')
+    }
+  }
 
   async function telechargerArchive(a) {
     setErreur(null)
@@ -622,6 +661,15 @@ export default function PlanningSuivi() {
           )}
         </div>
       )}
+
+      {/* Compteurs de référence (cumul à ce stade) — socle annuel pour construire la suite */}
+      <CompteursReference
+        annee={annee}
+        valeur={compteursRef}
+        onEnregistrer={enregistrerCompteursRef}
+        onSupprimer={supprimerCompteursRefH}
+        enregistrement={enregistrementRef}
+      />
 
       {recueil && (
         <>
