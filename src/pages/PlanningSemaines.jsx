@@ -14,6 +14,7 @@ import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { bilanNoel } from '../utils/noel'
+import { cleEcart } from '../utils/ponts'
 import {
   proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame,
@@ -170,6 +171,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
     return m
   }, [desideratas, parUser])
+  // Jours off écartés par le faiseur (Ouverture du planning / Week-ends) : Set('INI|YYYY-MM-DD').
+  const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
   const joursOffDetailParAssocie = useMemo(() => {
     const m = {}
     for (const row of desideratas) {
@@ -177,6 +180,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       if (!ini) continue
       const parSem = {}
       for (const iso of (normaliser(row.data).joursOffSouhaites ?? [])) {
+        if (ecartesSet.has(cleEcart(ini, iso))) continue // jour off ignoré par le faiseur
         try {
           const d = parseISO(iso)
           const jour = JOUR_SEMAINE[d.getUTCDay()]
@@ -187,7 +191,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       m[ini] = parSem
     }
     return m
-  }, [desideratas, parUser])
+  }, [desideratas, parUser, ecartesSet])
   // Score de DEMANDES par associé : plus un associé a formulé de souhaits (jours off, vacances précises,
   // week-ends indisponibles, souhaits de colonne), plus il sera prioritaire pour ABSORBER une garde
   // rapprochée si un arbitrage d'espacement est nécessaire (équité : qui demande plus accepte plus).

@@ -80,7 +80,6 @@ export default function PanneauPonts({
     optLigne: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '3px 0', cursor: interactif ? 'pointer' : 'default' },
     ecarte: { color: 'var(--color-text-tertiary)', textDecoration: 'line-through' },
     tagEcarte: { fontSize: 11, color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
-    autreJour: { fontSize: 13, color: 'var(--color-text)', padding: '3px 0' },
     vide: { fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 12 },
   }
 
@@ -167,13 +166,11 @@ export default function PanneauPonts({
           </>
         )}
 
-        {/* Groupe 3 : autres jours off demandés (hors férié) — neutre, informatif */}
+        {/* Groupe 3 : autres jours off demandés (hors férié) — neutre, cochables (ignorer) */}
         {autresJoursOff.length > 0 && (
           <>
             <div style={s.sousTitreNeutre}>Autres jours off demandés (hors férié)</div>
-            {autresJoursOff.map(iso => (
-              <div key={iso} style={s.autreJour}>{formatDateLongueFR(parseISO(iso))}</div>
-            ))}
+            {autresJoursOff.map(iso => bascule(cleEcart(ini, iso), formatDateLongueFR(parseISO(iso))))}
           </>
         )}
 
@@ -186,12 +183,12 @@ export default function PanneauPonts({
 
   return (
     <div style={s.carte}>
-      <div style={s.titre}>🌉 Ponts / jours fériés ({total})</div>
+      <div style={s.titre}>🌉 Indisponibilités · week-ends · jours fériés · off ({total})</div>
       <div style={s.note}>
         Cliquez sur un associé pour voir ses ponts, ses week-ends indisponibles et ses jours off demandés.
         {interactif
-          ? ' Cocher = ce jour off / cette indisponibilité est ignoré par l’attribution automatique des week-ends ; décocher = conservé.'
-          : ' Les éléments cochés (écartés) sont ignorés par l’attribution des week-ends ; à gérer dans Ouverture du planning.'}
+          ? ' Cocher = cet élément (jour off, indisponibilité…) est ignoré par la construction automatique du planning ; décocher = conservé.'
+          : ' Les éléments cochés (écartés) sont ignorés par la construction automatique ; à gérer dans Ouverture du planning.'}
       </div>
 
       <div style={s.badges}>

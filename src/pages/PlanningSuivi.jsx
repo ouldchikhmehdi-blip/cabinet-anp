@@ -457,9 +457,23 @@ export default function PlanningSuivi() {
 
       {recueil && (
         <>
-          <div style={{ marginBottom: 16 }} className="no-print">
+          <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} className="no-print">
             <button type="button" onClick={() => window.print()} style={s.bouton}>
               Imprimer les desiderata des associés
+            </button>
+            <button
+              type="button"
+              onClick={() => basculer(recueil)}
+              style={{
+                ...s.bouton, border: '0.5px solid var(--color-amber)',
+                background: recueil.statut === 'ferme' ? 'var(--color-amber)' : 'transparent',
+                color: recueil.statut === 'ferme' ? '#fff' : 'var(--color-amber)',
+              }}
+              title={recueil.statut === 'ferme'
+                ? 'Desiderata bloqués : cliquez pour rouvrir le recueil (les associés pourront de nouveau modifier leurs choix).'
+                : 'Ferme le recueil de desiderata : les associés ne peuvent plus modifier leurs choix. Cliquez de nouveau pour rouvrir.'}
+            >
+              {recueil.statut === 'ferme' ? '🔓 Débloquer les desiderata' : '🔒 Bloquer les desiderata'}
             </button>
           </div>
 

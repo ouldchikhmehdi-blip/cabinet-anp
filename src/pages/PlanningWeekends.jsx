@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, listerSemaines } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
@@ -48,7 +48,6 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
-  const [blocage, setBlocage] = useState(null)
 
   // Recueils (périodes) « normales » de l'année + profils.
   useEffect(() => {
@@ -345,23 +344,6 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
-  // Bascule le blocage des desiderata de la période : « ouvert » ↔ « fermé ». Fermé → les associés ne
-  // peuvent plus modifier leurs choix (UI + base, cf. trigger planning_archives.sql) ; re-clic → réouvre.
-  async function basculerBlocage() {
-    if (!recueil) return
-    const versFerme = recueil.statut === 'ouvert'
-    setErreur(null)
-    try {
-      await definirStatutRecueil(recueil.id, versFerme ? 'ferme' : 'ouvert')
-      setRecueils(prev => prev.map(r => (r.id === recueil.id ? { ...r, statut: versFerme ? 'ferme' : 'ouvert' } : r)))
-      setBlocage(versFerme
-        ? 'Desiderata bloqués — les associés ne peuvent plus modifier leurs choix.'
-        : 'Desiderata débloqués — les associés peuvent de nouveau modifier leurs choix.')
-      setTimeout(() => setBlocage(null), 4000)
-    } catch {
-      setErreur(versFerme ? 'Blocage impossible (réservé au faiseur).' : 'Déblocage impossible (réservé au faiseur).')
-    }
-  }
 
   async function exporter() {
     setErreur(null); setExportEnCours(true)
@@ -466,23 +448,6 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
           </button>
           {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         </div>
-        <button
-          type="button"
-          onClick={basculerBlocage}
-          disabled={!recueil}
-          style={{
-            ...s.bouton, padding: '8px 14px', fontSize: 13, border: '0.5px solid var(--color-amber)',
-            background: recueil?.statut === 'ferme' ? 'var(--color-amber)' : 'transparent',
-            color: recueil?.statut === 'ferme' ? '#fff' : 'var(--color-amber)',
-            opacity: !recueil ? 0.6 : 1,
-          }}
-          title={recueil?.statut === 'ferme'
-            ? 'Desiderata bloqués : cliquez pour rouvrir le recueil (les associés pourront de nouveau modifier leurs choix).'
-            : 'Ferme le recueil de desiderata de cette période : les associés ne peuvent plus modifier leurs choix. Cliquez de nouveau pour rouvrir.'}
-        >
-          {recueil?.statut === 'ferme' ? '🔓 Débloquer les desiderata' : '🔒 Bloquer les desiderata'}
-        </button>
-        {blocage && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{blocage}</span>}
       </div>
 
       {erreur && (
