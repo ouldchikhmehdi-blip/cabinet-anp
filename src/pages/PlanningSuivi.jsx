@@ -311,6 +311,13 @@ export default function PlanningSuivi() {
 
   // Le recueil actuellement affiché EST le recueil d'été → restitution adaptée (choix de colonnes).
   const estEteSelection = !!recueilEte && !!recueil && recueilEte.id === recueil.id
+
+  // 3ᵉ partie = recueil de la rentrée → fin d'année (commence APRÈS le bloc des vacances d'été). Les
+  // compteurs de référence (cumul à ce stade) n'ont de sens qu'ici : socle pour construire la fin d'année.
+  const estTroisiemePartie = useMemo(() => {
+    const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
+    return !!recueil && !!ete && recueil.semaine_debut > ete.fin
+  }, [recueil, calendrier])
   // Préférences de colonnes par associé relié (pour la synthèse).
   const associesEte = useMemo(
     () => lignes.filter(l => l.relie).map(l => ({ ini: l.ini, pref: l.data.colonnesEte })),
@@ -577,8 +584,7 @@ export default function PlanningSuivi() {
             Trames de l'année {annee}
           </span>
           <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
-            Collez vos semaines type, désignez la trame principale (montrée aux associés dans leurs desiderata).
-            Modifiable à tout moment.
+            Cliquez pour gérer vos semaines type.
           </span>
         </button>
         {tramesOuvert && (
@@ -662,14 +668,16 @@ export default function PlanningSuivi() {
         </div>
       )}
 
-      {/* Compteurs de référence (cumul à ce stade) — socle annuel pour construire la suite */}
-      <CompteursReference
-        annee={annee}
-        valeur={compteursRef}
-        onEnregistrer={enregistrerCompteursRef}
-        onSupprimer={supprimerCompteursRefH}
-        enregistrement={enregistrementRef}
-      />
+      {/* Compteurs de référence (cumul à ce stade) — seulement sur le 3ᵉ recueil (rentrée → fin d'année) */}
+      {estTroisiemePartie && (
+        <CompteursReference
+          annee={annee}
+          valeur={compteursRef}
+          onEnregistrer={enregistrerCompteursRef}
+          onSupprimer={supprimerCompteursRefH}
+          enregistrement={enregistrementRef}
+        />
+      )}
 
       {recueil && (
         <>
