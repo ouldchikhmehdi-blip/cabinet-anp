@@ -12,6 +12,8 @@ import { listerArchives, urlArchive, supprimerArchive } from '../utils/archivesA
 import { detecterPontsTous, detecterPontsWeekendTous } from '../utils/ponts'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
 import PanneauPonts from '../components/planning/PanneauPonts'
+import RecapVacancesScolaires from '../components/planning/RecapVacancesScolaires'
+import { aDesSouhaitsScolaires } from '../utils/vacancesScolaires'
 import PlanningTrames from './PlanningTrames'
 
 export default function PlanningSuivi() {
@@ -25,6 +27,7 @@ export default function PlanningSuivi() {
   const [desideratas, setDesideratas] = useState([])
   const [ouvert, setOuvert] = useState(null)
   const [tramesOuvert, setTramesOuvert] = useState(false)
+  const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
   const [erreur, setErreur] = useState(null)
@@ -230,6 +233,15 @@ export default function PlanningSuivi() {
   }, [lignes])
   const pontsWeekendParAssocie = useMemo(() => detecterPontsWeekendTous(weekendsIndispoParAssocie, annee), [weekendsIndispoParAssocie, annee])
   const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
+
+  // ── Vacances scolaires ── desiderata déjà normalisés (l.data) + semaines scolaires de la base calendrier.
+  const desiderataParAssocie = useMemo(() => {
+    const m = {}
+    for (const l of lignes) m[l.ini] = l.data
+    return m
+  }, [lignes])
+  const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
+  const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
 
   // Écarter / réintégrer un élément de pont (jour off ou week-end) — persisté dans la base calendrier.
   async function toggleEcart(cle) {
@@ -475,7 +487,33 @@ export default function PlanningSuivi() {
             >
               {recueil.statut === 'ferme' ? '🔓 Débloquer les desiderata' : '🔒 Bloquer les desiderata'}
             </button>
+            <button
+              type="button"
+              disabled={!aSouhaitScolaire}
+              onClick={() => setVueScolaire(v => !v)}
+              style={{
+                ...s.bouton, border: '0.5px solid #2D6CB5',
+                background: vueScolaire ? '#2D6CB5' : 'transparent',
+                color: vueScolaire ? '#fff' : '#2D6CB5',
+                cursor: aSouhaitScolaire ? 'pointer' : 'default',
+                opacity: aSouhaitScolaire ? 1 : 0.45,
+              }}
+              title={aSouhaitScolaire
+                ? 'Voir les souhaits de vacances scolaires de tous les associés (et les conflits éventuels)'
+                : 'Aucun souhait de vacances scolaires'}
+            >
+              📚 Vacances scolaires
+            </button>
           </div>
+
+          {vueScolaire && aSouhaitScolaire && (
+            <div className="no-print" style={{
+              background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-lg)', padding: '4px 16px 14px', marginBottom: 16,
+            }}>
+              <RecapVacancesScolaires desiderataParAssocie={desiderataParAssocie} scolairesSet={scolairesSet} />
+            </div>
+          )}
 
           {/* Board des associés */}
           <div style={s.grille} className="no-print">

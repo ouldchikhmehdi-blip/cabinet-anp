@@ -21,31 +21,12 @@
 import { useMemo, useState } from 'react'
 import { ASSOCIES } from '../../data/associes'
 import { listerSemaines } from '../../utils/calendrier'
-import { labelSousSemaine } from '../../utils/desiderata'
 import { cleEcartVacances } from '../../utils/ponts'
+import { aDesSouhaitsScolaires } from '../../utils/vacancesScolaires'
+import RecapVacancesScolaires from './RecapVacancesScolaires'
 
 const BLEU = '#2D6CB5' // bleu « scolaire » (coherent avec le tableau des semaines)
 const CLE_SCOLAIRE = '__scolaires__'
-
-// Libelle de la preference vacances scolaires d'un associe, ou null.
-function prefScolaire(d) {
-  const nom = d.preferenceVacancesScolaires === 'paques' ? 'Pâques'
-    : d.preferenceVacancesScolaires === 'fevrier' ? 'Février'
-      : null
-  if (!nom) return null
-  const sous = labelSousSemaine(d.prefVacancesSemaine)
-  return sous ? `${nom} (${sous})` : nom
-}
-
-// Libelle Toussaint d'un associe, ou null.
-function labelToussaint(d) {
-  if (d.toussaintSouhaitee === true) {
-    const sous = labelSousSemaine(d.toussaintSemaine)
-    return sous ? `Toussaint souhaitée (${sous})` : 'Toussaint souhaitée'
-  }
-  if (d.toussaintSouhaitee === false) return 'Toussaint non souhaitée'
-  return null
-}
 
 export default function PanneauVacances({ desiderataParAssocie = {}, scolairesSet = new Set(), annee, ecartesSet = new Set(), onToggle }) {
   const [selection, setSelection] = useState(null) // initiale, CLE_SCOLAIRE, ou null
@@ -67,48 +48,7 @@ export default function PanneauVacances({ desiderataParAssocie = {}, scolairesSe
     return m
   }, [desiderataParAssocie, scolairesSet])
 
-  // Recap scolaire par associe : { ini: { pref, toussaint, semaines:[labels] } | null }.
-  const scolaireParAssocie = useMemo(() => {
-    const m = {}
-    for (const ini of ASSOCIES) {
-      const d = desiderataParAssocie[ini]
-      if (!d) { m[ini] = null; continue }
-      const pref = prefScolaire(d)
-      const tous = labelToussaint(d)
-      const semaines = (d.vacancesSouhaitees ?? []).filter(n => scolairesSet.has(n)).sort((a, b) => a - b)
-      m[ini] = (pref || tous || semaines.length) ? { pref, tous, semaines } : null
-    }
-    return m
-  }, [desiderataParAssocie, scolairesSet])
-
-  const aSouhaitScolaire = ASSOCIES.some(ini => scolaireParAssocie[ini])
-
-  // Détection des conflits : ≥ 3 associés sur la MÊME semaine (s1/s2) d'une période scolaire.
-  // « Peu importe » (indifferent) / null ne comptent pas (l'associé peut basculer sur l'autre semaine).
-  const { conflits, inisEnConflit } = useMemo(() => {
-    const PERIODES = { paques: 'Pâques', fevrier: 'Février', toussaint: 'Toussaint' }
-    const compteur = {} // 'periode|sem' → [inis]
-    const ajouter = (periode, sem, ini) => {
-      if (sem !== 's1' && sem !== 's2') return
-      ;(compteur[`${periode}|${sem}`] ??= []).push(ini)
-    }
-    for (const ini of ASSOCIES) {
-      const d = desiderataParAssocie[ini]
-      if (!d) continue
-      if (d.preferenceVacancesScolaires === 'paques') ajouter('paques', d.prefVacancesSemaine, ini)
-      if (d.preferenceVacancesScolaires === 'fevrier') ajouter('fevrier', d.prefVacancesSemaine, ini)
-      if (d.toussaintSouhaitee === true) ajouter('toussaint', d.toussaintSemaine, ini)
-    }
-    const liste = []
-    const impliques = new Set()
-    for (const [cle, inis] of Object.entries(compteur)) {
-      if (inis.length < 3) continue
-      const [periode, sem] = cle.split('|')
-      liste.push({ periode: PERIODES[periode], semaine: labelSousSemaine(sem), inis })
-      for (const i of inis) impliques.add(i)
-    }
-    return { conflits: liste, inisEnConflit: impliques }
-  }, [desiderataParAssocie])
+  const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
 
   const s = {
     carte: {
@@ -150,20 +90,6 @@ export default function PanneauVacances({ desiderataParAssocie = {}, scolairesSe
       color: 'inherit', lineHeight: 1, padding: 0, textDecoration: 'none',
     },
     vide: { fontSize: 13, color: 'var(--color-text-secondary)' },
-    ligneAssocie: (conflit) => ({
-      display: 'flex', gap: 8, alignItems: 'baseline', padding: '5px 8px',
-      borderBottom: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-      background: conflit ? 'var(--color-danger-light)' : 'transparent',
-    }),
-    iniGras: { fontSize: 13, fontWeight: 700, color: 'var(--color-text)', minWidth: 42 },
-    detailsScol: { fontSize: 12, color: 'var(--color-text-secondary)' },
-    attenue: { fontSize: 12, color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
-    conflitBox: {
-      background: 'var(--color-danger-light)', border: '0.5px solid var(--color-danger)',
-      borderRadius: 'var(--radius-md)', padding: '10px 12px', marginBottom: 12,
-    },
-    conflitTitre: { fontSize: 13, fontWeight: 700, color: 'var(--color-danger)', marginBottom: 6 },
-    conflitLigne: { fontSize: 12, color: 'var(--color-danger)', marginBottom: 2 },
   }
 
   const detailAssocie = (ini) => {
@@ -202,34 +128,7 @@ export default function PanneauVacances({ desiderataParAssocie = {}, scolairesSe
   }
 
   const detailScolaire = () => (
-    <div style={s.detail}>
-      <div style={{ ...s.detailTitre, color: BLEU }}>📚 Vacances scolaires — souhaits des associés</div>
-
-      {conflits.length > 0 && (
-        <div style={s.conflitBox}>
-          <div style={s.conflitTitre}>⚠ Conflits de vacances scolaires (3 demandes ou plus sur la même semaine)</div>
-          {conflits.map((c, i) => (
-            <div key={i} style={s.conflitLigne}>
-              <strong>{c.periode} · {c.semaine}</strong> — {c.inis.length} demandes : {c.inis.join(', ')}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {ASSOCIES.map(ini => {
-        const r = scolaireParAssocie[ini]
-        const parts = r ? [r.pref, r.tous, r.semaines.length ? r.semaines.map(n => `S${n}`).join(', ') : null].filter(Boolean) : []
-        const enConflit = inisEnConflit.has(ini)
-        return (
-          <div key={ini} style={s.ligneAssocie(enConflit)}>
-            <span style={s.iniGras}>{enConflit && '⚠ '}{ini}</span>
-            {parts.length
-              ? <span style={s.detailsScol}>{parts.join(' · ')}</span>
-              : <span style={s.attenue}>rien de précisé</span>}
-          </div>
-        )
-      })}
-    </div>
+    <RecapVacancesScolaires desiderataParAssocie={desiderataParAssocie} scolairesSet={scolairesSet} />
   )
 
   return (

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { listerSemaines, listerWeekends, parseISO, formatDateLongueFR } from '../../utils/calendrier'
+import { listerSemaines, listerWeekends, parseISO, formatDateLongueFR, moisAnneeFR } from '../../utils/calendrier'
 import { labelSousSemaine } from '../../utils/desiderata'
 import { cleEcart, cleEcartWeekend } from '../../utils/ponts'
 
@@ -9,6 +9,8 @@ const styles = {
   cle: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 },
   valeur: { fontSize: 13, color: 'var(--color-text)' },
   vide: { fontSize: 13, color: 'var(--color-text-tertiary)' },
+  moisLigne: { fontSize: 13, color: 'var(--color-text)', marginBottom: 2 },
+  moisNom: { fontWeight: 600 },
   // Encart « ponts » mis en valeur — bordure + fond ambre, conservés à l'impression.
   pontsBloc: {
     marginBottom: 12, padding: '8px 10px',
@@ -29,6 +31,33 @@ function Ligne({ titre, children, vide }) {
   )
 }
 
+// Section regroupant des éléments par mois : une sous-ligne « Mars 2026 : … » par
+// mois, triée chronologiquement ; les mois sans élément ne s'affichent pas.
+// items : [{ label: string, date: Date }] (date = repère pour le tri/regroupement).
+function SectionMois({ titre, items }) {
+  const valides = items.filter(it => it.date instanceof Date && !Number.isNaN(it.date.getTime()))
+  if (valides.length === 0) return <Ligne titre={titre} vide />
+
+  const groupes = [] // [{ cle, mois, labels:[] }] dans l'ordre chronologique
+  for (const it of [...valides].sort((a, b) => a.date - b.date)) {
+    const cle = `${it.date.getUTCFullYear()}-${it.date.getUTCMonth()}`
+    let g = groupes.find(x => x.cle === cle)
+    if (!g) { g = { cle, mois: moisAnneeFR(it.date), labels: [] }; groupes.push(g) }
+    g.labels.push(it.label)
+  }
+
+  return (
+    <div style={styles.section}>
+      <div style={styles.cle}>{titre}</div>
+      {groupes.map(g => (
+        <div key={g.cle} style={styles.moisLigne}>
+          <span style={styles.moisNom}>{g.mois} :</span> {g.labels.join(' · ')}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /**
  * RecapDesiderata — restitution lisible des desiderata d'un associé.
  * Composant pur : utilisé dans le panneau du suivi ET dans la vue imprimable.
@@ -40,15 +69,21 @@ function Ligne({ titre, children, vide }) {
  *   estEte    — bool : recueil d'été (masque jours off et week-ends, sans objet l'été)
  */
 export default function RecapDesiderata({ initiales, d, annee, estEte = false, ponts = [], pontsWeekend = [], ecartesSet = new Set() }) {
-  const labelSemaine = useMemo(() => {
+  // num → { label, date } : la date (lundi / samedi) sert au regroupement par mois.
+  const semaineInfo = useMemo(() => {
     const map = {}
-    for (const s of listerSemaines(annee)) map[s.num] = s.label
+    for (const s of listerSemaines(annee)) map[s.num] = { label: s.label, date: s.lundi }
     return map
   }, [annee])
-
-  const labelWeekend = useMemo(() => {
+  const labelSemaine = useMemo(() => {
     const map = {}
-    for (const w of listerWeekends(annee)) map[w.num] = w.label
+    for (const num in semaineInfo) map[num] = semaineInfo[num].label
+    return map
+  }, [semaineInfo])
+
+  const weekendInfo = useMemo(() => {
+    const map = {}
+    for (const w of listerWeekends(annee)) map[w.num] = { label: w.label, date: w.samedi }
     return map
   }, [annee])
 
@@ -97,18 +132,21 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false, p
         </div>
       )}
 
-      <Ligne titre="Vacances souhaitées" vide={d.vacancesSouhaitees.length === 0}>
-        {d.vacancesSouhaitees.map(n => labelSemaine[n] ?? `S${n}`).join(' · ')}
-      </Ligne>
+      <SectionMois
+        titre="Vacances souhaitées"
+        items={d.vacancesSouhaitees.map(n => ({ label: semaineInfo[n]?.label ?? `S${n}`, date: semaineInfo[n]?.date }))}
+      />
 
-      <Ligne titre="Vacances refusées" vide={d.vacancesRefusees.length === 0}>
-        {d.vacancesRefusees.map(n => labelSemaine[n] ?? `S${n}`).join(' · ')}
-      </Ligne>
+      <SectionMois
+        titre="Vacances refusées"
+        items={d.vacancesRefusees.map(n => ({ label: semaineInfo[n]?.label ?? `S${n}`, date: semaineInfo[n]?.date }))}
+      />
 
       {!estEte && (
-        <Ligne titre="Jours off souhaités" vide={d.joursOffSouhaites.length === 0}>
-          {d.joursOffSouhaites.map(x => formatDateLongueFR(parseISO(x))).join(' · ')}
-        </Ligne>
+        <SectionMois
+          titre="Jours off souhaités"
+          items={d.joursOffSouhaites.map(x => { const dt = parseISO(x); return { label: formatDateLongueFR(dt), date: dt } })}
+        />
       )}
 
       <Ligne titre="Préférence vacances scolaires" vide={!prefVac}>
@@ -126,9 +164,10 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false, p
       )}
 
       {!estEte && (
-        <Ligne titre="Week-ends indisponibles" vide={d.weekendsIndispo.length === 0}>
-          {d.weekendsIndispo.map(n => labelWeekend[n] ?? `S${n}`).join(' · ')}
-        </Ligne>
+        <SectionMois
+          titre="Week-ends indisponibles"
+          items={d.weekendsIndispo.map(n => ({ label: weekendInfo[n]?.label ?? `S${n}`, date: weekendInfo[n]?.date }))}
+        />
       )}
 
       {!estEte && (
