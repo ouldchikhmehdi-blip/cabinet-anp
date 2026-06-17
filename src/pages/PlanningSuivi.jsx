@@ -34,8 +34,9 @@ export default function PlanningSuivi() {
 
   // Formulaire de création de recueil
   const [nom, setNom] = useState('')
-  const [semDebut, setSemDebut] = useState(1)
-  const [semFin, setSemFin] = useState(13)
+  // Override manuel des semaines (null = utiliser la suggestion automatique).
+  const [semDebut, setSemDebut] = useState(null)
+  const [semFin, setSemFin] = useState(null)
   const [estEte, setEstEte] = useState(false)
 
   // Récupération des vacances scolaires (écrit dans la base calendrier de l'année)
@@ -161,11 +162,13 @@ export default function PlanningSuivi() {
         await creerRecueil({ annee, nom: nom.trim() || 'Période d\'été', semaineDebut: ete.debut, semaineFin: ete.fin, type: 'ete', userId: session.user.id })
       } else {
         if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
-        if (semFin < semDebut) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
-        await creerRecueil({ annee, nom: nom.trim(), semaineDebut: semDebut, semaineFin: semFin, type: 'normal', userId: session.user.id })
+        if (finVal < debutVal) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
+        await creerRecueil({ annee, nom: nom.trim(), semaineDebut: debutVal, semaineFin: finVal, type: 'normal', userId: session.user.id })
       }
       setNom('')
       setEstEte(false)
+      setSemDebut(null) // revient à la suggestion (partie suivante) après rechargement des recueils
+      setSemFin(null)
       await rechargerRecueils()
     } catch {
       setErreur('Création impossible (réservée au faiseur).')
@@ -259,6 +262,22 @@ export default function PlanningSuivi() {
   const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
   // Aperçu de la période d'été (bloc des grandes vacances) pour le formulaire de création.
   const apercuEte = useMemo(() => blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? []), [calendrier])
+
+  // Suggestion de période pour un nouveau recueil normal : reprend après le dernier recueil (hors « été »)
+  // et va jusqu'aux vacances d'été incluses (dernière semaine du bloc d'été).
+  const suggestionRecueil = useMemo(() => {
+    const normaux = recueils.filter(r => r.type !== 'ete')
+    const dernierFin = normaux.length ? Math.max(...normaux.map(r => r.semaine_fin)) : 0
+    const dernierNum = semainesAnnee.length ? semainesAnnee[semainesAnnee.length - 1].num : 53
+    const debut = Math.min(Math.max(dernierFin + 1, 1), dernierNum)
+    const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
+    return { debut, fin: ete ? ete.fin : null }
+  }, [recueils, calendrier, semainesAnnee])
+
+  // Valeurs effectives du formulaire : override manuel s'il existe, sinon la suggestion (qui se recalcule
+  // au chargement, au changement d'année et après chaque création → propose la partie suivante).
+  const debutVal = semDebut ?? suggestionRecueil.debut
+  const finVal = semFin ?? suggestionRecueil.fin ?? 13
 
   // Écarter / réintégrer un élément de pont (jour off ou week-end) — persisté dans la base calendrier.
   async function toggleEcart(cle) {
@@ -358,7 +377,7 @@ export default function PlanningSuivi() {
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 8 }}>
           <div>
             <label style={s.label}>Année</label>
-            <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
+            <select value={annee} onChange={e => { setAnnee(Number(e.target.value)); setSemDebut(null); setSemFin(null) }} style={s.select}>
               {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
@@ -418,16 +437,21 @@ export default function PlanningSuivi() {
             <>
               <div>
                 <label style={s.label}>Semaine de début</label>
-                <select value={semDebut} onChange={e => setSemDebut(Number(e.target.value))} style={s.select}>
+                <select value={debutVal} onChange={e => setSemDebut(Number(e.target.value))} style={s.select}>
                   {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
                 </select>
               </div>
               <div>
                 <label style={s.label}>Semaine de fin</label>
-                <select value={semFin} onChange={e => setSemFin(Number(e.target.value))} style={s.select}>
+                <select value={finVal} onChange={e => setSemFin(Number(e.target.value))} style={s.select}>
                   {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
                 </select>
               </div>
+              {suggestionRecueil.fin != null && (
+                <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 12, color: 'var(--color-text-tertiary)', maxWidth: 280 }}>
+                  Suggéré : reprend après le dernier recueil, jusqu'aux vacances d'été incluses (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
+                </div>
+              )}
             </>
           )}
           {estEte && (
