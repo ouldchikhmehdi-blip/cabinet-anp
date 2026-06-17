@@ -4,11 +4,12 @@ import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR } from '../utils/cal
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
-import { chargerCalendrier } from '../utils/calendrierApi'
+import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
+import { cleEcartVacances } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauVacances from '../components/planning/PanneauVacances'
@@ -76,7 +77,11 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
 
+  // Souhaits de congé écartés par le faiseur (clé 'INI|VAC|<sem>') — base calendrier.
+  const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
+
   // Souhaits / refus par associé : { ini: Set(numsSemaine) }.
+  // Les souhaits écartés par le faiseur sont retirés (non proposés, non comptés comme souhait).
   const { souhaitParAssocie, refusParAssocie } = useMemo(() => {
     const parUser = {}
     for (const p of profils) parUser[p.id] = p.initiales
@@ -85,11 +90,11 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       const ini = parUser[row.user_id]
       if (!ini) continue
       const d = normaliser(row.data)
-      souhait[ini] = new Set(d.vacancesSouhaitees ?? [])
+      souhait[ini] = new Set((d.vacancesSouhaitees ?? []).filter(n => !ecartesSet.has(cleEcartVacances(ini, n))))
       refus[ini] = new Set(d.vacancesRefusees ?? [])
     }
     return { souhaitParAssocie: souhait, refusParAssocie: refus }
-  }, [desideratas, profils])
+  }, [desideratas, profils, ecartesSet])
 
   // Desiderata complets (normalisés) par associé — pour le panneau récap des souhaits.
   const desiderataParAssocie = useMemo(() => {
@@ -253,6 +258,23 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {})
       return { ...prev, vacances: { ...horsPlage, ...proposees } }
     })
+  }
+
+  // Écarter / réactiver un souhait de congé hors scolaire — persisté dans la base calendrier
+  // (clé 'INI|VAC|<sem>'), source partagée avec les autres écartements.
+  async function toggleEcart(cle) {
+    if (!calendrier) return
+    const actuel = calendrier.pontsEcartes ?? []
+    const nouveau = actuel.includes(cle) ? actuel.filter(c => c !== cle) : [...actuel, cle]
+    const maj = { ...calendrier, pontsEcartes: nouveau }
+    const precedent = calendrier
+    setCalendrier(maj) // optimiste
+    try {
+      await sauverCalendrier(annee, maj, session.user.id)
+    } catch {
+      setCalendrier(precedent)
+      setErreur('Action impossible (réservée au faiseur).')
+    }
   }
 
   async function enregistrer() {
@@ -425,7 +447,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
           </div>
 
           {/* Récap visuel des souhaits de congés par associé (hors scolaires) + vue scolaire */}
-          <PanneauVacances desiderataParAssocie={desiderataParAssocie} scolairesSet={scolairesSet} annee={annee} />
+          <PanneauVacances desiderataParAssocie={desiderataParAssocie} scolairesSet={scolairesSet} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
 
           {/* Tableau des semaines */}
           <div style={s.carte}>

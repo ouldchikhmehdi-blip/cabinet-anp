@@ -25,6 +25,11 @@ export function cleEcartWeekend(ini, semaine) {
   return `${ini}|WE|${semaine}`
 }
 
+// Clé d'écartement d'un souhait de congé hors vacances scolaires (semaine ISO).
+export function cleEcartVacances(ini, semaine) {
+  return `${ini}|VAC|${semaine}`
+}
+
 const estWeekend = (date) => {
   const j = date.getUTCDay()
   return j === 0 || j === 6 // dimanche ou samedi

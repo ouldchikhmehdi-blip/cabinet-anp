@@ -257,6 +257,14 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [objectifs])
 
+  // Compteur de week-ends par associé sur la période (week-ends imposés par Noël inclus → taux réel).
+  const compteParAssocie = useMemo(() => {
+    const m = {}
+    for (const ini of ASSOCIES) m[ini] = 0
+    for (const w of weekends) { const ini = weekendsNoel[w.num] ?? affectations[w.num]; if (ini && m[ini] != null) m[ini]++ }
+    return m
+  }, [weekends, affectations, weekendsNoel])
+
   // Analyse des conflits sur la plage courante.
   const analyses = useMemo(() => {
     const m = {}
@@ -391,6 +399,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       padding: '12px 0 4px', marginTop: 4, borderTop: '0.5px solid var(--color-border)',
     },
     etat: (couleur) => ({ fontSize: 12, color: couleur, display: 'flex', alignItems: 'center', gap: 6 }),
+    compteurs: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 },
+    chip: { fontSize: 12, padding: '6px 10px', borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-surface)' },
   }
 
   if (!estFaiseur) {
@@ -468,6 +478,16 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
           <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
 
           <PanneauConflits conflits={conflits} />
+
+          {/* Compteurs par associé (week-ends attribués / objectif G week-end) */}
+          <div style={s.compteurs}>
+            {ASSOCIES.map(ini => (
+              <span key={ini} style={s.chip}>
+                <strong>{ini}</strong> : {compteParAssocie[ini]}
+                {objectifGW[ini] != null && <span style={{ color: 'var(--color-text-tertiary)' }}> / {objectifGW[ini]}</span>}
+              </span>
+            ))}
+          </div>
 
           {/* Récap des conflits */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
