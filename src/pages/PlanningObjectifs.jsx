@@ -7,7 +7,7 @@ import { chargerObjectifs, sauverObjectifs } from '../utils/objectifsApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 
-export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -78,10 +78,15 @@ export default function PlanningObjectifs({ annee: anneeProp, onChangeAnnee, onS
       await sauverObjectifs(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
   async function exporter() {
     setErreur(null); setExportEnCours(true)

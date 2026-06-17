@@ -33,7 +33,7 @@ const ENCRE = 'rgba(0,0,0,0.85)'
 const BORD = 'rgba(0,0,0,0.18)'
 const fondCss = (fond) => (fond ? '#' + COULEURS_GRILLE[fond] : '#fff')
 
-export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -156,10 +156,15 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
       await sauverNoel(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
   // ── Styles ──
   const s = {

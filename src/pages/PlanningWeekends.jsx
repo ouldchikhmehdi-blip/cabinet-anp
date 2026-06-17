@@ -27,7 +27,7 @@ const COULEUR = {
   G: { bg: '#FBF3D0', fg: '#9A7B0A' },                             // garde = jaune
 }
 
-export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -347,10 +347,15 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       await sauverWeekends(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
 
   async function exporter() {

@@ -27,7 +27,7 @@ const JOURS_FIXES = [
 ]
 const DEFAUT_SEMAINE = { jeu: 'G', ven: 'A', sam: 'A', dim: 'G' }
 
-export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -148,10 +148,15 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee, on
       await sauverCalendrier(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
   // ── Styles ──
   const s = {

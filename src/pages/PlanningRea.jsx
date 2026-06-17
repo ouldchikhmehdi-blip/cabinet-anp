@@ -16,7 +16,7 @@ import BoutonVerrou from '../components/planning/BoutonVerrou'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
-export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -221,10 +221,15 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut 
       await sauverRea(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
   async function exporter() {
     setErreur(null); setExportEnCours(true)

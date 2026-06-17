@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
+import { definirGardeNavigation } from '../utils/gardeNavigation'
 import PlanningCalendrier from './PlanningCalendrier'
 import PlanningObjectifs from './PlanningObjectifs'
 import PlanningWeekends from './PlanningWeekends'
@@ -37,6 +38,36 @@ export default function PlanningConstruction() {
   const statutRea = useCallback(st => setStatuts(p => ({ ...p, rea: st })), [])
   const statutNoel = useCallback(st => setStatuts(p => ({ ...p, noel: st })), [])
   const statutSemaine = useCallback(st => setStatuts(p => ({ ...p, semaine: st })), [])
+
+  // Sauvegarde de l'étape courante, enregistrée par la sous-page montée (cf. onRegisterSave).
+  const saveRef = useRef(null)
+  const registerSave = useCallback(fn => { saveRef.current = fn }, [])
+
+  // Navigation gardée : si l'étape courante a des modifs non enregistrées, on demande confirmation.
+  const [pendingIdx, setPendingIdx] = useState(null) // index d'étape cible en attente (modal ouvert)
+  const aModifie = (idx = i) => statuts[ETAPES[idx].id] === 'modifie'
+
+  function tenterNav(idx) {
+    if (idx === i || idx < 0 || idx >= ETAPES.length) return
+    if (aModifie()) setPendingIdx(idx)
+    else setI(idx)
+  }
+
+  async function enregistrerEtContinuer() {
+    const cible = pendingIdx
+    const ok = await saveRef.current?.()
+    if (ok !== false) setI(cible) // succès (ou pas de sauvegarde) → on navigue ; échec → on reste
+    setPendingIdx(null)
+  }
+
+  // Garde la sortie de « Construction planning » via la sidebar (réutilise gardeNavigation/App).
+  useEffect(() => {
+    definirGardeNavigation(() =>
+      !ETAPES.some(e => statuts[e.id] === 'modifie') ||
+      window.confirm('Vous avez des modifications non enregistrées dans la construction du planning. Quitter sans enregistrer ?')
+    )
+    return () => definirGardeNavigation(null)
+  }, [statuts])
 
   // ── Styles ──
   const s = {
@@ -81,6 +112,30 @@ export default function PlanningConstruction() {
       border: 'none', background: 'var(--color-primary)', color: '#fff',
       opacity: off ? 0.4 : 1,
     }),
+    overlay: {
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    },
+    modal: {
+      background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)', padding: 24, maxWidth: 460, width: '100%',
+      boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
+    },
+    modalTitre: { fontSize: 16, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 },
+    modalTexte: { fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5, marginBottom: 20 },
+    modalActions: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
+    btnPrimaire: {
+      padding: '9px 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-md)',
+      border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer',
+    },
+    btnDanger: {
+      padding: '9px 16px', fontSize: 13, fontWeight: 500, borderRadius: 'var(--radius-md)',
+      border: '0.5px solid var(--color-danger)', background: 'transparent', color: 'var(--color-danger)', cursor: 'pointer',
+    },
+    btnNeutre: {
+      padding: '9px 16px', fontSize: 13, fontWeight: 500, borderRadius: 'var(--radius-md)',
+      border: '0.5px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer',
+    },
   }
 
   if (!estFaiseur) {
@@ -109,7 +164,7 @@ export default function PlanningConstruction() {
             const statut = statuts[e.id]
             const contenu = statut === 'enregistre' ? '✓' : statut === 'modifie' ? '•' : idx + 1
             return (
-              <button key={e.id} type="button" onClick={() => setI(idx)} style={s.pill(idx === i, statut === 'enregistre')}>
+              <button key={e.id} type="button" onClick={() => tenterNav(idx)} style={s.pill(idx === i, statut === 'enregistre')}>
                 <span style={s.num(statut)}>{contenu}</span>
                 {e.titre}
               </button>
@@ -117,22 +172,43 @@ export default function PlanningConstruction() {
           })}
         </div>
         <div style={s.nav}>
-          <button type="button" disabled={premier} onClick={() => setI(i - 1)} style={s.boutonNav(premier)}>
+          <button type="button" disabled={premier} onClick={() => tenterNav(i - 1)} style={s.boutonNav(premier)}>
             ← Précédent
           </button>
-          <button type="button" disabled={dernier} onClick={() => setI(i + 1)} style={s.boutonSuivant(dernier)}>
+          <button type="button" disabled={dernier} onClick={() => tenterNav(i + 1)} style={s.boutonSuivant(dernier)}>
             Suivant →
           </button>
         </div>
       </div>
 
-      {etape.id === 'calendrier' && <PlanningCalendrier annee={annee} onChangeAnnee={setAnnee} onStatut={statutCalendrier} />}
-      {etape.id === 'objectifs' && <PlanningObjectifs annee={annee} onChangeAnnee={setAnnee} onStatut={statutObjectifs} />}
-      {etape.id === 'weekends' && <PlanningWeekends annee={annee} onChangeAnnee={setAnnee} onStatut={statutWeekends} />}
-      {etape.id === 'vacances' && <PlanningVacances annee={annee} onChangeAnnee={setAnnee} onStatut={statutVacances} />}
-      {etape.id === 'rea' && <PlanningRea annee={annee} onChangeAnnee={setAnnee} onStatut={statutRea} />}
-      {etape.id === 'noel' && <PlanningNoel annee={annee} onChangeAnnee={setAnnee} onStatut={statutNoel} />}
-      {etape.id === 'semaine' && <PlanningSemaines annee={annee} onChangeAnnee={setAnnee} onStatut={statutSemaine} />}
+      {etape.id === 'calendrier' && <PlanningCalendrier annee={annee} onChangeAnnee={setAnnee} onStatut={statutCalendrier} onRegisterSave={registerSave} />}
+      {etape.id === 'objectifs' && <PlanningObjectifs annee={annee} onChangeAnnee={setAnnee} onStatut={statutObjectifs} onRegisterSave={registerSave} />}
+      {etape.id === 'weekends' && <PlanningWeekends annee={annee} onChangeAnnee={setAnnee} onStatut={statutWeekends} onRegisterSave={registerSave} />}
+      {etape.id === 'vacances' && <PlanningVacances annee={annee} onChangeAnnee={setAnnee} onStatut={statutVacances} onRegisterSave={registerSave} />}
+      {etape.id === 'rea' && <PlanningRea annee={annee} onChangeAnnee={setAnnee} onStatut={statutRea} onRegisterSave={registerSave} />}
+      {etape.id === 'noel' && <PlanningNoel annee={annee} onChangeAnnee={setAnnee} onStatut={statutNoel} onRegisterSave={registerSave} />}
+      {etape.id === 'semaine' && <PlanningSemaines annee={annee} onChangeAnnee={setAnnee} onStatut={statutSemaine} onRegisterSave={registerSave} />}
+
+      {pendingIdx !== null && (
+        <div style={s.overlay} role="dialog" aria-modal="true">
+          <div style={s.modal}>
+            <div style={s.modalTitre}>Modifications non enregistrées</div>
+            <div style={s.modalTexte}>
+              Vous avez des modifications non enregistrées sur l'étape « {etape.titre} ».
+              Que voulez-vous faire avant de passer à « {ETAPES[pendingIdx].titre} » ?
+            </div>
+            <div style={s.modalActions}>
+              <button type="button" onClick={() => setPendingIdx(null)} style={s.btnNeutre}>Annuler</button>
+              <button type="button" onClick={() => { const c = pendingIdx; setPendingIdx(null); setI(c) }} style={s.btnDanger}>
+                Quitter sans enregistrer
+              </button>
+              <button type="button" onClick={enregistrerEtContinuer} style={s.btnPrimaire}>
+                Enregistrer et continuer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

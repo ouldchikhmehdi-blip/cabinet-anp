@@ -41,7 +41,7 @@ const LIGNES_BILAN = [
 
 // Étape « En semaine » : trame par semaine + remplissage des colonnes (qui occupe quoi), avec
 // équilibre des gardes de semaine (période molle / année dure) et espacement (≥ 1 semaine).
-export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -519,10 +519,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await sauverSemaines(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
   // Affectation quotidienne par semaine (période) pour l'export : { num: { ini: colObject } }.
   // colObject = la colonne de la trame attribuée à l'associé (porte lun..ven + service).

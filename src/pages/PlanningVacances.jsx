@@ -16,7 +16,7 @@ import PanneauVacances from '../components/planning/PanneauVacances'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
-export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onStatut } = {}) {
+export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
@@ -283,10 +283,15 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       await sauverVacances(annee, data, session.user.id)
       setEnregistre(true); onStatut?.('enregistre')
       setTimeout(() => setEnregistre(false), 3000)
+      return true
     } catch {
       setErreur('Enregistrement impossible (réservé au faiseur).')
+      return false
     }
   }
+
+  // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
+  useEffect(() => { onRegisterSave?.(enregistrer) })
 
   async function exporter() {
     setErreur(null); setExportEnCours(true)
