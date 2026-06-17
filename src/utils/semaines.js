@@ -250,6 +250,7 @@ export function proposerSemaines({
   semainesPlage, annee, calendrier, trameInfo, contexteAmont, desiderata,
   gardesInitiales = {}, compteAnneeInitial = {}, fixes = {},
   aVenInitial = {}, gVenInitial = {}, recupInitial = {}, feriesOffsetsParSemaine = {},
+  objAVen = {}, objGVen = {},
 }) {
   const { vacances = {} } = contexteAmont
   const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, demandeParAssocie = {} } = desiderata
@@ -264,6 +265,19 @@ export function proposerSemaines({
     cAV[ini] = aVenInitial[ini] ?? 0
     cGV[ini] = gVenInitial[ini] ?? 0
     cRJ[ini] = recupInitial[ini] ?? 0
+  }
+
+  // Comparateur vendredi : calage SOUPLE sur l'objectif A/G (objAVen/objGVen). On évite de dépasser
+  // l'objectif quand un autre candidat est sous le sien (over), puis on privilégie le plus grand besoin
+  // restant (deficit) ; à défaut d'objectif, repli sur l'équilibrage (moins de vendredis d'abord). Jamais
+  // excluant → aucune colonne de service n'est laissée vide. cAV/cGV sont lus à l'appel (valeurs courantes).
+  const cmpVendredi = (a, b, rvCol) => {
+    if (rvCol !== 'A' && rvCol !== 'G') return 0
+    const cVen = rvCol === 'A' ? cAV : cGV
+    const objV = rvCol === 'A' ? objAVen : objGVen
+    const over = (x) => (objV[x] != null && cVen[x] >= objV[x]) ? 1 : 0
+    const deficit = (x) => (objV[x] != null ? objV[x] - cVen[x] : 0)
+    return (over(a) - over(b)) || (deficit(b) - deficit(a)) || (cVen[a] - cVen[b])
   }
 
   const out = {}
@@ -332,12 +346,11 @@ export function proposerSemaines({
       if (!cands.length) cands = [...assocLibres] // repli : aucun non-interdit dispo (cas signalé en alerte)
       const rvCol = roleVendrediCol(trame, c, num, calendrier)
       const recupCol = recupColCount(trame, c, feriesOffsets)
-      const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
       const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
       const gardeColP0 = datesGardeSemaine(trame, c, annee, num, calendrier).length > 0
       cands.sort((a, b) =>
         (gardeColP0 ? (compteAnnee[a] - compteAnnee[b]) : 0) || // si la colonne génère aussi une garde : gardes d'abord
-        (venRel(a) - venRel(b)) ||                              // équilibre A/G vendredi
+        cmpVendredi(a, b, rvCol) ||                             // calage A/G vendredi sur l'objectif (souple)
         (rjRel(a) - rjRel(b)) ||
         (compteAnnee[a] - compteAnnee[b]) ||
         (comptePeriode[a] - comptePeriode[b]) ||
@@ -359,11 +372,10 @@ export function proposerSemaines({
         // Collision (deux associés veulent la même colonne) : un seul l'obtient (le moins chargé).
         const rvCol = roleVendrediCol(trame, c, num, calendrier)
         const recupCol = recupColCount(trame, c, feriesOffsets)
-        const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
         const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
         cands.sort((a, b) =>
           (compteAnnee[a] - compteAnnee[b]) ||
-          (venRel(a) - venRel(b)) ||
+          cmpVendredi(a, b, rvCol) ||
           (rjRel(a) - rjRel(b)) ||
           (comptePeriode[a] - comptePeriode[b]) ||
           (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
@@ -397,7 +409,6 @@ export function proposerSemaines({
       // Équilibres additionnels propres à cette colonne (vendredi A/G, récup JF), après les gardes de semaine.
       const rvCol = roleVendrediCol(trame, c, num, calendrier)
       const recupCol = recupColCount(trame, c, feriesOffsets)
-      const venRel = (x) => (rvCol === 'A' ? cAV[x] : rvCol === 'G' ? cGV[x] : 0)
       const rjRel = (x) => (recupCol > 0 ? cRJ[x] : 0)
       // Espacement : éviter une garde rapprochée pour tout le monde ; si inévitable (arbitrage), la charger
       // sur le PLUS demandeur (équité : qui a formulé le plus de souhaits absorbe les gardes rapprochées).
@@ -407,7 +418,7 @@ export function proposerSemaines({
       const cands = filtrerVendredi(c, [...assocLibres])
       cands.sort((a, b) =>
         (compteAnnee[a] - compteAnnee[b]) ||                 // gardes de semaine — priorité n°1
-        (venRel(a) - venRel(b)) ||                           // A ou G vendredi (selon le type du vendredi)
+        cmpVendredi(a, b, rvCol) ||                          // A ou G vendredi : calage objectif (souple)
         (rjRel(a) - rjRel(b)) ||                             // récup jour férié
         (comptePeriode[a] - comptePeriode[b]) ||
         ((reposCouvre(c, b) ? 1 : 0) - (reposCouvre(c, a) ? 1 : 0)) ||

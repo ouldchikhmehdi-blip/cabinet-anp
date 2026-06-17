@@ -7,6 +7,7 @@ import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, def
 import { uploaderArchive } from '../utils/archivesApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
+import { chargerCompteursRef } from '../utils/compteursRefApi'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea } from '../utils/reaApi'
@@ -58,6 +59,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [vacancesData, setVacancesData] = useState(null)
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
+  const [compteursRef, setCompteursRef] = useState(null) // socle « déjà réalisé » (parties faites dans Excel)
   const [weekends, setWeekends] = useState(null)
   const [reaData, setReaData] = useState(null)
   const [noelData, setNoelData] = useState(null) // grille de Noël (15 jours fournis tels quels)
@@ -109,12 +111,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     let annule = false
     Promise.all([
       chargerTrames(annee), chargerVacances(annee), chargerCalendrier(annee), chargerSemaines(annee),
-      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee),
+      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee), chargerCompteursRef(annee),
     ])
-      .then(([tr, vac, cal, sem, obj, we, rea, noel]) => {
+      .then(([tr, vac, cal, sem, obj, we, rea, noel, cref]) => {
         if (annule) return
         setTramesData(tr); setVacancesData(vac); setCalendrier(cal); setData(sem)
-        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel)
+        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel); setCompteursRef(cref)
         setHistorique([]); setSelEchange(null)
         onStatut?.('vierge')
       })
@@ -502,6 +504,33 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     setSelEchange({ num, ini })
   }
 
+  // Objectifs A/G vendredi par associé (étape 2), pour le calage SOUPLE de la proposition « En semaine ».
+  const objAVen = useMemo(() => {
+    const m = {}
+    for (const ini of ASSOCIES) { const v = objectifs?.valeurs?.[ini]?.a_vendredi; if (v != null) m[ini] = v }
+    return m
+  }, [objectifs])
+  const objGVen = useMemo(() => {
+    const m = {}
+    for (const ini of ASSOCIES) { const v = objectifs?.valeurs?.[ini]?.g_vendredi; if (v != null) m[ini] = v }
+    return m
+  }, [objectifs])
+
+  // A/G vendredi DÉJÀ réalisés par associé (Compteurs de référence) : enrichit le socle annuel pour que le
+  // calage vendredi reflète le déjà-fait des parties faites dans Excel. Map vide tant qu'aucune référence.
+  const refAVen = useMemo(() => {
+    const m = {}
+    if (!compteursRef?.importeLe) return m
+    for (const ini of ASSOCIES) m[ini] = compteursRef?.compteurs?.[ini]?.aVendredi ?? 0
+    return m
+  }, [compteursRef])
+  const refGVen = useMemo(() => {
+    const m = {}
+    if (!compteursRef?.importeLe) return m
+    for (const ini of ASSOCIES) m[ini] = compteursRef?.compteurs?.[ini]?.gVendredi ?? 0
+    return m
+  }, [compteursRef])
+
   // Monte les entrées communes aux moteurs (trameInfo + socle d'équilibre annuel + verrous) à partir du state.
   function monterEntreesMoteur(prev) {
     const debut = recueil.semaine_debut, fin = recueil.semaine_fin
@@ -521,6 +550,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     for (const ini of ASSOCIES) gardesInitiales[ini] = [...(gWE[ini] ?? []), ...(gSemHors.dates[ini] ?? [])]
     // Socle hors-plage des équilibres additionnels (A vendredi, G vendredi, récup JF) pour l'équilibre annuel.
     const vrHors = bilanVendrediRecupParAssocie(horsNums, calendrier, (n) => trameInfo(n)?.trame ?? null, contexteAmont, prev.affectations ?? {}, feriesOffsetsParSemaine)
+    // Référence (parties faites dans Excel) ajoutée au socle A/G vendredi : sur la 3ᵉ période les semaines
+    // hors-plage en base sont vides, le socle = référence ⇒ pas de double-comptage.
+    const aVenInitial = {}; const gVenInitial = {}
+    for (const ini of ASSOCIES) {
+      aVenInitial[ini] = (vrHors.aVen[ini] ?? 0) + (refAVen[ini] ?? 0)
+      gVenInitial[ini] = (vrHors.gVen[ini] ?? 0) + (refGVen[ini] ?? 0)
+    }
     // Verrous de la plage = colonnes forcées à préserver.
     const fixes = {}
     for (const sem of semaines) {
@@ -532,7 +568,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
     return {
       trameInfo, gardesInitiales, compteAnneeInitial: gSemHors.comptes, fixes,
-      aVenInitial: vrHors.aVen, gVenInitial: vrHors.gVen, recupInitial: vrHors.recup,
+      aVenInitial, gVenInitial, recupInitial: vrHors.recup,
     }
   }
 
@@ -547,6 +583,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, demandeParAssocie },
         gardesInitiales, compteAnneeInitial, fixes,
         aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
+        objAVen, objGVen,
       })
       const aff = { ...(prev.affectations ?? {}) }
       for (const sem of semaines) {

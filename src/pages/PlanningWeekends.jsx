@@ -3,9 +3,10 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, listerSemaines } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
+import { chargerCompteursRef } from '../utils/compteursRefApi'
 import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerTrames } from '../utils/tramesApi'
@@ -42,6 +43,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [desideratas, setDesideratas] = useState([]) // lignes brutes du recueil sélectionné
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
+  const [compteursRef, setCompteursRef] = useState(null) // socle « déjà réalisé » (parties faites dans Excel)
   const [vacancesData, setVacancesData] = useState(null) // { v, vacances: { num: [ini] } }
   const [tramesData, setTramesData] = useState(null)     // { v, principaleId, trames: [...] }
   const [noelData, setNoelData] = useState(null)         // grille de Noël (week-ends de garde imposés)
@@ -59,7 +61,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         if (annule) return
         const normaux = rs.filter(r => r.type !== 'ete')
         setRecueils(normaux)
-        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : (normaux[0]?.id ?? null)))
+        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : idRecueilPlusRecent(normaux)))
         setProfils(ps)
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
@@ -70,10 +72,10 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee), chargerNoel(annee)])
-      .then(([cal, obj, we, vac, tr, noel]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee), chargerNoel(annee), chargerCompteursRef(annee)])
+      .then(([cal, obj, we, vac, tr, noel, cref]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); setNoelData(noel); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); setNoelData(noel); setCompteursRef(cref); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -258,6 +260,15 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [objectifs])
 
+  // Week-ends DÉJÀ réalisés par associé (Compteurs de référence), socle du plafond dur. Map vide tant
+  // qu'aucune référence n'est enregistrée → la proposition retombe sur son décompte hors-plage habituel.
+  const dejaFaitGW = useMemo(() => {
+    const m = {}
+    if (!compteursRef?.importeLe) return m
+    for (const ini of ASSOCIES) m[ini] = compteursRef?.compteurs?.[ini]?.gWeekend ?? 0
+    return m
+  }, [compteursRef])
+
   // Compteur de week-ends par associé sur la période (week-ends imposés par Noël inclus → taux réel).
   const compteParAssocie = useMemo(() => {
     const m = {}
@@ -337,7 +348,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       // Les week-ends de garde imposés par Noël ne sont PAS réattribués ni persistés ici, mais comptent
       // dans l'équilibrage des autres (ajoutés au contexte hors-plage de proposerWeekends).
       const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]) && !weekendsNoel[w.num])
-      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours)
+      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW)
       return { ...prev, affectations: { ...fixes, ...proposees } }
     })
   }
@@ -471,6 +482,13 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
           {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         </div>
       </div>
+
+      {recueils.length > 1 && recueilId != null && idRecueilPlusRecent(recueils) === recueilId
+        && Object.keys(objectifGW).length > 0 && !compteursRef?.importeLe && (
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+          Compteurs de référence non saisis — le calage sur l'objectif part de 0. Renseignez-les dans « Ouverture du planning » pour respecter l'objectif annuel sur cette période.
+        </div>
+      )}
 
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>

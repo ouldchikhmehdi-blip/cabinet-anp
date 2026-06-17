@@ -95,13 +95,20 @@ export function impactJourOffWE(num, ini, joursOffDetailParAssocie = {}, avantRe
 // - colonnesSouhaiteesParAssocie : { ini: { num: colIndex } } (souhait de colonne)
 // - joursOffDetailParAssocie + avantReposJours/apresReposJours : pour éviter de bloquer un jour off
 //   en semaine via la colonne avant/après-WE (et privilégier un week-end qui le satisfait).
+// - dejaFait : { ini: number } week-ends DÉJÀ réalisés (Compteurs de référence, parties faites dans Excel) ;
+//   quand fourni, sert de SOCLE du compteur de charge → plafond DUR « objectif annuel » respecté sans écart.
 // Renvoie un objet { num: ini } limité aux week-ends de la plage.
-export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null) {
+export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null, dejaFait = {}) {
   const resultat = {}
-  // Compteur courant (hors-plage + ce qu'on attribue), pour l'équilibrage et l'espacement.
+  // Compteur courant (hors-plage + ce qu'on attribue) : sert UNIQUEMENT à l'espacement.
   const courant = { ...affectationsHorsPlage }
+  // Compteur de charge (équilibrage + plafond) : socle = référence si fournie (elle inclut déjà été/Noël →
+  // pas de double-comptage), sinon repli sur le décompte hors-plage en base (comportement antérieur).
   const compte = {}
-  for (const ini of ASSOCIES) compte[ini] = semainesDe(ini, courant).length
+  for (const ini of ASSOCIES) compte[ini] = dejaFait[ini] != null ? dejaFait[ini] : semainesDe(ini, courant).length
+
+  // Plafond DUR : un associé ayant atteint son objectif annuel n'est plus candidat (sans objectif → illimité).
+  const sousPlafond = (ini) => objectifParAssocie[ini] == null || compte[ini] < objectifParAssocie[ini]
 
   const nums = weekendsPlage.map(w => w.num).sort((a, b) => a - b)
   for (const num of nums) {
@@ -114,12 +121,13 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     const bloque = (ini) => impactJourOffWE(num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours).bloque
     const satisfait = (ini) => impactJourOffWE(num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours).satisfait
 
-    // Tiers : on évite en priorité de bloquer un jour off en semaine (via colonne avant/après-WE).
-    let candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini) && espacementOk(ini) && !bloque(ini))
-    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini) && !bloque(ini)) // relâche l'espacement
-    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => dispo(ini) && !vacancesCollee(ini)) // relâche le non-blocage
-    if (candidats.length === 0) candidats = ASSOCIES.filter(dispo) // relâche la garde collée
-    if (candidats.length === 0) continue // personne de dispo → laissé vide, le faiseur tranche
+    // Le plafond DUR (sousPlafond) est appliqué à CHAQUE niveau : on relâche les contraintes souples
+    // (espacement, blocage, garde collée) mais JAMAIS l'objectif annuel.
+    let candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini) && !vacancesCollee(ini) && espacementOk(ini) && !bloque(ini))
+    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini) && !vacancesCollee(ini) && !bloque(ini)) // relâche l'espacement
+    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini) && !vacancesCollee(ini)) // relâche le non-blocage
+    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini)) // relâche la garde collée
+    if (candidats.length === 0) continue // personne sous plafond/dispo → laissé vide, le faiseur tranche
 
     // Équilibrage d'abord ; synergie (le week-end satisfait un jour off) ; pénalité souhait de colonne ;
     // déficit vs objectif ; puis ordre figé.

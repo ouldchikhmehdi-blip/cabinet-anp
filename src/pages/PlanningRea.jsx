@@ -3,9 +3,10 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
+import { chargerCompteursRef } from '../utils/compteursRefApi'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea, sauverRea } from '../utils/reaApi'
@@ -31,6 +32,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   const [desideratas, setDesideratas] = useState([])
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
+  const [compteursRef, setCompteursRef] = useState(null) // socle « déjà réalisé » (parties faites dans Excel)
   const [weekends, setWeekends] = useState(null)
   const [vacancesData, setVacancesData] = useState(null)
   const [data, setData] = useState(null)        // { v, rea: { num: ini } } (toute l'année)
@@ -47,7 +49,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
         if (annule) return
         const normaux = rs.filter(r => r.type !== 'ete')
         setRecueils(normaux)
-        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : (normaux[0]?.id ?? null)))
+        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : idRecueilPlusRecent(normaux)))
         setProfils(ps)
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
@@ -58,8 +60,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee)])
-      .then(([cal, obj, we, vac, reaData]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee), chargerCompteursRef(annee)])
+      .then(([cal, obj, we, vac, reaData, cref]) => {
         if (annule) return
         // Vacances = poste exclusif (absolu) : on écarte toute réa tombant sur une semaine
         // de congé de l'associé (purge des conflits résiduels au chargement).
@@ -68,7 +70,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
         for (const [num, ini] of Object.entries(reaData.rea ?? {})) {
           if (!vacs[Number(num)]?.includes(ini)) reaPur[Number(num)] = ini
         }
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac)
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setCompteursRef(cref)
         setData({ ...reaData, rea: reaPur }); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
@@ -128,6 +130,15 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     for (const ini of ASSOCIES) { const v = objectifs?.valeurs?.[ini]?.rea; if (v != null) m[ini] = v }
     return m
   }, [objectifs])
+
+  // Semaines de réa DÉJÀ réalisées par associé (Compteurs de référence), socle du plafond dur. Map vide tant
+  // qu'aucune référence n'est enregistrée → repli sur le décompte hors-plage habituel.
+  const dejaFaitRea = useMemo(() => {
+    const m = {}
+    if (!compteursRef?.importeLe) return m
+    for (const ini of ASSOCIES) m[ini] = compteursRef?.compteurs?.[ini]?.rea ?? 0
+    return m
+  }, [compteursRef])
 
   // Bilan « Réalisé à ce stade » pour l'export Excel : à l'étape Réa, seuls G week-end, Réa et
   // Semaines de vacances sont connus ; A/G vendredi, gardes de semaine et récup JF (étape En semaine)
@@ -223,7 +234,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
         if (n < debut || n > fin || ver.has(n)) fixes[n] = ini
       }
       const aProposer = semaines.filter(s => !(ver.has(s.num) && prev.rea[s.num]))
-      const proposees = proposerRea(aProposer, joursOffParAssocie, weekendAff, objectifRea, fixes, vacancesParSemaine, colonnesSouhaiteesParAssocie)
+      const proposees = proposerRea(aProposer, joursOffParAssocie, weekendAff, objectifRea, fixes, vacancesParSemaine, colonnesSouhaiteesParAssocie, dejaFaitRea)
       return { ...prev, rea: { ...fixes, ...proposees } }
     })
   }
@@ -352,6 +363,13 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
           {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         </div>
       </div>
+
+      {recueils.length > 1 && recueilId != null && idRecueilPlusRecent(recueils) === recueilId
+        && Object.keys(objectifRea).length > 0 && !compteursRef?.importeLe && (
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+          Compteurs de référence non saisis — le calage sur l'objectif part de 0. Renseignez-les dans « Ouverture du planning » pour respecter l'objectif annuel sur cette période.
+        </div>
+      )}
 
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>

@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends } from '../utils/weekendsApi'
@@ -47,7 +47,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         if (annule) return
         const normaux = rs.filter(r => r.type !== 'ete')
         setRecueils(normaux)
-        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : (normaux[0]?.id ?? null)))
+        setRecueilId(prev => (normaux.some(r => r.id === prev) ? prev : idRecueilPlusRecent(normaux)))
         setProfils(ps)
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })

@@ -53,12 +53,21 @@ export function analyserRea(num, ini, joursOffParAssocie, weekendAff = {}, vacan
 // - objectifRea : { ini: number } objectif « Réa » (étape 2), si renseigné
 // - reaHorsPlage : { num: ini } des autres périodes (pour l'équilibrage global)
 // - vacancesParSemaine : { num: [inis] } — un associé en vacances n'est jamais mis en réa
+// - dejaFait : { ini: number } semaines de réa DÉJÀ réalisées (Compteurs de référence) ; quand fourni, sert de
+//   SOCLE du compteur → plafond DUR « objectif annuel » respecté sans écart.
 // Renvoie { num: ini } pour la plage.
-export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, objectifRea = {}, reaHorsPlage = {}, vacancesParSemaine = {}, colonnesSouhaiteesParAssocie = {}) {
+export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, objectifRea = {}, reaHorsPlage = {}, vacancesParSemaine = {}, colonnesSouhaiteesParAssocie = {}, dejaFait = {}) {
   const resultat = {}
+  // Décompte hors-plage (autres périodes en base) — repli quand aucune référence n'est fournie.
+  const horsCompte = {}
+  for (const ini of ASSOCIES) horsCompte[ini] = 0
+  for (const ini of Object.values(reaHorsPlage)) if (horsCompte[ini] != null) horsCompte[ini]++
+  // Socle = référence si fournie (inclut déjà été/Noël → pas de double-comptage), sinon décompte hors-plage.
   const compte = {}
-  for (const ini of ASSOCIES) compte[ini] = 0
-  for (const ini of Object.values(reaHorsPlage)) if (compte[ini] != null) compte[ini]++
+  for (const ini of ASSOCIES) compte[ini] = dejaFait[ini] != null ? dejaFait[ini] : horsCompte[ini]
+
+  // Plafond DUR : un associé ayant atteint son objectif annuel n'est plus candidat (sans objectif → illimité).
+  const sousPlafond = (ini) => objectifRea[ini] == null || compte[ini] < objectifRea[ini]
 
   const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
   for (const num of nums) {
@@ -67,11 +76,12 @@ export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, 
     const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
 
     // Vacances = poste exclusif → on n'attribue JAMAIS la réa à un associé en congé.
-    const base = ASSOCIES.filter(ini => !vacancesParSemaine?.[num]?.includes(ini))
+    // Plafond DUR appliqué à chaque niveau (jamais relâché) ; pool capé vide → semaine laissée vide.
+    const base = ASSOCIES.filter(ini => sousPlafond(ini) && !vacancesParSemaine?.[num]?.includes(ini))
     let candidats = base.filter(ini => sansJourOff(ini) && sansGarde(ini))
     if (candidats.length === 0) candidats = base.filter(sansGarde)   // relâche le jour off (garde le repos)
     if (candidats.length === 0) candidats = base                     // relâche aussi le repos (exception)
-    if (candidats.length === 0) continue                             // tout le monde en vacances → vide
+    if (candidats.length === 0) continue                             // tous au plafond / en vacances → vide
     // Équilibrage : moins de réa d'abord ; on pénalise un souhait de colonne (le mettre en réa le
     // contredit) ; départage par déficit vs objectif ; puis ordre figé.
     candidats.sort((a, b) => {
