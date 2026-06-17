@@ -4,7 +4,7 @@
 // Couleurs gérées via ExcelJS (la lib xlsx communautaire ne sait pas colorer).
 // ============================================================
 import ExcelJS from 'exceljs'
-import { listerSemaines, joursFeriesFR, formatDateLongueFR, moisAnneeFR, parseISO, numeroSemaineISO } from './calendrier'
+import { listerSemaines, joursFeriesFR, formatDateLongueFR, moisAnneeFR, parseISO, numeroSemaineISO, premiereSemainePlanning } from './calendrier'
 import { ASSOCIES } from '../data/associes'
 import {
   COULEURS_GRILLE, ctxJour, celluleAssocieJour, celluleRemplacantJour, celluleGroupeJour, celluleDateJour,
@@ -186,10 +186,12 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
   const semainesNoel = new Set(joursNoel.map(j => numeroSemaineISO(parseISO(j.iso))))
 
-  // Tous les exports couvrent l'ANNÉE ENTIÈRE : la colonne de gauche déroule toutes les dates en continu
-  // (cases associés vides là où il n'y a pas de données), avec en-têtes mensuels et bloc Noël à la fin.
-  // `periode` ne borne donc plus le contenu (il ne sert plus qu'au nom de fichier).
-  const semaines = listerSemaines(annee).filter(s => !semainesNoel.has(s.num))
+  // Tous les exports couvrent l'ANNÉE ENTIÈRE à partir du début du planning (après les vacances de Noël :
+  // S1 et bloc scolaire de tête exclus, ils relèvent de l'année précédente) : la colonne de gauche déroule
+  // les dates en continu (cases associés vides là où il n'y a pas de données), en-têtes mensuels et bloc
+  // Noël à la fin. `periode` ne borne donc plus le contenu (il ne sert plus qu'au nom de fichier).
+  const debutPlanning = premiereSemainePlanning(data.vacancesScolaires ?? [])
+  const semaines = listerSemaines(annee).filter(s => !semainesNoel.has(s.num) && s.num >= debutPlanning)
   let moisPrec = null
   for (const sem of semaines) {
     // Ligne d'en-tête (initiales) à la FRONTIÈRE de semaine : juste avant le lundi, quand le mois du lundi

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint, premiereSemainePlanning } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
@@ -127,9 +127,11 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   // Semaines de la Toussaint : capacité par défaut = 3 (vs 2 pour les autres semaines scolaires).
   const toussaintSet = useMemo(() => new Set(blocToussaint(annee, calendrier?.vacancesScolaires ?? [])), [annee, calendrier])
 
+  // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
+  const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
   const semaines = useMemo(
-    () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
-    [annee, recueil]
+    () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
+    [annee, recueil, debutPlanning]
   )
 
   const vacances = useMemo(() => data?.vacances ?? {}, [data])

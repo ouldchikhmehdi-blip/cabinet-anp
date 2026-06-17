@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { listerSemaines, joursFeriesFR, formatISO, ANNEES } from '../utils/calendrier'
+import { listerSemaines, joursFeriesFR, formatISO, ANNEES, premiereSemainePlanning } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
@@ -40,7 +40,9 @@ export default function PlanningCalendrier({ annee: anneeProp, onChangeAnnee, on
   const [recup, setRecup] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
 
-  const semaines = useMemo(() => listerSemaines(annee), [annee])
+  // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais affichée.
+  const debutPlanning = useMemo(() => premiereSemainePlanning(data?.vacancesScolaires ?? []), [data])
+  const semaines = useMemo(() => listerSemaines(annee).filter(s => s.num >= debutPlanning), [annee, debutPlanning])
 
   // Map date ISO → nom de férié (pour repérer les fériés dans la grille).
   const feriesMap = useMemo(() => {

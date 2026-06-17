@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour, premiereSemainePlanning } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
@@ -213,11 +213,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [desideratas, parUser])
 
+  // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
+  const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
   const semaines = useMemo(
-    () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
-    [annee, recueil]
+    () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
+    [annee, recueil, debutPlanning]
   )
-  const allNums = useMemo(() => listerSemaines(annee).map(s => s.num), [annee])
+  const allNums = useMemo(() => listerSemaines(annee).filter(s => s.num >= debutPlanning).map(s => s.num), [annee, debutPlanning])
 
   // Trame résolue d'une semaine, AVEC repli automatique selon le nombre de vacanciers → { trame,
   // estPrincipale, repli }. Source unique de vérité (affichage, analyses, proposer, export).

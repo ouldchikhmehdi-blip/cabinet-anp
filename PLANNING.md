@@ -264,10 +264,20 @@ Puis, sur cette base :
 
 Chaque étape est un point de contrôle validé avant de continuer.
 
+> **Début de l'année : après les vacances de Noël.** Le planning d'une année commence **toujours** la
+> semaine qui suit les vacances scolaires de Noël. La semaine ISO **1** (lundi fin décembre de l'année
+> précédente) relève du planning de l'année d'avant et **n'apparaît jamais**. Le helper
+> `premiereSemainePlanning(vacancesScolaires)` (`src/utils/calendrier.js`) renvoie la 1ʳᵉ semaine = **S1
+> exclue d'office + bloc de tête en vacances scolaires (Noël), minimum S2**. Appliqué **partout** : Base
+> calendrier, création de recueil (semaine de début proposée/choisissable), onglets week-end / vacances /
+> réa / en semaine (plage bornée par `Math.max(recueil.semaine_debut, debutPlanning)`), et exports
+> (`construireClasseur`). La fin d'année (grille de Noël) est gérée séparément.
+
 > **Export sur l'année entière.** TOUS les exports Excel (Base calendrier, Objectifs, Week-ends, Vacances,
 > Réa, En semaine, et l'onglet **Noël**) déroulent la **colonne des dates sur l'année complète** (cases
 > associés vides là où il n'y a pas de données), avec en-têtes d'initiales à chaque changement de mois et
-> le **bloc Noël tout à la fin**. `construireClasseur` liste toujours `listerSemaines(annee)` ; le paramètre
+> le **bloc Noël tout à la fin**. `construireClasseur` déroule `listerSemaines(annee)` à partir de
+> `premiereSemainePlanning` (après les vacances de Noël) ; le paramètre
 > `periode` ne borne plus le contenu (il ne sert qu'au nom de fichier). L'export de l'onglet Noël passe par
 > `exporterCalendrierExcel` (calendrier complet finissant par Noël), plus par un export Noël autonome.
 

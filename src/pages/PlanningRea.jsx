@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, premiereSemainePlanning } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
@@ -152,9 +152,11 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     return b
   }, [weekendAff, rea, vacancesParSemaine])
 
+  // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
+  const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
   const semaines = useMemo(
-    () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
-    [annee, recueil]
+    () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
+    [annee, recueil, debutPlanning]
   )
 
   const analyses = useMemo(() => {

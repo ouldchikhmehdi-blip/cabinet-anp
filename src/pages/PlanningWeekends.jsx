@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, listerSemaines } from '../utils/calendrier'
+import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, listerSemaines, premiereSemainePlanning } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
@@ -230,9 +230,11 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return { avantReposJours: repos(tp?.avantWE), apresReposJours: repos(tp?.apresWE) }
   }, [tramesData])
 
+  // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
+  const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
   const weekends = useMemo(
-    () => (recueil ? weekendsDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
-    [annee, recueil]
+    () => (recueil ? weekendsDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
+    [annee, recueil, debutPlanning]
   )
 
   const affectations = useMemo(() => data?.affectations ?? {}, [data])

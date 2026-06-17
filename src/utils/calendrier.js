@@ -118,6 +118,18 @@ export function bornesPlage(annee, debut, fin) {
   return { min: formatISO(lundi), max: formatISO(dimanche) }
 }
 
+// ── Première semaine ISO du planning d'une année ──
+// Le planning commence TOUJOURS après les vacances scolaires de Noël. La semaine ISO 1 (lundi fin
+// décembre de l'année précédente) relève du planning de l'année d'avant → exclue d'office. On saute
+// en plus le bloc de tête en vacances scolaires (Noël qui déborde sur janvier). Minimum 2.
+// `vacancesScolaires` : liste plate de n° de semaines ISO (toutes périodes mêlées).
+export function premiereSemainePlanning(vacancesScolaires = []) {
+  const set = new Set((vacancesScolaires ?? []).filter(n => Number.isInteger(n)))
+  let s = 2
+  while (set.has(s)) s++ // étend tant que la semaine de tête est en congé scolaire (bloc de Noël)
+  return s
+}
+
 // ── Bloc des grandes vacances (été) parmi les semaines de vacances scolaires ──
 // `vacancesScolaires` est une liste plate de n° de semaines ISO (toutes périodes mêlées).
 // L'été est le PLUS LONG segment de semaines consécutives (≈ S27→S35, vs 2 semaines pour

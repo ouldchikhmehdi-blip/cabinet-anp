@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ASSOCIES } from '../data/associes'
-import { ANNEES, listerSemaines, blocEteVacancesScolaires } from '../utils/calendrier'
+import { ANNEES, listerSemaines, blocEteVacancesScolaires, premiereSemainePlanning } from '../utils/calendrier'
 import { desiderataVide, normaliser, estRempli, ANNEE_DEFAUT } from '../utils/desiderata'
 import {
   chargerTousDesiderata, chargerProfilsAvecInitiales,
@@ -56,7 +56,9 @@ export default function PlanningSuivi() {
   const [recupVac, setRecupVac] = useState(false)
   const [msgVac, setMsgVac] = useState(null)
 
-  const semainesAnnee = useMemo(() => listerSemaines(annee), [annee])
+  // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) exclue partout.
+  const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
+  const semainesAnnee = useMemo(() => listerSemaines(annee).filter(s => s.num >= debutPlanning), [annee, debutPlanning])
 
   // Profils (indépendant de l'année)
   useEffect(() => {
@@ -290,11 +292,11 @@ export default function PlanningSuivi() {
   const suggestionRecueil = useMemo(() => {
     const dernierFin = recueils.length ? Math.max(...recueils.map(r => r.semaine_fin)) : 0
     const dernierNum = semainesAnnee.length ? semainesAnnee[semainesAnnee.length - 1].num : 53
-    const debut = Math.min(Math.max(dernierFin + 1, 1), dernierNum)
+    const debut = Math.min(Math.max(dernierFin + 1, debutPlanning), dernierNum)
     const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
     const fin = (ete && debut <= ete.fin) ? ete.fin : dernierNum
     return { debut, fin, jusquEte: !!(ete && debut <= ete.fin) }
-  }, [recueils, calendrier, semainesAnnee])
+  }, [recueils, calendrier, semainesAnnee, debutPlanning])
 
   // Valeurs effectives du formulaire : override manuel s'il existe, sinon la suggestion (qui se recalcule
   // au chargement, au changement d'année et après chaque création → propose la partie suivante).
