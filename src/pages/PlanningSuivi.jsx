@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ASSOCIES } from '../data/associes'
-import { ANNEES, listerSemaines } from '../utils/calendrier'
+import { ANNEES, listerSemaines, blocEteVacancesScolaires } from '../utils/calendrier'
 import { desiderataVide, normaliser, estRempli, ANNEE_DEFAUT } from '../utils/desiderata'
 import {
   chargerTousDesiderata, chargerProfilsAvecInitiales,
@@ -145,10 +145,25 @@ export default function PlanningSuivi() {
 
   async function creer() {
     setErreur(null)
-    if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
-    if (semFin < semDebut) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
     try {
-      await creerRecueil({ annee, nom: nom.trim(), semaineDebut: semDebut, semaineFin: semFin, type: estEte ? 'ete' : 'normal', userId: session.user.id })
+      if (estEte) {
+        // Période d'été : la période = vacances scolaires d'été (auto), aucune saisie de semaines.
+        let cal = calendrier
+        if (!cal?.vacancesScolaires?.length) {
+          const base = cal ?? await chargerCalendrier(annee)
+          const weeks = await recupererVacancesScolairesZoneC(annee)
+          cal = { ...base, vacancesScolaires: weeks }
+          await sauverCalendrier(annee, cal, session.user.id)
+          setCalendrier(cal)
+        }
+        const ete = blocEteVacancesScolaires(cal.vacancesScolaires)
+        if (!ete) { setErreur('Impossible de déterminer la période des vacances scolaires d\'été. Récupérez d\'abord les vacances scolaires.'); return }
+        await creerRecueil({ annee, nom: nom.trim() || 'Période d\'été', semaineDebut: ete.debut, semaineFin: ete.fin, type: 'ete', userId: session.user.id })
+      } else {
+        if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
+        if (semFin < semDebut) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
+        await creerRecueil({ annee, nom: nom.trim(), semaineDebut: semDebut, semaineFin: semFin, type: 'normal', userId: session.user.id })
+      }
       setNom('')
       setEstEte(false)
       await rechargerRecueils()
@@ -242,6 +257,8 @@ export default function PlanningSuivi() {
   }, [lignes])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
+  // Aperçu de la période d'été (bloc des grandes vacances) pour le formulaire de création.
+  const apercuEte = useMemo(() => blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? []), [calendrier])
 
   // Écarter / réintégrer un élément de pont (jour off ou week-end) — persisté dans la base calendrier.
   async function toggleEcart(cle) {
@@ -395,21 +412,32 @@ export default function PlanningSuivi() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', borderTop: '0.5px solid var(--color-border)', paddingTop: 16 }}>
           <div>
             <label style={s.label}>Nom du recueil</label>
-            <input type="text" value={nom} onChange={e => setNom(e.target.value)} placeholder="Ex. : 1er trimestre" style={{ ...s.input, width: 200 }} />
+            <input type="text" value={nom} onChange={e => setNom(e.target.value)} placeholder={estEte ? "Période d'été" : "Ex. : 1er trimestre"} style={{ ...s.input, width: 200 }} />
           </div>
-          <div>
-            <label style={s.label}>Semaine de début</label>
-            <select value={semDebut} onChange={e => setSemDebut(Number(e.target.value))} style={s.select}>
-              {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={s.label}>Semaine de fin</label>
-            <select value={semFin} onChange={e => setSemFin(Number(e.target.value))} style={s.select}>
-              {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
-            </select>
-          </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', paddingBottom: 9, cursor: 'pointer' }} title="Saisie simplifiée : pas de week-ends ni de jours off (congés répartis par colonnes)">
+          {!estEte && (
+            <>
+              <div>
+                <label style={s.label}>Semaine de début</label>
+                <select value={semDebut} onChange={e => setSemDebut(Number(e.target.value))} style={s.select}>
+                  {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={s.label}>Semaine de fin</label>
+                <select value={semFin} onChange={e => setSemFin(Number(e.target.value))} style={s.select}>
+                  {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+          {estEte && (
+            <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 320 }}>
+              {apercuEte
+                ? `Période : S${apercuEte.debut} → S${apercuEte.fin} (vacances scolaires d'été)`
+                : "Période : vacances scolaires d'été (récupérées automatiquement à la création)"}
+            </div>
+          )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', paddingBottom: 9, cursor: 'pointer' }} title="Période = vacances scolaires d'été (automatique). Saisie simplifiée : pas de week-ends ni de jours off (congés répartis par colonnes)">
             <input type="checkbox" checked={estEte} onChange={e => setEstEte(e.target.checked)} style={{ accentColor: 'var(--color-primary)' }} />
             Période d'été
           </label>

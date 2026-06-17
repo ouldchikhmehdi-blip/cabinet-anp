@@ -118,6 +118,21 @@ export function bornesPlage(annee, debut, fin) {
   return { min: formatISO(lundi), max: formatISO(dimanche) }
 }
 
+// ── Bloc des grandes vacances (été) parmi les semaines de vacances scolaires ──
+// `vacancesScolaires` est une liste plate de n° de semaines ISO (toutes périodes mêlées).
+// L'été est le PLUS LONG segment de semaines consécutives (≈ S27→S35, vs 2 semaines pour
+// février/Pâques/Toussaint). Renvoie { debut, fin, semaines } ou null si liste vide.
+export function blocEteVacancesScolaires(vacancesScolaires = []) {
+  const tri = [...new Set(vacancesScolaires)].filter(n => Number.isInteger(n)).sort((a, b) => a - b)
+  if (tri.length === 0) return null
+  let best = [], cur = []
+  for (let i = 0; i < tri.length; i++) {
+    cur = (i > 0 && tri[i] === tri[i - 1] + 1) ? [...cur, tri[i]] : [tri[i]]
+    if (cur.length > best.length) best = cur
+  }
+  return { debut: best[0], fin: best[best.length - 1], semaines: best }
+}
+
 // ── Vacances scolaires (indicatif, À CONFIRMER selon la zone de la clinique) ──
 // Les numéros de semaine ISO sont approximatifs et doivent être validés.
 export const VACANCES_SCOLAIRES_2026 = {
