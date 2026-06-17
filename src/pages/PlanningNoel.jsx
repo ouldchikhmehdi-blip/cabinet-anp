@@ -14,6 +14,7 @@ import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerNoel, sauverNoel } from '../utils/noelApi'
 import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel } from '../utils/noel'
+import { exporterNoelExcel } from '../utils/exportCalendrier'
 import { COULEURS_GRILLE } from '../utils/grilleSemaine'
 
 const JOUR_LABEL = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'] // getUTCDay() : 0=dim … 6=sam
@@ -48,6 +49,7 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   const [data, setData] = useState(null) // { v, colle, jours } (grille committée)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
+  const [exportEnCours, setExportEnCours] = useState(false)
   const [ouvert, setOuvert] = useState(null) // initiales de l'associé dont on montre le texte Noël
   // Zone de collage : grille candidate (avant « Ajouter »).
   const [texteCandidat, setTexteCandidat] = useState('')
@@ -166,6 +168,19 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
   useEffect(() => { onRegisterSave?.(enregistrer) })
 
+  // Export Excel : grille de Noël + tableau « Réalisé à ce stade » (gardes/astreintes de Noël).
+  async function exporter() {
+    if (!data) return
+    setErreur(null); setExportEnCours(true)
+    try {
+      await exporterNoelExcel(annee, data, recap?.parAssocie ?? null)
+    } catch {
+      setErreur('Export Excel impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
   // ── Styles ──
   const s = {
     select: {
@@ -280,6 +295,15 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
         </div>
         <button type="button" onClick={enregistrer} disabled={data === null} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: data === null ? 0.5 : 1 }}>
           Enregistrer
+        </button>
+        <button
+          type="button"
+          onClick={exporter}
+          disabled={data === null || exportEnCours}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (data === null || exportEnCours) ? 0.6 : 1 }}
+          title="Génère un fichier Excel : la grille de Noël + le tableau « Réalisé à ce stade » (gardes/astreintes de Noël)"
+        >
+          {exportEnCours ? 'Export…' : '⬇ Exporter en Excel'}
         </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
       </div>

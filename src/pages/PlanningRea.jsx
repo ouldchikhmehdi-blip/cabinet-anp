@@ -128,6 +128,18 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     return m
   }, [objectifs])
 
+  // Bilan « Réalisé à ce stade » pour l'export Excel : à l'étape Réa, seuls G week-end, Réa et
+  // Semaines de vacances sont connus ; A/G vendredi, gardes de semaine et récup JF (étape En semaine)
+  // restent à 0 (colonnes conservées). Cumul annuel sur les données chargées.
+  const bilanRea = useMemo(() => {
+    const b = {}
+    for (const ini of ASSOCIES) b[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, rea: 0, gardeSemaine: 0, vacances: 0, recupJF: 0 }
+    for (const ini of Object.values(weekendAff)) if (b[ini]) b[ini].gWeekend++
+    for (const ini of Object.values(rea)) if (b[ini]) b[ini].rea++
+    for (const arr of Object.values(vacancesParSemaine)) for (const ini of (arr ?? [])) if (b[ini]) b[ini].vacances++
+    return b
+  }, [weekendAff, rea, vacancesParSemaine])
+
   const semaines = useMemo(
     () => (recueil ? semainesDansPlage(annee, recueil.semaine_debut, recueil.semaine_fin) : []),
     [annee, recueil]
@@ -235,7 +247,12 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     setErreur(null); setExportEnCours(true)
     try {
       // Étape 5 : base calendrier + objectifs + week-ends + vacances + réa (incrémental), borné à la période du recueil.
-      await exporterCalendrierExcel(annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, data.rea, recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null)
+      // + tableau « Réalisé à ce stade » en bas (10ᵉ argument) : G week-end / Réa / vacances remplis, le reste à 0.
+      await exporterCalendrierExcel(
+        annee, calendrier, objectifs, weekends?.affectations, vacancesData?.vacances, data.rea,
+        recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
+        null, null, bilanRea,
+      )
     } catch {
       setErreur('Export Excel impossible.')
     } finally {

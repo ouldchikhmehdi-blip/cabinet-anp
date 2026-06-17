@@ -43,6 +43,113 @@ async function telecharger(workbook, nomFichier) {
   URL.revokeObjectURL(url)
 }
 
+// ── Styles partagés (réutilisés par le calendrier, le bloc Noël et le bilan) ──
+const NB_COL = 1 + ASSOCIES.length + 1 + 1 // Date | 8 associés | Date | G/A = 11
+const centre = { vertical: 'middle', horizontal: 'center' }
+const bordures = () => ({
+  top: { style: 'thin', color: { argb: BORDURE } },
+  left: { style: 'thin', color: { argb: BORDURE } },
+  bottom: { style: 'thin', color: { argb: BORDURE } },
+  right: { style: 'thin', color: { argb: BORDURE } },
+})
+
+// Ligne d'en-tête « initiales » (mois | 8 associés | mois | G/A | Remplaçant(s)).
+function ligneEnteteInitiales(ws, date, enteteRempl = []) {
+  const libMois = moisAnneeFR(date)
+  const row = ws.addRow([libMois, ...ASSOCIES, libMois, 'G/A', ...enteteRempl])
+  row.eachCell({ includeEmpty: true }, (cell, col) => {
+    cell.border = bordures()
+    cell.alignment = centre
+    cell.font = { name: 'Calibri', bold: true, size: 11 }
+    if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
+    else cell.fill = solid('FFF2F2F2')
+  })
+}
+
+// Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au format du calendrier.
+function ecrireBlocNoel(ws, annee, joursNoel, enteteRempl = []) {
+  if (!joursNoel.length) return
+  const feriesNoel = {}
+  for (const f of [...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)]) feriesNoel[f.iso] = f.nom
+  ws.addRow([])
+  const titre = ws.addRow([`Noël ${annee}`])
+  titre.getCell(1).font = { name: 'Calibri', bold: true, size: 12 }
+  ligneEnteteInitiales(ws, parseISO(joursNoel[0].iso), enteteRempl)
+  for (const j of joursNoel) {
+    const date = parseISO(j.iso)
+    const dow = date.getUTCDay() // 0=dim … 6=sam
+    const estFerie = !!feriesNoel[j.iso]
+    const estWeekend = dow === 0 || dow === 6
+    const cellulesAssocies = ASSOCIES.map(ini => {
+      const c = j.parAssocie?.[ini]
+      const poste = (c?.poste ?? '').trim()
+      const role = c?.role ?? null
+      const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : role === 'C' ? 'conge' : null
+      return { texte: poste, fond, gras: role === 'G' || role === 'A' }
+    })
+    const groupeTxt = groupeJourNoel(j)
+    const dateFond = estFerie ? 'ferie' : estWeekend ? 'weekend' : null
+    const dateLong = formatDateLongueFR(date)
+    const row = ws.addRow([
+      dateLong,
+      ...cellulesAssocies.map(c => c.texte),
+      dateLong,
+      groupeTxt,
+      ...enteteRempl.map(() => ''),
+    ])
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.border = bordures()
+      cell.alignment = centre
+      cell.font = { name: 'Calibri', size: 11 }
+      const estDate = col === 1 || col === NB_COL - 1
+      const estAssocie = col >= 2 && col <= 1 + ASSOCIES.length
+      const estGroupe = col === NB_COL
+      let modele = null
+      if (estDate) modele = dateFond ? { fond: dateFond } : null
+      else if (estAssocie) modele = cellulesAssocies[col - 2]
+      else if (estGroupe) modele = { fond: groupeTxt === 'G' ? 'garde' : groupeTxt === 'A' ? 'astreinte' : null }
+      if (modele?.fond) cell.fill = solid('FF' + COULEURS_GRILLE[modele.fond])
+      if (modele?.gras || estGroupe) cell.font = { name: 'Calibri', size: 11, bold: true }
+    })
+    if (estFerie) row.getCell(1).note = feriesNoel[j.iso]
+  }
+}
+
+// Bloc « Réalisé à ce stade » : cumul par associé (G week-end, A/G vendredi, réa, gardes de semaine,
+// vacances, récup JF). Les valeurs absentes sont rendues à 0 (colonnes/ lignes toujours présentes).
+function ecrireBilan(ws, annee, bilan) {
+  if (!bilan) return
+  ws.addRow([])
+  ws.addRow([])
+  const libBilan = `Réalisé à ce stade (année ${annee})`
+  const entete = ws.addRow([libBilan, ...ASSOCIES, libBilan])
+  entete.eachCell({ includeEmpty: true }, (cell, col) => {
+    cell.border = bordures()
+    cell.alignment = centre
+    cell.font = { name: 'Calibri', bold: true, size: 11 }
+    if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
+    else cell.fill = solid('FFF2F2F2')
+  })
+  const lignesBilan = [
+    { cle: 'gWeekend', label: 'G week-end' },
+    { cle: 'aVendredi', label: 'A vendredi' },
+    { cle: 'gVendredi', label: 'G vendredi' },
+    { cle: 'rea', label: 'Réa' },
+    { cle: 'gardeSemaine', label: 'Gardes de semaine' },
+    { cle: 'vacances', label: 'Semaines de vacances' },
+    { cle: 'recupJF', label: 'Récup jours fériés' },
+  ]
+  for (const lg of lignesBilan) {
+    const valeurs = ASSOCIES.map(a => bilan[a]?.[lg.cle] ?? 0)
+    const row = ws.addRow([lg.label, ...valeurs, lg.label])
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = bordures()
+      cell.alignment = centre
+      cell.font = { name: 'Calibri', size: 11 }
+    })
+  }
+}
+
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
 // Construit le classeur et renvoie { wb, nomFichier } (sans télécharger).
@@ -69,27 +176,7 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   for (const f of joursFeriesFR(annee)) feries[f.iso] = f.nom
   const vacances = new Set(data.vacancesScolaires ?? [])
 
-  const NB_COL = 1 + ASSOCIES.length + 1 + 1 // 11
-  const bordures = () => ({
-    top: { style: 'thin', color: { argb: BORDURE } },
-    left: { style: 'thin', color: { argb: BORDURE } },
-    bottom: { style: 'thin', color: { argb: BORDURE } },
-    right: { style: 'thin', color: { argb: BORDURE } },
-  })
-  const centre = { vertical: 'middle', horizontal: 'center' }
-
-  function ligneEntete(date) {
-    const libMois = moisAnneeFR(date)
-    const row = ws.addRow([libMois, ...ASSOCIES, libMois, 'G/A', ...enteteRempl])
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      cell.border = bordures()
-      cell.alignment = centre
-      cell.font = { name: 'Calibri', bold: true, size: 11 }
-      // Initiales sur fond rose ; colonnes date plus sobres.
-      if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
-      else cell.fill = solid('FFF2F2F2')
-    })
-  }
+  const ligneEntete = (date) => ligneEnteteInitiales(ws, date, enteteRempl)
 
   // Jours de Noël (grille fournie telle quelle) triés par date + semaines ISO couvertes : ces semaines
   // sont EXCLUES du calendrier normal (rendues dans le bloc « Noël » plus bas) → pas de doublon.
@@ -162,52 +249,7 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   }
 
   // ── Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au même format que le calendrier ──
-  if (joursNoel.length) {
-    const feriesNoel = {}
-    for (const f of [...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)]) feriesNoel[f.iso] = f.nom
-    ws.addRow([])
-    const titre = ws.addRow([`Noël ${annee}`])
-    titre.getCell(1).font = { name: 'Calibri', bold: true, size: 12 }
-    ligneEntete(parseISO(joursNoel[0].iso))
-    for (const j of joursNoel) {
-      const date = parseISO(j.iso)
-      const dow = date.getUTCDay() // 0=dim … 6=sam
-      const estFerie = !!feriesNoel[j.iso]
-      const estWeekend = dow === 0 || dow === 6
-      const cellulesAssocies = ASSOCIES.map(ini => {
-        const c = j.parAssocie?.[ini]
-        const poste = (c?.poste ?? '').trim()
-        const role = c?.role ?? null
-        const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : role === 'C' ? 'conge' : null
-        return { texte: poste, fond, gras: role === 'G' || role === 'A' }
-      })
-      const groupeTxt = groupeJourNoel(j)
-      const dateFond = estFerie ? 'ferie' : estWeekend ? 'weekend' : null
-      const dateLong = formatDateLongueFR(date)
-      const row = ws.addRow([
-        dateLong,
-        ...cellulesAssocies.map(c => c.texte),
-        dateLong,
-        groupeTxt,
-        ...enteteRempl.map(() => ''),
-      ])
-      row.eachCell({ includeEmpty: true }, (cell, col) => {
-        cell.border = bordures()
-        cell.alignment = centre
-        cell.font = { name: 'Calibri', size: 11 }
-        const estDate = col === 1 || col === NB_COL - 1
-        const estAssocie = col >= 2 && col <= 1 + ASSOCIES.length
-        const estGroupe = col === NB_COL
-        let modele = null
-        if (estDate) modele = dateFond ? { fond: dateFond } : null
-        else if (estAssocie) modele = cellulesAssocies[col - 2]
-        else if (estGroupe) modele = { fond: groupeTxt === 'G' ? 'garde' : groupeTxt === 'A' ? 'astreinte' : null }
-        if (modele?.fond) cell.fill = solid('FF' + COULEURS_GRILLE[modele.fond])
-        if (modele?.gras || estGroupe) cell.font = { name: 'Calibri', size: 11, bold: true }
-      })
-      if (estFerie) row.getCell(1).note = feriesNoel[j.iso]
-    }
-  }
+  ecrireBlocNoel(ws, annee, joursNoel, enteteRempl)
 
   // ── Bloc « Objectifs » en bas (cf. PLANNING.md §16, photo « Objectifs 2025 ») ──
   // Aligné sur les colonnes du calendrier : libellé | 8 associés | libellé.
@@ -240,37 +282,7 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   }
 
   // ── Bloc « Réalisé à ce stade » (étape En semaine) : cumul annuel par associé, en regard des objectifs ──
-  if (bilan) {
-    ws.addRow([])
-    ws.addRow([])
-    const libBilan = `Réalisé à ce stade (année ${annee})`
-    const entete = ws.addRow([libBilan, ...ASSOCIES, libBilan])
-    entete.eachCell({ includeEmpty: true }, (cell, col) => {
-      cell.border = bordures()
-      cell.alignment = centre
-      cell.font = { name: 'Calibri', bold: true, size: 11 }
-      if (col >= 2 && col <= 1 + ASSOCIES.length) cell.fill = solid(ARGB.header)
-      else cell.fill = solid('FFF2F2F2')
-    })
-    const lignesBilan = [
-      { cle: 'gWeekend', label: 'G week-end' },
-      { cle: 'aVendredi', label: 'A vendredi' },
-      { cle: 'gVendredi', label: 'G vendredi' },
-      { cle: 'rea', label: 'Réa' },
-      { cle: 'gardeSemaine', label: 'Gardes de semaine' },
-      { cle: 'vacances', label: 'Semaines de vacances' },
-      { cle: 'recupJF', label: 'Récup jours fériés' },
-    ]
-    for (const lg of lignesBilan) {
-      const valeurs = ASSOCIES.map(a => bilan[a]?.[lg.cle] ?? 0)
-      const row = ws.addRow([lg.label, ...valeurs, lg.label])
-      row.eachCell({ includeEmpty: true }, (cell) => {
-        cell.border = bordures()
-        cell.alignment = centre
-        cell.font = { name: 'Calibri', size: 11 }
-      })
-    }
-  }
+  ecrireBilan(ws, annee, bilan)
 
   ws.views = [{ state: 'frozen', ySplit: 0, xSplit: 0 }]
 
@@ -318,4 +330,19 @@ export async function genererClasseurBuffer(...args) {
   const { wb, nomFichier } = await construireClasseur(...args)
   const buffer = await wb.xlsx.writeBuffer()
   return { buffer, nomFichier }
+}
+
+// Export autonome de l'onglet Noël : la grille de Noël (jours fournis tels quels) + le tableau
+// « Réalisé à ce stade » alimenté par les gardes/astreintes de Noël (bilanNoel). Zéros conservés.
+export async function exporterNoelExcel(annee, noelData, bilan = null) {
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet(`Noël ${annee}`)
+  // Mêmes largeurs que le calendrier (sans colonnes remplaçant) : Date | 8 associés | Date | G/A.
+  ws.columns = [{ width: 35 }, ...ASSOCIES.map(() => ({ width: 24 })), { width: 35 }, { width: 8 }]
+
+  const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+  ecrireBlocNoel(ws, annee, joursNoel, [])
+  ecrireBilan(ws, annee, bilan)
+
+  await telecharger(wb, `Noel_${annee}.xlsx`)
 }
