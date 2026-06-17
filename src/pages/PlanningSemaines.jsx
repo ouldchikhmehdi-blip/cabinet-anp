@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext'
 import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
-import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil, supprimerDesiderataRecueil } from '../utils/desiderataApi'
+import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
 import { uploaderArchive } from '../utils/archivesApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
@@ -805,17 +805,18 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
   }
 
-  // Valide DÉFINITIVEMENT le planning de la période : archive l'Excel (Supabase Storage, consultable
-  // dans Ouverture du planning), ferme le recueil et RÉINITIALISE ses desiderata. Le planning construit
-  // (week-ends, vacances, réa, en-semaine) est CONSERVÉ comme socle annuel.
+  // Valide le planning de la période : archive l'Excel (Supabase Storage, consultable dans Ouverture du
+  // planning) et ferme le recueil. Les desiderata sont CONSERVÉS (le faiseur peut « Dévalider » et
+  // retravailler). Chaque validation crée une NOUVELLE version archivée ; les associés ne téléchargent que
+  // la plus récente. Le planning construit (week-ends, vacances, réa, en-semaine) est conservé.
   async function valider() {
     if (!recueil) return
     const ok = window.confirm(
-      `Valider définitivement « ${recueil.nom} » ?\n\n` +
+      `Valider « ${recueil.nom} » ?\n\n` +
       '• Le planning de la période sera archivé en Excel (consultable dans Ouverture du planning).\n' +
-      '• Les desiderata de cette période seront EFFACÉS.\n' +
-      '• Le planning construit (week-ends, vacances, réa, en-semaine) est CONSERVÉ.\n\n' +
-      'Cette action est définitive.'
+      '• Les desiderata sont CONSERVÉS : vous pourrez « Dévalider » pour retravailler.\n' +
+      '• Le planning construit (week-ends, vacances, réa, en-semaine) est conservé.\n\n' +
+      'Une nouvelle validation créera une nouvelle version (les associés téléchargent la plus récente).'
     )
     if (!ok) return
     setErreur(null); setValidation({ etat: 'cours', message: 'Archivage en cours…' })
@@ -827,12 +828,26 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       )
       await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
       await definirStatutRecueil(recueil.id, 'ferme')
-      await supprimerDesiderataRecueil(recueil.id)
-      setValidation({ etat: 'ok', message: 'Planning archivé ✓ — disponible dans Ouverture du planning. Desiderata réinitialisés.' })
+      setRecueils(prev => prev.map(r => r.id === recueil.id ? { ...r, statut: 'ferme' } : r))
+      setValidation({ etat: 'ok', message: 'Planning archivé ✓ — disponible dans Ouverture du planning.' })
       onStatut?.('enregistre')
     } catch {
-      setErreur('Validation impossible (archivage ou réinitialisation). Vérifie que la migration Supabase est appliquée.')
+      setErreur('Validation impossible (archivage). Vérifie que la migration Supabase est appliquée.')
       setValidation(null)
+    }
+  }
+
+  // Dévalide : rouvre la période pour retravailler. N'efface NI les archives déjà créées, NI les desiderata,
+  // NI le planning construit. Une nouvelle validation créera une nouvelle version.
+  async function devalider() {
+    if (!recueil) return
+    setErreur(null)
+    try {
+      await definirStatutRecueil(recueil.id, 'ouvert')
+      setRecueils(prev => prev.map(r => r.id === recueil.id ? { ...r, statut: 'ouvert' } : r))
+      setValidation(null)
+    } catch {
+      setErreur('Dévalidation impossible.')
     }
   }
 
@@ -971,10 +986,21 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
           onClick={valider}
           disabled={!pret || !recueil || validation?.etat === 'cours'}
           style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'var(--color-success)', opacity: (!pret || !recueil || validation?.etat === 'cours') ? 0.5 : 1 }}
-          title="Archive le planning de la période en Excel (consultable dans Ouverture du planning), ferme le recueil et réinitialise ses desiderata. Le planning construit est conservé."
+          title="Archive le planning de la période en Excel (consultable dans Ouverture du planning) et ferme le recueil. Les desiderata sont conservés (vous pourrez Dévalider) ; chaque validation crée une nouvelle version."
         >
-          {validation?.etat === 'cours' ? 'Validation…' : '✅ Valider définitivement'}
+          {validation?.etat === 'cours' ? 'Validation…' : '✅ Valider'}
         </button>
+        {recueil?.statut === 'ferme' && (
+          <button
+            type="button"
+            onClick={devalider}
+            disabled={!pret || validation?.etat === 'cours'}
+            style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-amber)', border: '0.5px solid var(--color-amber)', opacity: (!pret || validation?.etat === 'cours') ? 0.5 : 1 }}
+            title="Rouvre la période pour retravailler. Les archives déjà créées et les desiderata sont conservés ; une nouvelle validation créera une nouvelle version."
+          >
+            🔓 Dévalider
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setVoirNonHonores(v => !v)}
