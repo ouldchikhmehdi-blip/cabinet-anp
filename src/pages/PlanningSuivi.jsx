@@ -147,6 +147,7 @@ export default function PlanningSuivi() {
   async function creer() {
     setErreur(null)
     try {
+      let cree
       if (estEte) {
         // Période d'été : la période = vacances scolaires d'été (auto), aucune saisie de semaines.
         let cal = calendrier
@@ -159,17 +160,19 @@ export default function PlanningSuivi() {
         }
         const ete = blocEteVacancesScolaires(cal.vacancesScolaires)
         if (!ete) { setErreur('Impossible de déterminer la période des vacances scolaires d\'été. Récupérez d\'abord les vacances scolaires.'); return }
-        await creerRecueil({ annee, nom: nom.trim() || 'Période d\'été', semaineDebut: ete.debut, semaineFin: ete.fin, type: 'ete', userId: session.user.id })
+        cree = await creerRecueil({ annee, nom: nom.trim() || 'Période d\'été', semaineDebut: ete.debut, semaineFin: ete.fin, type: 'ete', userId: session.user.id })
       } else {
         if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
         if (finVal < debutVal) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
-        await creerRecueil({ annee, nom: nom.trim(), semaineDebut: debutVal, semaineFin: finVal, type: 'normal', userId: session.user.id })
+        cree = await creerRecueil({ annee, nom: nom.trim(), semaineDebut: debutVal, semaineFin: finVal, type: 'normal', userId: session.user.id })
       }
       setNom('')
       setEstEte(false)
       setSemDebut(null) // revient à la suggestion (partie suivante) après rechargement des recueils
       setSemFin(null)
-      await rechargerRecueils()
+      // Bascule sur le recueil qui vient d'être créé : la page repart à zéro pour la nouvelle période
+      // (statuts en attente, panneau ponts vide, impression vide) jusqu'à ce que les associés saisissent.
+      await rechargerRecueils(cree?.id)
     } catch {
       setErreur('Création impossible (réservée au faiseur).')
     }

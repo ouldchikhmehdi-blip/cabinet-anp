@@ -18,7 +18,7 @@ export async function listerRecueils(annee) {
 }
 
 export async function creerRecueil({ annee, nom, semaineDebut, semaineFin, type = 'normal', userId }) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('planning_recueils')
     .insert({
       annee,
@@ -29,7 +29,10 @@ export async function creerRecueil({ annee, nom, semaineDebut, semaineFin, type 
       statut: 'ouvert',
       created_by: userId,
     })
+    .select('id')
+    .single()
   if (error) throw error
+  return data
 }
 
 export async function definirStatutRecueil(id, statut) {
