@@ -47,7 +47,7 @@ export async function uploaderArchive({ annee, recueil, buffer, userId }) {
 export async function listerArchives(annee) {
   const { data, error } = await supabase
     .from('planning_archives')
-    .select('id, annee, nom, semaine_debut, semaine_fin, chemin, created_at')
+    .select('id, annee, recueil_id, nom, semaine_debut, semaine_fin, chemin, created_at')
     .eq('annee', annee)
     .order('created_at', { ascending: false })
   if (error) throw error

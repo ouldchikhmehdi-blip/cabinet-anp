@@ -6,6 +6,7 @@ import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils } from '../ut
 import { charger as chargerLocal, sauver as sauverLocal } from '../utils/stockage'
 import { definirGardeNavigation } from '../utils/gardeNavigation'
 import { chargerCalendrier } from '../utils/calendrierApi'
+import { listerArchives, urlArchive } from '../utils/archivesApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { colonnesSelectionnables } from '../utils/trames'
 import SelecteurRecueil from '../components/planning/SelecteurRecueil'
@@ -64,12 +65,28 @@ export default function PlanningDesiderata() {
   const baselineRef = useRef(null)                              // signature JSON des données chargées/transmises
   const [semainesScolaires, setSemainesScolaires] = useState([]) // vacances scolaires (Base calendrier)
   const [tramesData, setTramesData] = useState(null) // catalogue de trames de l'année (pour la principale)
+  const [archives, setArchives] = useState([])       // plannings validés (Excel) de l'année
   const [nouvSouhaitSem, setNouvSouhaitSem] = useState('')
   const [nouvSouhaitCol, setNouvSouhaitCol] = useState('')
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
   const ferme = recueil?.statut === 'ferme'
   const estEte = recueil?.type === 'ete'
+
+  // Archive (planning validé) du recueil courant — la plus récente (liste triée created_at desc).
+  const archiveRecueil = useMemo(
+    () => archives.find(a => a.recueil_id === recueilId) ?? null,
+    [archives, recueilId]
+  )
+  async function telechargerPlanning() {
+    if (!archiveRecueil) return
+    try {
+      const url = await urlArchive(archiveRecueil.chemin)
+      if (url) window.open(url, '_blank', 'noopener')
+    } catch {
+      setErreur('Téléchargement du planning impossible.')
+    }
+  }
 
   // Trame principale de l'année (affichée à l'associé pour choisir une colonne par semaine).
   const tramePrincipale = useMemo(
@@ -107,6 +124,16 @@ export default function PlanningDesiderata() {
         setRecueilId(prev => (rs.some(r => r.id === prev) ? prev : (rs[0]?.id ?? null)))
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les recueils.') })
+    return () => { annule = true }
+  }, [annee])
+
+  // Charge les plannings validés (archives) de l'année — pour proposer le téléchargement
+  // du planning de la période une fois qu'il a été validé par le faiseur.
+  useEffect(() => {
+    let annule = false
+    listerArchives(annee)
+      .then(a => { if (!annule) setArchives(a) })
+      .catch(() => { if (!annule) setArchives([]) })
     return () => { annule = true }
   }, [annee])
 
@@ -321,6 +348,8 @@ export default function PlanningDesiderata() {
         recueilId={recueilId}
         onChangeRecueil={setRecueilId}
         recueils={recueils}
+        archiveDispo={!!archiveRecueil}
+        onTelecharger={telechargerPlanning}
       />
 
       {erreur && (

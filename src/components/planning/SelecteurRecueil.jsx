@@ -8,9 +8,12 @@ import { ANNEES } from '../../utils/calendrier'
  *   annee, onChangeAnnee   — année courante
  *   recueilId, onChangeRecueil — recueil sélectionné (id)
  *   recueils               — recueils de l'année [{ id, nom, semaine_debut, semaine_fin, statut }]
+ *   archiveDispo           — true si le planning validé de ce recueil est disponible (archive)
+ *   onTelecharger          — callback de téléchargement du planning validé
  */
 export default function SelecteurRecueil({
   initiales, annee, onChangeAnnee, recueilId, onChangeRecueil, recueils = [],
+  archiveDispo = false, onTelecharger,
 }) {
   const s = {
     barre: {
@@ -30,6 +33,11 @@ export default function SelecteurRecueil({
       background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)',
       borderRadius: 'var(--radius-md)',
     },
+    bouton: (actif) => ({
+      padding: '9px 16px', fontSize: 14, fontWeight: 500, borderRadius: 'var(--radius-md)',
+      border: 'none', background: 'var(--color-primary)', color: '#fff',
+      cursor: actif ? 'pointer' : 'default', opacity: actif ? 1 : 0.45,
+    }),
   }
 
   return (
@@ -61,6 +69,20 @@ export default function SelecteurRecueil({
               </option>
             ))}
         </select>
+      </div>
+      <div>
+        <span style={{ ...s.label, visibility: 'hidden' }}>Planning</span>
+        <button
+          type="button"
+          disabled={!archiveDispo}
+          onClick={() => archiveDispo && onTelecharger?.()}
+          style={s.bouton(archiveDispo)}
+          title={archiveDispo
+            ? 'Télécharger le planning validé de cette période (Excel)'
+            : 'Disponible une fois le planning de la période validé par le faiseur'}
+        >
+          ⬇ Télécharger le planning
+        </button>
       </div>
     </div>
   )

@@ -14,16 +14,17 @@ import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { bilanNoel } from '../utils/noel'
-import { cleEcart } from '../utils/ponts'
+import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
   proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
-  gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame,
+  gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame, reposJours,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel, genererClasseurBuffer } from '../utils/exportCalendrier'
 import ApercuSemaine from '../components/planning/ApercuSemaine'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauConflits from '../components/planning/PanneauConflits'
+import PanneauDesiderataNonHonores from '../components/planning/PanneauDesiderataNonHonores'
 
 // getUTCDay() → jour de semaine (lun→ven) ; samedi/dimanche ignorés (jours off de semaine seulement).
 const JOUR_SEMAINE = { 1: 'lun', 2: 'mar', 3: 'mer', 4: 'jeu', 5: 'ven' }
@@ -65,6 +66,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
   const [filtreArbitrer, setFiltreArbitrer] = useState(false)
+  const [voirNonHonores, setVoirNonHonores] = useState(false) // panneau desiderata non honorés
   const [apercus, setApercus] = useState(() => new Set())
   // Résultat de la dernière amélioration d'espacement : { avant, apres } (gardes rapprochées).
   const [espacementInfo, setEspacementInfo] = useState(null)
@@ -264,6 +266,71 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
     return m
   }, [semaines, trameDe, contexteAmont, affectationsLibres, annee, calendrier, gardesAnnee, colonnesSouhaiteesParAssocie, estPrincipaleSem])
+
+  // Bilan « desiderata non honorés » par associé : ce qui a été ÉCARTÉ par le faiseur et ce qui
+  // n'a pas pu être PLACÉ dans le planning final (jours off, week-ends, congés, souhaits de colonne).
+  const bilanNonHonores = useMemo(() => {
+    const out = {}
+    for (const ini of ASSOCIES) out[ini] = { ecartes: [], nonHonores: [] }
+    if (!calendrier) return out
+
+    // Affectation résolue par semaine, inversée (ini → colonne) pour retrouver la colonne d'un associé.
+    const affParSem = {}
+    for (const sem of semaines) {
+      const trame = trameDe(sem.num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, sem.num, contexteAmont, affectationsLibres)
+      const map = {}
+      for (const [col, who] of Object.entries(affR)) map[who] = Number(col)
+      affParSem[sem.num] = { trame, map }
+    }
+    const periodeNums = new Set(semaines.map(s => s.num))
+
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini || !out[ini]) continue
+      const d = normaliser(row.data)
+      const cible = out[ini]
+
+      // Jours off (jours de semaine uniquement ; les ISO week-end sont ignorés ici).
+      for (const iso of (d.joursOffSouhaites ?? [])) {
+        let dt
+        try { dt = parseISO(iso) } catch { continue }
+        const num = numeroSemaineISO(dt)
+        if (!periodeNums.has(num)) continue
+        const jour = JOUR_SEMAINE[dt.getUTCDay()]
+        if (!jour) continue
+        if (ecartesSet.has(cleEcart(ini, iso))) { cible.ecartes.push({ type: 'off', iso }); continue }
+        if ((contexteAmont.vacances[num] ?? []).includes(ini)) continue // en congé → off couvert
+        const info = affParSem[num]
+        const col = info?.map[ini]
+        const repos = (col != null && info?.trame) ? reposJours(info.trame.colonnes[col]) : null
+        if (!repos || !repos.has(jour)) cible.nonHonores.push({ type: 'off', iso })
+      }
+
+      // Week-ends indisponibles.
+      for (const sem of (d.weekendsIndispo ?? [])) {
+        if (!periodeNums.has(sem)) continue
+        if (ecartesSet.has(cleEcartWeekend(ini, sem))) { cible.ecartes.push({ type: 'we', sem }); continue }
+        if (contexteAmont.weekendAff[sem] === ini) cible.nonHonores.push({ type: 'we', sem })
+      }
+
+      // Congés souhaités.
+      for (const sem of (d.vacancesSouhaitees ?? [])) {
+        if (!periodeNums.has(sem)) continue
+        if (ecartesSet.has(cleEcartVacances(ini, sem))) { cible.ecartes.push({ type: 'vac', sem }); continue }
+        if (!(contexteAmont.vacances[sem] ?? []).includes(ini)) cible.nonHonores.push({ type: 'vac', sem })
+      }
+    }
+
+    // Souhaits de colonne non satisfaits (signal déjà calculé par analyserSemaineColonnes).
+    for (const sem of semaines) {
+      for (const ini of (alertesColonnes[sem.num]?.souhaitNonSatisfait ?? [])) {
+        if (out[ini]) out[ini].nonHonores.push({ type: 'col', sem: sem.num })
+      }
+    }
+    return out
+  }, [desideratas, parUser, ecartesSet, contexteAmont, trameDe, affectationsLibres, calendrier, semaines, alertesColonnes])
 
   // Deux catégories distinctes :
   //  - BLOQUANT (« À arbitrer ») : planning invalide tant que non résolu (non placé, colonne de travail
@@ -908,6 +975,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         >
           {validation?.etat === 'cours' ? 'Validation…' : '✅ Valider définitivement'}
         </button>
+        <button
+          type="button"
+          onClick={() => setVoirNonHonores(v => !v)}
+          disabled={!pret || !recueil}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: voirNonHonores ? 'var(--color-amber)' : 'transparent', color: voirNonHonores ? '#fff' : 'var(--color-amber)', border: '0.5px solid var(--color-amber)', opacity: (!pret || !recueil) ? 0.5 : 1 }}
+          title="Affiche, par associé, les desiderata écartés par le faiseur et ceux non honorés par le planning"
+        >
+          ⚠ Desiderata non honorés
+        </button>
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         {validation?.etat === 'ok' && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{validation.message}</span>}
         {espacementInfo && (() => {
@@ -920,6 +996,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
           )
         })()}
       </div>
+
+      {voirNonHonores && <PanneauDesiderataNonHonores bilan={bilanNonHonores} annee={annee} />}
 
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
