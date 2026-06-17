@@ -5,7 +5,7 @@ import { ANNEES, listerSemaines, blocEteVacancesScolaires } from '../utils/calen
 import { desiderataVide, normaliser, estRempli, ANNEE_DEFAUT } from '../utils/desiderata'
 import {
   chargerTousDesiderata, chargerProfilsAvecInitiales,
-  listerRecueils, creerRecueil, definirStatutRecueil, definirTypeRecueil, supprimerRecueil,
+  listerRecueils, creerRecueil, definirStatutRecueil, supprimerRecueil,
 } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import { listerArchives, urlArchive, supprimerArchive } from '../utils/archivesApi'
@@ -27,6 +27,7 @@ export default function PlanningSuivi() {
   const [desideratas, setDesideratas] = useState([])
   const [ouvert, setOuvert] = useState(null)
   const [tramesOuvert, setTramesOuvert] = useState(false)
+  const [tramesEteOuvert, setTramesEteOuvert] = useState(false)
   const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
@@ -37,7 +38,6 @@ export default function PlanningSuivi() {
   // Override manuel des semaines (null = utiliser la suggestion automatique).
   const [semDebut, setSemDebut] = useState(null)
   const [semFin, setSemFin] = useState(null)
-  const [estEte, setEstEte] = useState(false)
 
   // Récupération des vacances scolaires (écrit dans la base calendrier de l'année)
   const [recupVac, setRecupVac] = useState(false)
@@ -147,27 +147,10 @@ export default function PlanningSuivi() {
   async function creer() {
     setErreur(null)
     try {
-      let cree
-      if (estEte) {
-        // Période d'été : la période = vacances scolaires d'été (auto), aucune saisie de semaines.
-        let cal = calendrier
-        if (!cal?.vacancesScolaires?.length) {
-          const base = cal ?? await chargerCalendrier(annee)
-          const weeks = await recupererVacancesScolairesZoneC(annee)
-          cal = { ...base, vacancesScolaires: weeks }
-          await sauverCalendrier(annee, cal, session.user.id)
-          setCalendrier(cal)
-        }
-        const ete = blocEteVacancesScolaires(cal.vacancesScolaires)
-        if (!ete) { setErreur('Impossible de déterminer la période des vacances scolaires d\'été. Récupérez d\'abord les vacances scolaires.'); return }
-        cree = await creerRecueil({ annee, nom: nom.trim() || 'Période d\'été', semaineDebut: ete.debut, semaineFin: ete.fin, type: 'ete', userId: session.user.id })
-      } else {
-        if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
-        if (finVal < debutVal) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
-        cree = await creerRecueil({ annee, nom: nom.trim(), semaineDebut: debutVal, semaineFin: finVal, type: 'normal', userId: session.user.id })
-      }
+      if (!nom.trim()) { setErreur('Donnez un nom au recueil.'); return }
+      if (finVal < debutVal) { setErreur('La semaine de fin doit être ≥ semaine de début.'); return }
+      const cree = await creerRecueil({ annee, nom: nom.trim(), semaineDebut: debutVal, semaineFin: finVal, type: 'normal', userId: session.user.id })
       setNom('')
-      setEstEte(false)
       setSemDebut(null) // revient à la suggestion (partie suivante) après rechargement des recueils
       setSemFin(null)
       // Bascule sur le recueil qui vient d'être créé : la page repart à zéro pour la nouvelle période
@@ -182,16 +165,6 @@ export default function PlanningSuivi() {
     setErreur(null)
     try {
       await definirStatutRecueil(r.id, r.statut === 'ouvert' ? 'ferme' : 'ouvert')
-      await rechargerRecueils(r.id)
-    } catch {
-      setErreur('Action impossible.')
-    }
-  }
-
-  async function basculerType(r) {
-    setErreur(null)
-    try {
-      await definirTypeRecueil(r.id, r.type === 'ete' ? 'normal' : 'ete')
       await rechargerRecueils(r.id)
     } catch {
       setErreur('Action impossible.')
@@ -278,6 +251,14 @@ export default function PlanningSuivi() {
   // au chargement, au changement d'année et après chaque création → propose la partie suivante).
   const debutVal = semDebut ?? suggestionRecueil.debut
   const finVal = semFin ?? suggestionRecueil.fin ?? 13
+
+  // Un recueil « atteint l'été » s'il couvre la fin du bloc des vacances scolaires d'été (la 2ᵉ partie,
+  // proposée jusqu'aux vacances d'été incluses). Dans ce cas on affiche le panneau « Trame de l'été ».
+  const recueilEteExiste = useMemo(() => {
+    const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
+    if (!ete) return false
+    return recueils.some(r => r.semaine_debut <= ete.fin && r.semaine_fin >= ete.fin)
+  }, [recueils, calendrier])
 
   // Écarter / réintégrer un élément de pont (jour off ou week-end) — persisté dans la base calendrier.
   async function toggleEcart(cle) {
@@ -410,15 +391,12 @@ export default function PlanningSuivi() {
               return (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: `0.5px solid ${actif ? 'var(--color-primary)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '8px 12px' }}>
                   <button type="button" onClick={() => setRecueilId(r.id)} style={{ ...s.boutonSec, border: 'none', background: 'transparent', fontSize: 13, fontWeight: actif ? 600 : 400, color: 'var(--color-text)', flex: 1, textAlign: 'left' }}>
-                    {r.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>· S{r.semaine_debut}→S{r.semaine_fin}{r.type === 'ete' ? ' · été' : ''}</span>
+                    {r.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>· S{r.semaine_debut}→S{r.semaine_fin}</span>
                   </button>
                   <span style={s.pastille(ouvertR ? 'var(--color-success)' : 'var(--color-text-tertiary)')}>
                     <span style={s.point(ouvertR ? 'var(--color-success)' : 'var(--color-text-tertiary)')} />
                     {ouvertR ? 'Ouvert' : 'Fermé'}
                   </span>
-                  <button type="button" onClick={() => basculerType(r)} style={s.boutonSec} title="Un recueil « été » masque les week-ends et jours off dans la saisie des associés">
-                    {r.type === 'ete' ? 'Repasser « normal »' : 'Marquer « été »'}
-                  </button>
                   <button type="button" onClick={() => basculer(r)} style={s.boutonSec}>{ouvertR ? 'Fermer' : 'Ouvrir'}</button>
                   <button type="button" onClick={() => supprimer(r)} style={s.boutonDanger}>Supprimer</button>
                 </div>
@@ -431,38 +409,25 @@ export default function PlanningSuivi() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', borderTop: '0.5px solid var(--color-border)', paddingTop: 16 }}>
           <div>
             <label style={s.label}>Nom du recueil</label>
-            <input type="text" value={nom} onChange={e => setNom(e.target.value)} placeholder={estEte ? "Période d'été" : "Ex. : 1er trimestre"} style={{ ...s.input, width: 200 }} />
+            <input type="text" value={nom} onChange={e => setNom(e.target.value)} placeholder="Ex. : 1er trimestre" style={{ ...s.input, width: 200 }} />
           </div>
-          {!estEte && (
-            <>
-              <div>
-                <label style={s.label}>Semaine de début</label>
-                <select value={debutVal} onChange={e => setSemDebut(Number(e.target.value))} style={s.select}>
-                  {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={s.label}>Semaine de fin</label>
-                <select value={finVal} onChange={e => setSemFin(Number(e.target.value))} style={s.select}>
-                  {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
-                </select>
-              </div>
-              {suggestionRecueil.fin != null && (
-                <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 12, color: 'var(--color-text-tertiary)', maxWidth: 280 }}>
-                  Suggéré : reprend après le dernier recueil, jusqu'aux vacances d'été incluses (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
-                </div>
-              )}
-            </>
-          )}
-          {estEte && (
-            <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 360 }}>
-              Recueil d'été : pas de semaines de début/fin à saisir — un formulaire de desiderata spécifique sera utilisé.
+          <div>
+            <label style={s.label}>Semaine de début</label>
+            <select value={debutVal} onChange={e => setSemDebut(Number(e.target.value))} style={s.select}>
+              {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={s.label}>Semaine de fin</label>
+            <select value={finVal} onChange={e => setSemFin(Number(e.target.value))} style={s.select}>
+              {semainesAnnee.map(sm => <option key={sm.num} value={sm.num}>{sm.label}</option>)}
+            </select>
+          </div>
+          {suggestionRecueil.fin != null && (
+            <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 12, color: 'var(--color-text-tertiary)', maxWidth: 280 }}>
+              Suggéré : reprend après le dernier recueil, jusqu'aux vacances d'été incluses (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
             </div>
           )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', paddingBottom: 9, cursor: 'pointer' }} title="Recueil d'été : pas de semaines à saisir ; un formulaire de desiderata spécifique sera utilisé (fourni ici à l'ouverture du planning).">
-            <input type="checkbox" checked={estEte} onChange={e => setEstEte(e.target.checked)} style={{ accentColor: 'var(--color-primary)' }} />
-            Période d'été
-          </label>
           <button type="button" onClick={creer} style={s.bouton}>Créer le recueil</button>
         </div>
       </div>
@@ -516,6 +481,30 @@ export default function PlanningSuivi() {
           </div>
         )}
       </div>
+
+      {/* Trame de l'été — apparaît dès qu'un recueil atteignant les vacances d'été est créé */}
+      {recueilEteExiste && (
+        <div style={s.carteSection} className="no-print">
+          <button
+            type="button"
+            onClick={() => setTramesEteOuvert(o => !o)}
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left', display: 'block' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{tramesEteOuvert ? '▾' : '▸'}</span>
+              Trame de l'été {annee}
+            </span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+              Trame spécifique à la période d'été. Le formulaire sera fourni ici.
+            </span>
+          </button>
+          {tramesEteOuvert && (
+            <div style={{ marginTop: 16, fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              À définir.
+            </div>
+          )}
+        </div>
+      )}
 
       {recueil && (
         <>
@@ -586,16 +575,14 @@ export default function PlanningSuivi() {
           {/* Panneau récap */}
           {ouvert && (
             <div style={s.panneau} className="no-print">
-              <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={recueil.type === 'ete'} />
+              <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} />
             </div>
           )}
 
           {/* Ponts / jours fériés — alerte précoce, avant l'attribution des week-ends */}
-          {recueil.type !== 'ete' && (
-            <div className="no-print">
-              <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} joursOffParAssocie={joursOffParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
-            </div>
-          )}
+          <div className="no-print">
+            <PanneauPonts pontsParAssocie={pontsParAssocie} pontsWeekendParAssocie={pontsWeekendParAssocie} joursOffParAssocie={joursOffParAssocie} weekendsIndispoParAssocie={weekendsIndispoParAssocie} annee={annee} ecartesSet={ecartesSet} onToggle={toggleEcart} />
+          </div>
 
           {/* Vue imprimable */}
           <div className="zone-impression">
@@ -608,7 +595,6 @@ export default function PlanningSuivi() {
                   initiales={l.ini}
                   d={l.data}
                   annee={annee}
-                  estEte={recueil.type === 'ete'}
                   ponts={pontsParAssocie[l.ini] ?? []}
                   pontsWeekend={pontsWeekendParAssocie[l.ini] ?? []}
                   ecartesSet={ecartesSet}
