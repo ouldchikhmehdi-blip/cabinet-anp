@@ -694,6 +694,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       b[ini].gardeSemaine += n.gardeSemaine
       b[ini].rea += n.rea
       b[ini].recupJF += n.recupJF
+      b[ini].vacances += n.vacances ?? 0
     }
     return b
   }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, annee, effectifs, noel, calculerRecup])
@@ -729,13 +730,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   }
 
   // Valide DÉFINITIVEMENT le planning de la période : archive l'Excel (Supabase Storage, consultable
-  // dans Suivi desiderata), ferme le recueil et RÉINITIALISE ses desiderata. Le planning construit
+  // dans Ouverture du planning), ferme le recueil et RÉINITIALISE ses desiderata. Le planning construit
   // (week-ends, vacances, réa, en-semaine) est CONSERVÉ comme socle annuel.
   async function valider() {
     if (!recueil) return
     const ok = window.confirm(
       `Valider définitivement « ${recueil.nom} » ?\n\n` +
-      '• Le planning de la période sera archivé en Excel (consultable dans Suivi desiderata).\n' +
+      '• Le planning de la période sera archivé en Excel (consultable dans Ouverture du planning).\n' +
       '• Les desiderata de cette période seront EFFACÉS.\n' +
       '• Le planning construit (week-ends, vacances, réa, en-semaine) est CONSERVÉ.\n\n' +
       'Cette action est définitive.'
@@ -751,7 +752,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
       await definirStatutRecueil(recueil.id, 'ferme')
       await supprimerDesiderataRecueil(recueil.id)
-      setValidation({ etat: 'ok', message: 'Planning archivé ✓ — disponible dans Suivi desiderata. Desiderata réinitialisés.' })
+      setValidation({ etat: 'ok', message: 'Planning archivé ✓ — disponible dans Ouverture du planning. Desiderata réinitialisés.' })
       onStatut?.('enregistre')
     } catch {
       setErreur('Validation impossible (archivage ou réinitialisation). Vérifie que la migration Supabase est appliquée.')
@@ -894,7 +895,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
           onClick={valider}
           disabled={!pret || !recueil || validation?.etat === 'cours'}
           style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'var(--color-success)', opacity: (!pret || !recueil || validation?.etat === 'cours') ? 0.5 : 1 }}
-          title="Archive le planning de la période en Excel (consultable dans Suivi desiderata), ferme le recueil et réinitialise ses desiderata. Le planning construit est conservé."
+          title="Archive le planning de la période en Excel (consultable dans Ouverture du planning), ferme le recueil et réinitialise ses desiderata. Le planning construit est conservé."
         >
           {validation?.etat === 'cours' ? 'Validation…' : '✅ Valider définitivement'}
         </button>
@@ -919,13 +920,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
       {pret && principaleId == null && (
         <div style={{ fontSize: 13, color: 'var(--color-amber)', background: 'var(--color-amber-light)', border: '0.5px solid var(--color-amber)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
-          Aucune <strong>trame principale</strong> désignée. Choisissez-en une dans l'onglet <strong>Trames</strong> (Suivi des desiderata) pour pouvoir remplir.
+          Aucune <strong>trame principale</strong> désignée. Choisissez-en une dans l'onglet <strong>Trames</strong> (Ouverture du planning) pour pouvoir remplir.
         </div>
       )}
 
       {!recueil ? (
         <div style={{ ...s.carte, color: 'var(--color-text-secondary)', fontSize: 14, padding: 20 }}>
-          Aucune période disponible. Créez un recueil « normal » dans <strong>Suivi desiderata</strong>.
+          Aucune période disponible. Créez un recueil « normal » dans <strong>Ouverture du planning</strong>.
         </div>
       ) : !pret ? (
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>

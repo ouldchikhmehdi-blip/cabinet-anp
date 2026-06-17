@@ -71,7 +71,7 @@ export default function PanneauPonts({ pontsParAssocie = {}, pontsWeekendParAsso
       <div style={s.note}>
         {interactif
           ? 'Décocher = pont conservé (respecté). Cocher = pont refusé : ce jour off / cette indisponibilité est ignoré par l’attribution automatique des week-ends.'
-          : 'Les éléments cochés (écartés) sont ignorés par l’attribution des week-ends ; à gérer dans le Suivi des desiderata.'}
+          : 'Les éléments cochés (écartés) sont ignorés par l’attribution des week-ends ; à gérer dans Ouverture du planning.'}
       </div>
 
       {inis.map(ini => (

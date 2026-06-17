@@ -486,7 +486,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
 
       {!recueil ? (
         <div style={{ ...s.carte, color: 'var(--color-text-secondary)', fontSize: 14, padding: 20 }}>
-          Aucune période disponible. Créez un recueil « normal » dans <strong>Suivi desiderata</strong>
+          Aucune période disponible. Créez un recueil « normal » dans <strong>Ouverture du planning</strong>
           {' '}(les recueils d'été sont exclus : les week-ends y sont gérés par colonnes).
         </div>
       ) : !pret ? (

@@ -10,7 +10,7 @@ import PlanningNoel from './PlanningNoel'
 import PlanningSemaines from './PlanningSemaines'
 
 // Étapes successives du faiseur.
-// Une seule entrée sidebar « Base calendrier » → assistant guidé Précédent/Suivant.
+// Une seule entrée sidebar « Construction planning » → assistant guidé Précédent/Suivant.
 const ETAPES = [
   { id: 'calendrier', titre: 'Base calendrier' },
   { id: 'objectifs', titre: 'Objectifs' },

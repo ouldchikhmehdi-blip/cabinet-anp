@@ -20,6 +20,28 @@ import { parseISO, formatISO, numeroSemaineISO, joursFeriesFR } from './calendri
 
 export const VERSION_NOEL = 1
 
+// Classifie une couleur de fond CSS pour Noël : 'G' (jaune=garde), 'A' (orange=astreinte),
+// 'C' (cyan bleu #00B0F0 = congé/repos), null sinon (blanc/vert férié/gris/transparent).
+export function classifierCouleurNoel(css) {
+  if (typeof css !== 'string') return null
+  const m = css.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/i)
+  if (!m) return null
+  const r = Number(m[1]), g = Number(m[2]), b = Number(m[3])
+  const a = m[4] === undefined ? 1 : Number(m[4])
+  if (a === 0) return null
+  if (r > 240 && g > 240 && b > 240) return null         // blanc
+  if (r >= 200 && g >= 200 && b <= 120) return 'G'       // jaune
+  if (r >= 200 && g >= 120 && g <= 215 && b <= 120 && r - g >= 35) return 'A' // orange
+  if (r <= 120 && g >= 130 && b >= 190) return 'C'       // cyan bleu (#00B0F0)
+  return null
+}
+
+// Poste « réel » : on ignore les cases purement numériques (« 10 », « 5 »… = bruit, pas un poste).
+function nettoyerPoste(poste) {
+  const t = (poste ?? '').trim()
+  return /^\d+$/.test(t) ? '' : t
+}
+
 export function noelVide() {
   return { v: VERSION_NOEL, colle: '', jours: [] }
 }
@@ -35,7 +57,7 @@ export function normaliserNoel(src) {
             const c = j.parAssocie?.[ini]
             if (!c) continue
             const poste = typeof c.poste === 'string' ? c.poste : ''
-            const role = c.role === 'G' || c.role === 'A' ? c.role : null
+            const role = (c.role === 'G' || c.role === 'A' || c.role === 'C') ? c.role : null
             if (poste.trim() || role) parAssocie[ini] = { poste, role }
           }
           return { iso: j.iso, parAssocie }
@@ -94,7 +116,7 @@ function matriceTexte(texte) {
 export function parserCollageNoel(texte, html, annee) {
   const mat = matriceTexte(texte)
   if (!mat.length) return { jours: [], colle: texte ?? '' }
-  const couleurs = extraireCouleursHTML(html) // [ligne][col] de 'G'|'A'|null (aligné par index de ligne)
+  const couleurs = extraireCouleursHTML(html, classifierCouleurNoel) // [ligne][col] de 'G'|'A'|'C'|null
   const nbCol = mat.reduce((m, l) => Math.max(m, l.length), 0)
   const estIni = (v) => ASSOCIES.some(a => a.toUpperCase() === (v ?? '').trim().toUpperCase())
 
@@ -140,8 +162,8 @@ export function parserCollageNoel(texte, html, annee) {
     for (const c of Object.keys(colAssoc)) {
       const ci = Number(c)
       const ini = colAssoc[c]
-      const poste = (mat[r]?.[ci] ?? '').trim()
-      const role = couleurs?.[r]?.[ci] ?? null // 'G' | 'A' | null
+      const poste = nettoyerPoste(mat[r]?.[ci]) // chiffres seuls → '' (ignorés)
+      const role = couleurs?.[r]?.[ci] ?? null // 'G' | 'A' | 'C' | null
       if (poste || role) parAssocie[ini] = { poste, role }
     }
     jours.push({ iso, parAssocie })
@@ -167,17 +189,19 @@ export function groupeJourNoel(jour) {
 }
 
 // Week-ends de garde imposés par la grille de Noël (notamment ceux qui ENCADRENT les 15 jours) :
-//   → { <numSemaineISO>: ini } = le porteur de la garde de week-end (le dimanche de garde).
-// Sert à intégrer ces week-ends à l'équilibrage de l'étape Week-ends sans double saisie.
+//   → { <numSemaineISO>: ini } = le détenteur du week-end, repéré par TEXTE (entrée non vide le samedi
+//   ou le dimanche, ex. « A5 »/« G5 »), car ces cases ne sont pas forcément colorées.
 export function weekendsGardeNoel(noelData) {
   const data = normaliserNoel(noelData)
   const m = {}
   for (const j of data.jours) {
     const d = parseISO(j.iso)
-    if (d.getUTCDay() !== 0) continue // dimanche uniquement (= garde de week-end)
+    const dow = d.getUTCDay()
+    if (dow !== 0 && dow !== 6) continue // samedi ou dimanche
     const num = numeroSemaineISO(d)
     for (const ini of ASSOCIES) {
-      if (j.parAssocie?.[ini]?.role === 'G') { m[num] = ini; break }
+      const cell = j.parAssocie?.[ini]
+      if (cell && (cell.poste ?? '').trim()) { m[num] = ini; break }
     }
   }
   return m
@@ -185,14 +209,16 @@ export function weekendsGardeNoel(noelData) {
 
 // Bilan des comptes de Noël par associé + ensemble des semaines ISO couvertes (pour exclure le double
 // comptage côté bilan annuel). Les fériés des DEUX années sont pris en compte (Noël chevauche l'an).
-//   → { parAssocie:{ <ini>:{ gWeekend, aVendredi, gVendredi, gardeSemaine, rea, recupJF } }, semaines:Set }
+//   → { parAssocie:{ <ini>:{ gWeekend, aVendredi, gVendredi, gardeSemaine, rea, recupJF, vacances } }, semaines }
 export function bilanNoel(noelData, annee) {
   const data = normaliserNoel(noelData)
   const par = {}
-  for (const ini of ASSOCIES) par[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, gardeSemaine: 0, rea: 0, recupJF: 0 }
+  for (const ini of ASSOCIES) par[ini] = { gWeekend: 0, aVendredi: 0, gVendredi: 0, gardeSemaine: 0, rea: 0, recupJF: 0, vacances: 0 }
   const semaines = new Set()
   const reaSemaines = {}
   const feries = new Set([...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)].map(f => f.iso))
+  // Suivi des jours ouvrés (lun→ven) par semaine ISO, pour détecter les semaines entièrement off (vacances).
+  const ouvres = {} // { num: { presents:Set(dow1-5), off:{ ini:Set(dow) } } }
 
   for (const j of data.jours) {
     const d = parseISO(j.iso)
@@ -200,23 +226,37 @@ export function bilanNoel(noelData, annee) {
     const num = numeroSemaineISO(d)
     semaines.add(num)
     const estFerie = feries.has(j.iso)
+    const estOuvre = dow >= 1 && dow <= 5
+    if (estOuvre) (ouvres[num] ??= { presents: new Set(), off: {} }).presents.add(dow)
     for (const ini of ASSOCIES) {
       const cell = j.parAssocie?.[ini]
-      if (!cell) continue
-      const aPoste = (cell.poste ?? '').trim() !== ''
-      if (cell.role === 'G') {
-        if (dow === 0 || dow === 6) par[ini].gWeekend++       // dimanche (et samedi, rare)
-        else if (dow === 5) par[ini].gVendredi++              // vendredi
-        else par[ini].gardeSemaine++                          // lun → jeu
-      } else if (cell.role === 'A') {
-        if (dow === 5) par[ini].aVendredi++                   // seule l'astreinte du vendredi est suivie
+      const poste = (cell?.poste ?? '').trim()
+      const role = cell?.role ?? null
+      // Jours ouvrés : gardes/astreintes + suivi "off" pour les vacances.
+      if (estOuvre) {
+        if (role === 'G') { if (dow === 5) par[ini].gVendredi++; else par[ini].gardeSemaine++ }
+        else if (role === 'A') { if (dow === 5) par[ini].aVendredi++ }
+        // Off ce jour-là = ni garde/astreinte, et pas de vrai poste (congé bleu 'C' ou case vide).
+        const off = role !== 'G' && role !== 'A' && (role === 'C' || poste === '')
+        if (off) ((ouvres[num].off[ini] ??= new Set())).add(dow)
+        // Récup JF : férié travaillé SANS être de service ni en congé (réa comprise → poste « Réa »).
+        if (estFerie && poste && role == null) par[ini].recupJF++
+        // Semaine de réa : au moins une case « réa » dans la semaine.
+        if (estReaPoste(poste)) (reaSemaines[ini] ??= new Set()).add(num)
       }
-      // Récup JF : férié travaillé SANS être de service (case non colorée — réa comprise).
-      if (estFerie && aPoste && cell.role == null) par[ini].recupJF++
-      // Semaine de réa : au moins une case « réa » dans la semaine.
-      if (estReaPoste(cell.poste)) (reaSemaines[ini] ??= new Set()).add(num)
     }
   }
   for (const ini of ASSOCIES) par[ini].rea = reaSemaines[ini]?.size ?? 0
+
+  // Week-ends : un week-end (samedi/dimanche) tenu = +1 G week-end pour son détenteur.
+  for (const ini of Object.values(weekendsGardeNoel(noelData))) if (par[ini]) par[ini].gWeekend++
+
+  // Vacances : semaines ISO dont les 5 jours ouvrés sont présents et où l'associé est off les 5.
+  for (const info of Object.values(ouvres)) {
+    if (info.presents.size < 5) continue // semaine partielle → on ne conclut pas
+    for (const ini of ASSOCIES) {
+      if ((info.off[ini]?.size ?? 0) >= 5) par[ini].vacances++
+    }
+  }
   return { parAssocie: par, semaines }
 }

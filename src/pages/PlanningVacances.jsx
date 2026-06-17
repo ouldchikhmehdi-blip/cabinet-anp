@@ -387,7 +387,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
       {!recueil ? (
         <div style={{ ...s.carte, color: 'var(--color-text-secondary)', fontSize: 14, padding: 20 }}>
-          Aucune période disponible. Créez un recueil « normal » dans <strong>Suivi desiderata</strong>.
+          Aucune période disponible. Créez un recueil « normal » dans <strong>Ouverture du planning</strong>.
         </div>
       ) : !pret ? (
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>

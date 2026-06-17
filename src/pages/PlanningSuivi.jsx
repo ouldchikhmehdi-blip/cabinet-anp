@@ -291,7 +291,7 @@ export default function PlanningSuivi() {
   if (!estFaiseur) {
     return (
       <div style={{ maxWidth: 640 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>Suivi des desiderata</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>Ouverture du planning</h1>
         <div style={{ ...s.carteSection, color: 'var(--color-text-secondary)', fontSize: 14 }}>
           Cette page est réservée au faiseur de planning.
         </div>
@@ -311,7 +311,7 @@ export default function PlanningSuivi() {
 
   return (
     <div style={{ maxWidth: 980 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Suivi des desiderata</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Ouverture du planning</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
         {recueil
           ? `${nbRemplis}/${ASSOCIES.length} associés ont transmis pour « ${recueil.nom} ».`

@@ -178,8 +178,8 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
         const c = j.parAssocie?.[ini]
         const poste = (c?.poste ?? '').trim()
         const role = c?.role ?? null
-        const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : (poste ? null : 'conge')
-        return { texte: poste, fond, gras: !!role }
+        const fond = role === 'G' ? 'garde' : role === 'A' ? 'astreinte' : role === 'C' ? 'conge' : null
+        return { texte: poste, fond, gras: role === 'G' || role === 'A' }
       })
       const groupeTxt = groupeJourNoel(j)
       const dateFond = estFerie ? 'ferie' : estWeekend ? 'weekend' : null

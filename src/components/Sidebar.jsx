@@ -17,8 +17,8 @@ const navItems = [
 ]
 
 // Entrées ajoutées dynamiquement selon les droits
-const calendrierItem = { id: 'planning-calendrier', label: 'Base calendrier', icon: '📅' }
-const suiviItem = { id: 'planning-suivi', label: 'Suivi desiderata', icon: '✅' }
+const calendrierItem = { id: 'planning-calendrier', label: 'Construction planning', icon: '📅' }
+const suiviItem = { id: 'planning-suivi', label: 'Ouverture du planning', icon: '✅' }
 const adminItem = { id: 'admin-users', label: 'Comptes', icon: '🔑' }
 
 export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur }) {

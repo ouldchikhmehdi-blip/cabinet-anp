@@ -25,6 +25,7 @@ const LIGNES_RECAP = [
   ['gardeSemaine', 'Gardes de semaine'],
   ['rea', 'Réa'],
   ['recupJF', 'Récup jours fériés'],
+  ['vacances', 'Semaines de vacances'],
 ]
 
 // Couleurs FIXES type-Excel (indépendantes du thème, lisibles en clair ET sombre), comme ApercuSemaine.
@@ -224,8 +225,8 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
                 {ASSOCIES.map(ini => {
                   const cell = j.parAssocie?.[ini]
                   const poste = (cell?.poste ?? '').trim()
-                  const fond = cell?.role === 'G' ? 'garde' : cell?.role === 'A' ? 'astreinte' : poste ? null : 'conge'
-                  return <td key={ini} style={{ ...s.td, background: fondCss(fond), fontWeight: cell?.role ? 700 : 400 }}>{poste}</td>
+                  const fond = cell?.role === 'G' ? 'garde' : cell?.role === 'A' ? 'astreinte' : cell?.role === 'C' ? 'conge' : null
+                  return <td key={ini} style={{ ...s.td, background: fondCss(fond), fontWeight: (cell?.role === 'G' || cell?.role === 'A') ? 700 : 400 }}>{poste}</td>
                 })}
                 <td style={{ ...s.td, background: fondCss(grpFond), fontWeight: 700 }}>{grp}</td>
               </tr>
