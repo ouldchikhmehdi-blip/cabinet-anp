@@ -255,20 +255,38 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
   const COULEUR_VACANCES = '#2D6CB5'
   const COULEUR_REMPLACANT = '#B45309'
 
-  // Sélecteur de colonne pour un rôle mono.
-  const selecteurRole = (trame, role, label) => (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-      {label}
-      <select
-        value={trame[role] == null ? '' : trame[role]}
-        onChange={e => majRoleColonne(trame.id, role, e.target.value === '' ? null : Number(e.target.value))}
-        style={{ ...s.select, padding: '5px 8px', fontSize: 12 }}
+  // Sélecteur de colonne pour un rôle mono. `important` met le rôle en évidence (encadré) et signale
+  // « ⚠ à sélectionner » tant qu'aucune colonne n'est désignée — utilisé pour la colonne avant le week-end,
+  // critique et facile à oublier au moment du collage.
+  const selecteurRole = (trame, role, label, important = false) => {
+    const nonDefini = trame[role] == null
+    return (
+      <label
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+          color: important ? 'var(--color-text)' : 'var(--color-text-secondary)',
+          fontWeight: important ? 600 : 400,
+          ...(important ? {
+            padding: '5px 10px', borderRadius: 'var(--radius-md)',
+            border: `1px solid ${nonDefini ? 'var(--color-amber)' : 'var(--color-primary)'}`,
+            background: nonDefini ? 'var(--color-amber-light)' : 'var(--color-primary-light)',
+          } : {}),
+        }}
+        title={important ? 'La colonne qui passe en repos juste avant le week-end de garde — indispensable pour l’équilibrage des week-ends' : undefined}
       >
-        <option value="">—</option>
-        {trame.colonnes.map((_, i) => <option key={i} value={i}>C{i + 1}</option>)}
-      </select>
-    </label>
-  )
+        {label}
+        <select
+          value={trame[role] == null ? '' : trame[role]}
+          onChange={e => majRoleColonne(trame.id, role, e.target.value === '' ? null : Number(e.target.value))}
+          style={{ ...s.select, padding: '5px 8px', fontSize: 12 }}
+        >
+          <option value="">—</option>
+          {trame.colonnes.map((_, i) => <option key={i} value={i}>C{i + 1}</option>)}
+        </select>
+        {important && nonDefini && <span style={{ color: 'var(--color-amber)', fontWeight: 700, whiteSpace: 'nowrap' }}>⚠ à sélectionner</span>}
+      </label>
+    )
+  }
 
   // Désignation des colonnes vacances (plusieurs possibles) : une case à cocher par colonne.
   const selecteurVacances = (trame) => (
@@ -370,6 +388,10 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                     {candidatColonnes.length} colonne{candidatColonnes.length > 1 ? 's' : ''} détectée{candidatColonnes.length > 1 ? 's' : ''}
                   </span>
                 </div>
+                <div style={{ fontSize: 12.5, color: 'var(--color-amber)', background: 'var(--color-amber-light)', border: '1px solid var(--color-amber)', borderRadius: 'var(--radius-md)', padding: '8px 12px', marginBottom: 12, fontWeight: 600 }}>
+                  ⚠ N'oubliez pas, après l'ajout, de désigner la <strong>colonne « avant le week-end »</strong> de la trame dans
+                  le catalogue ci-dessous (repère encadré « ⚠ à sélectionner »). Sans elle, l'équilibrage des week-ends sera faussé.
+                </div>
                 <div style={{ overflowX: 'auto' }}><TrameGrille colonnes={candidatColonnes} /></div>
               </>
             )}
@@ -412,8 +434,8 @@ export default function PlanningTrames({ annee: anneeProp, onChangeAnnee, onStat
                       </label>
                       <button type="button" onClick={() => supprimerTrame(t.id)} style={s.croix} title="Supprimer cette trame">✕</button>
                     </div>
-                    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
-                      {ROLES.map(r => <span key={r.cle}>{selecteurRole(t, r.cle, r.label)}</span>)}
+                    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                      {ROLES.map(r => <span key={r.cle}>{selecteurRole(t, r.cle, r.label, r.cle === 'avantWE')}</span>)}
                     </div>
                     <div style={{ marginBottom: 10 }}>{selecteurVacances(t)}</div>
 
