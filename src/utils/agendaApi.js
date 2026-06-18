@@ -13,7 +13,7 @@ export async function obtenirAbonnement(userId) {
     .upsert({ user_id: userId }, { onConflict: 'user_id', ignoreDuplicates: true })
   const { data, error } = await supabase
     .from('planning_agenda')
-    .select('token, actif')
+    .select('token, actif, exclus')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) throw error
@@ -25,6 +25,15 @@ export async function definirActif(userId, actif) {
   const { error } = await supabase
     .from('planning_agenda')
     .update({ actif })
+    .eq('user_id', userId)
+  if (error) throw error
+}
+
+// Met à jour la liste des tiers EXCLUS (recueil_id désynchronisés individuellement).
+export async function definirExclus(userId, exclus) {
+  const { error } = await supabase
+    .from('planning_agenda')
+    .update({ exclus })
     .eq('user_id', userId)
   if (error) throw error
 }

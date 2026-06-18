@@ -5,7 +5,7 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { obtenirAbonnement, definirActif } from '../utils/agendaApi'
+import { obtenirAbonnement, definirActif, definirExclus } from '../utils/agendaApi'
 import { listerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { listerRecueils } from '../utils/desiderataApi'
 
@@ -54,6 +54,7 @@ export default function MonAgenda() {
         const liste = aMoi.map(r => {
           const rc = parId[r.recueil_id]
           return {
+            recueilId: r.recueil_id,
             annee: r.annee,
             nom: rc?.nom ?? 'Tiers validé',
             debut: rc?.semaine_debut, fin: rc?.semaine_fin,
@@ -89,6 +90,48 @@ export default function MonAgenda() {
       setBusy(false)
     }
   }
+
+  const exclusSet = useMemo(() => new Set(abonnement?.exclus ?? []), [abonnement])
+
+  // Synchronise / désynchronise UN tiers (opt-out via la liste `exclus`).
+  async function basculerTier(recueilId, synchroniser) {
+    if (!userId) return
+    setErreur(null); setBusy(true)
+    const nouveau = new Set(exclusSet)
+    if (synchroniser) nouveau.delete(recueilId)
+    else nouveau.add(recueilId)
+    const arr = [...nouveau]
+    try {
+      await definirExclus(userId, arr)
+      setAbonnement(prev => ({ ...prev, exclus: arr }))
+    } catch {
+      setErreur('Action impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Tout (re)synchroniser : vide la liste d'exclusions et réactive le flux.
+  async function toutSynchroniser() {
+    if (!userId) return
+    setErreur(null); setBusy(true)
+    try {
+      await definirExclus(userId, [])
+      await definirActif(userId, true)
+      setAbonnement(prev => ({ ...prev, exclus: [], actif: true }))
+    } catch {
+      setErreur('Action impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Regroupe les tiers par année (les années s'accumulent → présentation lisible).
+  const tiersParAnnee = useMemo(() => {
+    const m = new Map()
+    for (const t of tiers) { if (!m.has(t.annee)) m.set(t.annee, []); m.get(t.annee).push(t) }
+    return [...m.entries()].sort((a, b) => a[0] - b[0])
+  }, [tiers])
 
   const s = {
     carte: { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 20 },
@@ -130,6 +173,9 @@ export default function MonAgenda() {
       {/* Synchroniser */}
       <div style={s.carte}>
         <div style={s.titre}>Synchroniser mon agenda</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
+          ⏳ Après l'abonnement (ou toute modification ci-dessous), la mise à jour de votre agenda peut prendre <strong>jusqu'à ~1 heure</strong> : c'est votre application d'agenda qui rafraîchit l'abonnement, ce n'est pas instantané.
+        </div>
         {!actif && (
           <div style={{ fontSize: 12.5, color: 'var(--color-amber)', marginBottom: 12 }}>
             La synchronisation est actuellement <strong>désactivée</strong> (agenda vidé). Réactivez-la ci-dessous pour réafficher votre planning.
@@ -174,22 +220,51 @@ export default function MonAgenda() {
         )}
       </div>
 
-      {/* Tiers inclus */}
+      {/* Choix par planning validé : synchroniser / désynchroniser chacun */}
       <div style={s.carte}>
-        <div style={s.titre}>Tiers synchronisés</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
+          <div style={s.titre}>Plannings à synchroniser</div>
+          {tiers.length > 0 && (
+            <button type="button" onClick={toutSynchroniser} disabled={busy} style={{ ...s.boutonSec, marginLeft: 'auto', opacity: busy ? 0.6 : 1 }}>Tout synchroniser</button>
+          )}
+        </div>
+        <div style={s.aide}>Choisissez les plannings à inclure dans votre agenda. Un nouveau planning validé est ajouté automatiquement ; vous pouvez le retirer ici à tout moment.</div>
         {tiers.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Aucun tiers validé pour le moment. Votre planning apparaîtra ici dès qu'un tiers sera validé par le faiseur.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {tiers.map((t, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 12px' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text)', flex: 1 }}>
-                  📅 {t.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>· {t.annee}{t.debut != null ? ` · S${t.debut}→S${t.fin}` : ''}</span>
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t.nbEv} évén.</span>
+          tiersParAnnee.map(([an, liste]) => (
+            <div key={an} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{an}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {liste.map(t => {
+                  const sync = !exclusSet.has(t.recueilId)
+                  return (
+                    <div key={t.recueilId} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: `0.5px solid ${sync && actif ? 'var(--color-success)' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '8px 12px', opacity: actif ? 1 : 0.6 }}>
+                      <span style={{ fontSize: 13, color: 'var(--color-text)', flex: 1 }}>
+                        📅 {t.nom} <span style={{ color: 'var(--color-text-tertiary)' }}>{t.debut != null ? `· S${t.debut}→S${t.fin} ` : ''}· {t.nbEv} évén.</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => basculerTier(t.recueilId, !sync)}
+                        disabled={busy}
+                        style={{
+                          padding: '6px 12px', fontSize: 12.5, fontWeight: 600, borderRadius: 999, cursor: busy ? 'default' : 'pointer',
+                          border: `0.5px solid ${sync ? 'var(--color-success)' : 'var(--color-border)'}`,
+                          background: sync ? 'var(--color-success-light)' : 'var(--color-bg)',
+                          color: sync ? 'var(--color-success)' : 'var(--color-text-secondary)',
+                        }}
+                      >
+                        {sync ? '✓ Synchronisé' : '○ Désynchronisé'}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
+            </div>
+          ))
+        )}
+        {!actif && tiers.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--color-amber)' }}>Synchronisation globalement désactivée : « Réactiver » plus bas pour appliquer ces choix.</div>
         )}
       </div>
 

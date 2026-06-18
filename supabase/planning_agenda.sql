@@ -11,9 +11,14 @@ create table if not exists public.planning_agenda (
   user_id    uuid primary key references auth.users(id) on delete cascade,
   token      uuid not null unique default gen_random_uuid(),
   actif      boolean not null default true,
+  -- Tiers EXCLUS de la synchro (opt-out) : tableau de recueil_id que l'associé a désynchronisés
+  -- individuellement. Par défaut [] → tous les tiers validés sont synchronisés (les nouveaux s'ajoutent).
+  exclus     jsonb   not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Idempotent pour les bases déjà créées :
+alter table public.planning_agenda add column if not exists exclus jsonb not null default '[]'::jsonb;
 
 alter table public.planning_agenda enable row level security;
 

@@ -50,10 +50,11 @@ export default async function handler(req, res) {
 
     const { data: ab } = await supabaseAdmin
       .from('planning_agenda')
-      .select('user_id, actif')
+      .select('user_id, actif, exclus')
       .eq('token', token)
       .maybeSingle()
     if (!ab || !ab.actif) return res.status(200).send(calendrier([]))
+    const exclus = new Set(Array.isArray(ab.exclus) ? ab.exclus : [])
 
     const { data: prof } = await supabaseAdmin
       .from('profiles')
@@ -65,10 +66,11 @@ export default async function handler(req, res) {
 
     const { data: rows } = await supabaseAdmin
       .from('planning_agenda_evenements')
-      .select('data')
+      .select('recueil_id, data')
 
     const lignes = []
     for (const row of (rows ?? [])) {
+      if (exclus.has(row?.recueil_id)) continue // tiers désynchronisé par l'associé
       const evts = row?.data?.[ini]
       if (!Array.isArray(evts)) continue
       for (const e of evts) {

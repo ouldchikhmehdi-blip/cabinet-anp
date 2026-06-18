@@ -402,9 +402,15 @@ Une fois qu'un tiers est **validé** par le faiseur (export Excel archivé, recu
   `grilleSemaine`/`noel`) et on les stocke (`planning_agenda_evenements`, clé `annee,recueil_id`, écriture
   faiseur). Le flux ne fait que sérialiser ces données. La **dévalidation** supprime la ligne → seuls les
   tiers réellement validés sont synchronisés.
+- **Sélection par planning** : chaque tiers validé est listé (groupé par année) avec un bouton
+  **Synchronisé / Désynchronisé**. L'associé choisit individuellement ce qu'il garde dans son agenda
+  (opt-out via la colonne `planning_agenda.exclus` = recueil_id retirés ; un nouveau tiers validé est inclus
+  par défaut). « Tout synchroniser » vide les exclusions.
 - **Tout supprimer** (revenir en arrière) : la page « Mon agenda » bascule `actif=false` → le flux renvoie un
   calendrier **vide** → l'agenda abonné se vide au prochain rafraîchissement (puis l'associé peut retirer
-  l'abonnement). « Réactiver » remet `actif=true` sans se réabonner.
+  l'abonnement). « Réactiver » remet `actif=true` sans se réabonner (les choix par planning sont conservés).
+- **Délai** : la page indique qu'après abonnement ou modification, la mise à jour peut prendre **jusqu'à ~1 h**
+  (rafraîchissement géré par l'app d'agenda, non instantané).
 - Aucune donnée sensible dans le flux (rôles + initiales). Fichiers : `api/agenda.js`,
   `src/pages/MonAgenda.jsx`, `src/utils/evenementsAgenda.js`, `src/utils/agendaApi.js`,
   `src/utils/agendaEvenementsApi.js`, `supabase/planning_agenda*.sql`.
