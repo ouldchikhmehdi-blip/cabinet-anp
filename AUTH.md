@@ -41,8 +41,9 @@ Flux **100 % natif Supabase, côté front** (aucune fonction serveur, aucune tab
 
 1. Écran de connexion → **« Mot de passe oublié ? »** → l'associé saisit son e-mail → `supabase.auth.resetPasswordForEmail(email, { redirectTo })`. Message **générique** affiché quoi qu'il arrive (anti-énumération + rappel « vérifiez vos spams »).
 2. L'e-mail contient un lien de récupération. Au clic, `detectSessionInUrl: true` ([src/lib/supabase.js](src/lib/supabase.js)) capture le hash `#type=recovery` → session de récupération + événement `PASSWORD_RECOVERY`.
-3. [AuthContext](src/auth/AuthContext.jsx) expose alors `recovery: true` (détecté en synchrone depuis le hash **et** via l'événement). [App.jsx](src/App.jsx) affiche [ResetPassword](src/auth/ResetPassword.jsx) **avant** tout routage AAL/2FA → `supabase.auth.updateUser({ password })`.
-4. Succès → `signOut()` → retour au login. L'associé se reconnecte avec son **nouveau** mot de passe + son code TOTP **habituel** (la 2FA n'est pas réinitialisée).
+3. [AuthContext](src/auth/AuthContext.jsx) expose alors `recovery: true` (détecté en synchrone depuis le hash **et** via l'événement). [App.jsx](src/App.jsx) affiche [ResetPassword](src/auth/ResetPassword.jsx) **avant** tout routage AAL/2FA.
+4. **Élévation AAL2** : Supabase exige une session **AAL2** pour changer le mot de passe quand la 2FA est activée (invariant de sécurité non désactivable). L'écran demande donc d'abord le **code TOTP** (`mfa.challenge` + `mfa.verify`) — l'associé a son téléphone — puis `supabase.auth.updateUser({ password })`. *(Conséquence sécurité : un lien de récupération volé ne suffit pas, il faut aussi le 2ᵉ facteur.)*
+5. Succès → `signOut()` → retour au login. L'associé se reconnecte avec son **nouveau** mot de passe + son code TOTP **habituel** (la 2FA n'est pas réinitialisée).
 
 **Envoi de l'e-mail** : service SMTP **par défaut de Supabase** (expéditeur générique, peut tomber en spam), **limité à ~2 e-mails/heure au niveau du projet**. Acceptable pour 8 associés occasionnels. Pour lever la limite et soigner l'expéditeur → configurer un **SMTP custom** (Authentication → Emails → SMTP Settings) **sans aucun changement de code**. Le texte de l'e-mail se personnalise dans Authentication → Email Templates → *Reset Password*.
 
