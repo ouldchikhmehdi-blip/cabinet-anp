@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ANNEES, weekendsDansPlage, formatJJMM, moisAnneeFR, numeroSemaineISO, parseISO, listerSemaines, premiereSemainePlanning } from '../utils/calendrier'
-import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
+import { ANNEE_DEFAUT, normaliser, scoreDemande } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
@@ -202,6 +202,19 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return map
   }, [desideratas, profils])
 
+  // Volume de desiderata par associé (scoreDemande) → arbitrage d'équité : un week-end rapproché inévitable
+  // est chargé sur le plus demandeur, jamais sur le moins-demandeur.
+  const demandeParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const m = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (ini) m[ini] = scoreDemande(normaliser(row.data))
+    }
+    return m
+  }, [desideratas, profils])
+
   // Jours off EN SEMAINE par associé et par semaine : { ini: { semaine: Set('lun'..'ven') } }.
   // Basé sur les jours off EFFECTIFS (ponts écartés exclus).
   const joursOffDetailParAssocie = useMemo(() => {
@@ -358,7 +371,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       // Les week-ends de garde imposés par Noël ne sont PAS réattribués ni persistés ici, mais comptent
       // dans l'équilibrage des autres (ajoutés au contexte hors-plage de proposerWeekends).
       const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]) && !weekendsNoel[w.num])
-      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW)
+      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW, demandeParAssocie)
       return { ...prev, affectations: { ...fixes, ...proposees } }
     })
   }

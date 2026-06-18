@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour, premiereSemainePlanning } from '../utils/calendrier'
-import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
+import { ANNEE_DEFAUT, normaliser, scoreDemande } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
 import { uploaderArchive } from '../utils/archivesApi'
@@ -205,12 +205,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     const m = {}
     for (const row of desideratas) {
       const ini = parUser[row.user_id]
-      if (!ini) continue
-      const d = normaliser(row.data)
-      m[ini] = (d.joursOffSouhaites?.length ?? 0)
-        + (d.vacancesSouhaitees?.length ?? 0)
-        + (d.weekendsIndispo?.length ?? 0)
-        + Object.keys(d.colonnesSouhaitees ?? {}).length
+      if (ini) m[ini] = scoreDemande(normaliser(row.data))
     }
     return m
   }, [desideratas, parUser])

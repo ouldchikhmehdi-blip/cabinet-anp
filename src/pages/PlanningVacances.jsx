@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint, premiereSemainePlanning } from '../utils/calendrier'
-import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
+import { ANNEE_DEFAUT, normaliser, scoreDemande } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
@@ -129,6 +129,19 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       map[ini] = normaliser(row.data).colonnesSouhaitees ?? {}
     }
     return map
+  }, [desideratas, profils])
+
+  // Volume de desiderata par associé (scoreDemande) → arbitrage d'équité : un congé rapproché inévitable
+  // est chargé sur le plus demandeur, jamais sur le moins-demandeur.
+  const demandeParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const m = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (ini) m[ini] = scoreDemande(normaliser(row.data))
+    }
+    return m
   }, [desideratas, profils])
 
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
@@ -310,7 +323,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         const n = Number(num)
         if (n < debut || n > fin) horsPlage[n] = inis
       }
-      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {}, toussaintSet)
+      const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {}, toussaintSet, demandeParAssocie)
       return { ...prev, vacances: { ...horsPlage, ...proposees } }
     })
   }

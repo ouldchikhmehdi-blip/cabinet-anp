@@ -54,6 +54,17 @@ export function normaliser(data) {
   return fusion
 }
 
+// Score de « demande » d'un associé = volume de desiderata formulés (jours off + vacances souhaitées +
+// week-ends indisponibles + souhaits de colonne). Sert d'arbitrage d'équité : qui demande le plus absorbe
+// les rapprochements inévitables (week-ends/vacances trop proches, gardes collées), donc le moins-demandeur
+// est protégé. Utilisé identiquement par les étapes Week-ends, Vacances et En semaine.
+export function scoreDemande(d) {
+  return (d?.joursOffSouhaites?.length ?? 0)
+    + (d?.vacancesSouhaitees?.length ?? 0)
+    + (d?.weekendsIndispo?.length ?? 0)
+    + Object.keys(d?.colonnesSouhaitees ?? {}).length
+}
+
 // Un associé est « rempli » (🟢) s'il a transmis (soumis), coché « rien à
 // signaler », ou renseigné au moins un champ.
 export function estRempli(d, soumis = false) {

@@ -78,9 +78,16 @@ export function analyserSemaine(num, inis, refusParAssocie, estScolaire, weekend
 // - placesParSemaine : { num: N } postes ouverts par le faiseur (sinon défaut 1, 2 en scolaire, 3 Toussaint)
 // - verrousParSemaine : { num: [inis] } associés FORCÉS (verrouillés) → préservés, posés en premier
 // - toussaintSet : Set(nums) des semaines de vacances de la Toussaint (couverture par défaut = 3)
+// - demandeParAssocie : { ini: number } volume de desiderata (scoreDemande) → arbitrage d'équité : un congé
+//   rapproché inévitable est chargé sur le PLUS demandeur (le moins-demandeur est protégé).
+// RÈGLE DURE : jamais de congé collé à un week-end de garde du même associé (S ou S-1) en automatique — ni
+// en couverture, ni même sur un souhait ; le faiseur reste libre de forcer (verrou) ou de déplacer le WE.
 // Renvoie { num: [inis] } pour la plage.
-export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, placesParSemaine = {}, verrousParSemaine = {}, toussaintSet = new Set()) {
+export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssocie, scolairesSet, vacancesHorsPlage = {}, weekendAff = {}, colonnesSouhaiteesParAssocie = {}, placesParSemaine = {}, verrousParSemaine = {}, toussaintSet = new Set(), demandeParAssocie = {}) {
   const resultat = {}
+  const demande = (ini) => demandeParAssocie[ini] ?? 0
+  // Congé collé à un week-end de garde du même associé : la semaine du WE (S) ou celle d'après (S-1).
+  const gardeColleeWE = (num, ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
   // Compteur de semaines par associé (hors-plage + ce qu'on attribue) pour l'équilibrage.
   const compte = {}
   for (const ini of ASSOCIES) compte[ini] = 0
@@ -110,8 +117,10 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   //    les moins chargés d'abord (déterministe).
   for (const num of nums) {
     const cap = placesParSemaine?.[num] ?? (toussaintSet?.has(num) ? 3 : scolairesSet?.has(num) ? 2 : 1)
+    // Règle dure : un souhait collé à un week-end de garde n'est PAS placé automatiquement (il devient
+    // « souhait non réalisé », signalé ; le faiseur peut le forcer via un verrou).
     const souhaits = ASSOCIES
-      .filter(ini => souhaitParAssocie?.[ini]?.has(num) && !refusParAssocie?.[ini]?.has(num) && !resultat[num].includes(ini))
+      .filter(ini => souhaitParAssocie?.[ini]?.has(num) && !refusParAssocie?.[ini]?.has(num) && !resultat[num].includes(ini) && !gardeColleeWE(num, ini))
       .sort((a, b) => (compte[a] - compte[b]) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
     for (const ini of souhaits) {
       if (resultat[num].length >= cap) break // capacité atteinte : souhait non réalisé
@@ -123,20 +132,23 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   for (const num of nums) {
     // Cible = postes ouverts par le faiseur, sinon couverture minimale (3 Toussaint, 2 scolaire, 1 sinon).
     const min = placesParSemaine?.[num] ?? (toussaintSet?.has(num) ? 3 : scolairesSet?.has(num) ? 2 : 1)
-    const gardeCollee = (ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
+    const gardeCollee = (ini) => gardeColleeWE(num, ini)
     const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
     // Règle molle : éviter deux congés du même associé à moins de ESPACEMENT_VAC_MIN.
     const rapproche = (ini) => semParAssocie[ini].some(w => Math.abs(w - num) < ESPACEMENT_VAC_MIN)
     while (resultat[num].length < min) {
       const base = ASSOCIES.filter(ini => !resultat[num].includes(ini) && !refusParAssocie?.[ini]?.has(num))
-      // Éviter garde collée ET congés rapprochés ; on relâche progressivement si la couverture l'exige.
+      // RÈGLE DURE : jamais de congé collé à un week-end de garde → on ne relâche QUE l'espacement, jamais
+      // la garde collée. S'il ne reste que des candidats collés → on n'attribue pas (le faiseur tranche).
       let candidats = base.filter(ini => !gardeCollee(ini) && !rapproche(ini))
-      if (candidats.length === 0) candidats = base.filter(ini => !gardeCollee(ini)) // relâche l'espacement
-      if (candidats.length === 0) candidats = base                                  // relâche la garde collée
+      if (candidats.length === 0) candidats = base.filter(ini => !gardeCollee(ini)) // relâche l'espacement seulement
       if (candidats.length === 0) break
-      // Moins chargé d'abord ; on déprioritise un souhait de colonne (le congé le contredirait).
+      // Moins chargé d'abord ; éviter un congé rapproché, sinon le charger sur le plus demandeur (équité) ;
+      // on déprioritise un souhait de colonne (le congé le contredirait).
       candidats.sort((a, b) =>
         (compte[a] - compte[b]) ||
+        ((rapproche(a) ? 1 : 0) - (rapproche(b) ? 1 : 0)) ||
+        (rapproche(a) && rapproche(b) ? (demande(b) - demande(a)) : 0) ||
         ((veutColonne(a) ? 1 : 0) - (veutColonne(b) ? 1 : 0)) ||
         (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b))
       )

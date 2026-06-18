@@ -97,8 +97,10 @@ export function impactJourOffWE(num, ini, joursOffDetailParAssocie = {}, avantRe
 //   en semaine via la colonne avant/après-WE (et privilégier un week-end qui le satisfait).
 // - dejaFait : { ini: number } week-ends DÉJÀ réalisés (Compteurs de référence, parties faites dans Excel) ;
 //   quand fourni, sert de SOCLE du compteur de charge → plafond DUR « objectif annuel » respecté sans écart.
+// - demandeParAssocie : { ini: number } volume de desiderata (scoreDemande) → arbitrage d'équité : un
+//   week-end rapproché inévitable est chargé sur le PLUS demandeur (le moins-demandeur est protégé).
 // Renvoie un objet { num: ini } limité aux week-ends de la plage.
-export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null, dejaFait = {}) {
+export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null, dejaFait = {}, demandeParAssocie = {}) {
   const resultat = {}
   // Compteur courant (hors-plage + ce qu'on attribue) : sert UNIQUEMENT à l'espacement.
   const courant = { ...affectationsHorsPlage }
@@ -121,18 +123,25 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     const bloque = (ini) => impactJourOffWE(num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours).bloque
     const satisfait = (ini) => impactJourOffWE(num, ini, joursOffDetailParAssocie, avantReposJours, apresReposJours).satisfait
 
-    // Le plafond DUR (sousPlafond) est appliqué à CHAQUE niveau : on relâche les contraintes souples
-    // (espacement, blocage, garde collée) mais JAMAIS l'objectif annuel.
+    const demande = (ini) => demandeParAssocie[ini] ?? 0
+    const creeRapproche = (ini) => !espacementOk(ini) // week-end déjà attribué à < ESPACEMENT_MIN
+
+    // Le plafond DUR (sousPlafond) ET la garde collée à des vacances (!vacancesCollee) sont appliqués à
+    // CHAQUE niveau : on relâche les contraintes souples (espacement, blocage) mais JAMAIS l'objectif
+    // annuel ni le collage vacances. Si seuls restent des candidats collés-vacances → pool vide → vide.
     let candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini) && !vacancesCollee(ini) && espacementOk(ini) && !bloque(ini))
     if (candidats.length === 0) candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini) && !vacancesCollee(ini) && !bloque(ini)) // relâche l'espacement
     if (candidats.length === 0) candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini) && !vacancesCollee(ini)) // relâche le non-blocage
-    if (candidats.length === 0) candidats = ASSOCIES.filter(ini => sousPlafond(ini) && dispo(ini)) // relâche la garde collée
-    if (candidats.length === 0) continue // personne sous plafond/dispo → laissé vide, le faiseur tranche
+    if (candidats.length === 0) continue // personne sous plafond/dispo/non-collé → laissé vide, le faiseur tranche
 
-    // Équilibrage d'abord ; synergie (le week-end satisfait un jour off) ; pénalité souhait de colonne ;
-    // déficit vs objectif ; puis ordre figé.
+    // Équilibrage d'abord ; éviter un week-end rapproché, sinon le charger sur le plus demandeur (équité) ;
+    // synergie (le week-end satisfait un jour off) ; pénalité souhait de colonne ; déficit vs objectif ; ordre figé.
     candidats.sort((a, b) => {
       if (compte[a] !== compte[b]) return compte[a] - compte[b]
+      const rapA = creeRapproche(a) ? 1 : 0
+      const rapB = creeRapproche(b) ? 1 : 0
+      if (rapA !== rapB) return rapA - rapB
+      if (rapA && rapB && demande(a) !== demande(b)) return demande(b) - demande(a)
       const synA = satisfait(a) ? 0 : 1
       const synB = satisfait(b) ? 0 : 1
       if (synA !== synB) return synA - synB

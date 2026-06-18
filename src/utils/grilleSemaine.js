@@ -68,13 +68,13 @@ export function celluleAssocieJour(a, ctx) {
     congesSemaine, affectationsSemaine, recupParSemaine, compteurs,
   } = ctx
 
-  // ── Week-end : seule la personne de garde est colorée (texte « G1 »/« A1 »), congé bleu, sinon gris.
+  // ── Week-end : seule la personne de garde est colorée (texte « G1 »/« A1 »), sinon gris. Le bleu des
+  // vacances reste cantonné au lundi→vendredi (habitude visuelle) : un vacancier le sam/dim n'est PAS bleu.
   if (estWeekend) {
     if (iniWE && a === iniWE) {
       const texte = compteurs ? `${role}${compteurs.weekend?.[sem.num] ?? ''}` : role
       return { texte, fond: role === 'G' ? 'garde' : 'astreinte', gras: true }
     }
-    if (congesSemaine.includes(a)) return { texte: '', fond: 'conge', gras: false }
     return { texte: '', fond: 'weekend', gras: false }
   }
 

@@ -132,13 +132,15 @@ Chaîne logique :
   - après une astreinte → lendemain off (toujours) ;
   - après un viscéral le mardi → mercredi off ;
   - après un viscéral le jeudi → vendredi off.
-- **Réa et week-end de garde non accolés** : une semaine de réa ne doit être ni **juste avant** un week-end de garde du même associé (réa S + garde le WE S), ni **juste après** (garde le WE S-1 → lundi de repos, donc pas de réa la semaine S). À éviter, sauf exception validée par le faiseur.
+- **Réa et week-end de garde non accolés** : une semaine de réa ne doit être ni **juste avant** un week-end de garde du même associé (réa S + garde le WE S), ni **juste après** (garde le WE S-1 → lundi de repos, donc pas de réa la semaine S). À éviter, sauf exception validée par le faiseur (relâché en tout dernier recours par l'auto).
+- **Vacances et week-end de garde non accolés (RÈGLE DURE)** : un associé ne peut **jamais** être de week-end de garde **collé** à l'une de ses semaines de congé — ni le week-end **avant** (WE S-1) ni **juste après** (WE S, congé lun→ven puis ce week-end). L'auto-attribution ne le crée **jamais** (côté week-ends comme côté vacances, souhaits compris) : si tous les candidats sont collés, la case reste **vide / non pourvue** (le faiseur tranche). Seul le **faiseur peut forcer** (verrou) ; il en est alors **informé** (pastille « 🟠 vac. » côté week-ends, « 🟠 garde » côté vacances). La **réa** reste en règle molle (point précédent). (`src/utils/weekends.js`, `src/utils/vacances.js`.)
 
 ### 6. Règles molles (à viser, ajustables)
 
 - **Espacement des gardes** : idéalement ≥ 10 jours entre deux gardes (au minimum une semaine).
 - **Espacement des vacances** : éviter deux semaines de congé d'un même associé à **moins de 4 semaines** d'écart (« deux sur quatre »). Règle molle : l'attribution auto l'évite au maximum mais le fait si nécessaire ; sinon **pastille orange « rapprochées »** (et compteur), le faiseur arbitre. Jamais bloquant. **Un associé peut demander deux semaines d'affilée** (desiderata) : ses **souhaits sont respectés** (jamais retirés par l'espacement), l'alerte sert alors **uniquement à informer** le faiseur que c'était demandé. (`ESPACEMENT_VAC_MIN`, `src/utils/vacances.js`.)
 - **Astreintes** : plus de tolérance, peuvent être plus rapprochées.
+- **Équité des rapprochements (qui demande plus absorbe)** : quand un rapprochement est **inévitable** (week-ends ou vacances trop proches), l'auto le charge sur l'associé ayant formulé **le plus** de desiderata (`scoreDemande` = jours off + vacances souhaitées + week-ends indispo + souhaits de colonne), de sorte que le **moins-demandeur soit protégé**. C'est un **départage** : l'équilibre du **nombre** de week-ends/vacances et les **plafonds** (objectifs) restent prioritaires. Règle commune aux étapes Week-ends, Vacances et En semaine (`scoreDemande`, `src/utils/desiderata.js`).
 - **Au bloc** (viscéral ou Bloc A) : souvent off le lendemain (pas systématique).
 - Ces règles se relâchent en situation dégradée (été, sous-effectif), où gardes/astreintes peuvent être rapprochées.
 - **Équilibrage entre associés** : gardes, astreintes, week-ends et semaines de réa répartis à peu près également entre tous — non seulement sur l'année, mais sur chaque période (janv-juin / été / sept-déc). Ex. : éviter qu'une personne fasse 1 semaine de réa sur janv-juin pendant qu'une autre en fait 4 sur la même période. Des écarts sont acceptables, mais pas trop importants.
@@ -366,6 +368,8 @@ Il sait ainsi qui relancer. Il n'a pas à attendre que tout le monde ait répond
 **Export / impression.** Un bouton permet d'exporter en PDF l'ensemble des desiderata (un récapitulatif clair, une section par personne) — et, plus largement, le planning — afin de tout imprimer d'un clic. La mise en page doit être visuelle, lisible et bien organisée, pour retrouver facilement les informations de chaque associé.
 
 > **Convention export Excel** : dans tout fichier Excel généré (Base calendrier, objectifs, planning…), le **texte de chaque cellule est centré** (horizontalement et verticalement) — libellés compris, pas seulement les valeurs. Police **Calibri 11**.
+>
+> **Couleur des vacances = lundi→vendredi seulement.** Le fond bleu « congé » d'une semaine de vacances ne s'applique qu'aux **jours ouvrés** (lun→ven) ; le **samedi/dimanche** d'une semaine de congé reste en **gris « week-end »** (le porteur de garde garde sa couleur G/A). Vaut pour tous les exports (moteur partagé `celluleAssocieJour`, `src/utils/grilleSemaine.js`). Les blocs imposés Noël/Toussaint, collés tels quels, ne sont pas concernés.
 
 ### 18. Points encore en suspens
 
