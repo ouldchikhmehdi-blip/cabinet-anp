@@ -189,6 +189,29 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return map
   }, [joursOffEffectifsParAssocie])
 
+  // Week-ends dont l'attribution CASSERAIT un pont de jour férié souhaité : { ini: Set(numsSemaine) }.
+  // L'associé a posé un off accolé à un férié, le VENDREDI (colonne avant-WE de S → week-end S) ou le
+  // LUNDI (colonne après-WE de S+1 → week-end S-1). Anticipé à l'étape week-end : un off lun/ven ordinaire
+  // n'empêche pas l'attribution, mais un pont férié OUI (évité en auto + alerte). Ponts écartés exclus.
+  const pontFerieParAssocie = useMemo(() => {
+    const map = {}
+    for (const ini of ASSOCIES) map[ini] = new Set()
+    for (const [ini, ponts] of Object.entries(pontsParAssocie)) {
+      if (!map[ini]) map[ini] = new Set()
+      for (const p of ponts) {
+        for (const iso of (p.joursOff ?? [])) {
+          if (ecartesSet.has(cleEcart(ini, iso))) continue // pont écarté par le faiseur
+          let d
+          try { d = parseISO(iso) } catch { continue }
+          const dow = d.getUTCDay()
+          if (dow === 5) map[ini].add(numeroSemaineISO(d))            // vendredi → week-end de S (avant-WE)
+          else if (dow === 1) map[ini].add(numeroSemaineISO(d) - 1)   // lundi → week-end de S-1 (après-WE)
+        }
+      }
+    }
+    return map
+  }, [pontsParAssocie, ecartesSet])
+
   // Souhaits de colonne par associé : { ini: { numSemaine: colIndex } } (trame principale).
   const colonnesSouhaiteesParAssocie = useMemo(() => {
     const parUser = {}
@@ -316,9 +339,9 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   // Analyse des conflits sur la plage courante.
   const analyses = useMemo(() => {
     const m = {}
-    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie)
+    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie, pontFerieParAssocie)
     return m
-  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie])
+  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie, pontFerieParAssocie])
 
   // À arbitrer : uniquement les week-ends où AUCUN associé n'est plaçable sans contrainte
   // (les desiderata d'une seule personne ne sont pas des « conflits » — cf. PLANNING.md §13).
@@ -326,14 +349,21 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     const out = []
     const lib = (w) => `WE S${w.num} (${formatJJMM(w.samedi)}–${formatJJMM(w.dimanche)})`
     for (const w of weekends) {
-      if (affectations[w.num] || weekendsNoel[w.num]) continue // imposé par Noël = attribué
+      if (affectations[w.num] || weekendsNoel[w.num]) {
+        // Week-end attribué par l'outil : alerter si l'associé de garde casse un pont de jour férié souhaité.
+        const ini = affectations[w.num]
+        if (ini && !weekendsNoel[w.num] && pontFerieParAssocie[ini]?.has(w.num)) {
+          out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — ${ini} est de garde alors qu'il a posé un pont de jour férié (off accolé) : son pont serait cassé. Arbitrage : déplacer ce week-end, ou écarter le pont dans « Ouverture du planning ».` })
+        }
+        continue // imposé par Noël ou déjà attribué
+      }
       const dispo = ASSOCIES.filter(x => !indispoParAssocie[x]?.has(w.num) && !joursOffWeekendParAssocie[x]?.has(w.num))
       if (dispo.length === 0) {
         out.push({ severite: 'amber', semaine: w.num, message: `${lib(w)} — non attribuable : aucun associé sans contrainte (indisponible / jour off le week-end). Arbitrage : forcer un associé malgré une contrainte.` })
       }
     }
     return out
-  }, [weekends, affectations, weekendsNoel, indispoParAssocie, joursOffWeekendParAssocie])
+  }, [weekends, affectations, weekendsNoel, indispoParAssocie, joursOffWeekendParAssocie, pontFerieParAssocie])
 
   const recap = useMemo(() => {
     let attribues = 0, indispo = 0, proches = 0, vac = 0
@@ -384,7 +414,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       // Les week-ends de garde imposés par Noël ne sont PAS réattribués ni persistés ici, mais comptent
       // dans l'équilibrage des autres (ajoutés au contexte hors-plage de proposerWeekends).
       const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]) && !weekendsNoel[w.num])
-      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW, demandeParAssocie, vacancesSouhaiteesParAssocie)
+      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW, demandeParAssocie, vacancesSouhaiteesParAssocie, pontFerieParAssocie)
       return { ...prev, affectations: { ...fixes, ...proposees } }
     })
   }
@@ -618,6 +648,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-danger)')} title="Jour off demandé le samedi ou le dimanche de ce week-end">🔴 jour off</span>
                       ) : a.vacancesCollee ? (
                         <span style={s.etat('var(--color-amber)')} title="Week-end de garde accolé à une semaine de vacances de cet associé">🟠 vac.</span>
+                      ) : a.pontFerie ? (
+                        <span style={s.etat('var(--color-amber)')} title="Cet associé a posé un PONT de jour férié (off le vendredi avant-WE ou le lundi après-WE, accolé à un férié) : être de garde ce week-end casse son pont — à revoir">🟠 pont férié</span>
                       ) : a.tropProche != null ? (
                         <span style={s.etat('var(--color-amber)')} title={`Moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}`}>🟠 &lt;{ESPACEMENT_MIN} sem</span>
                       ) : a.souhaitColonne != null ? (

@@ -51,8 +51,11 @@ function semainesDe(ini, affectations, numExclu = null) {
 //   souhaitVacancesCollee : ini a SOUHAITÉ des vacances la semaine du week-end (S) ou la suivante (S+1) —
 //                   anticipation souple (le week-end de garde collerait un souhait de vacances). Distinct
 //                   de vacancesCollee (vacances DÉJÀ placées, règle dure) : ici simple alerte/préférence.
-export function analyserAffectation(num, ini, affectations, indispoParAssocie, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, vacancesSouhaiteesParAssocie = {}) {
-  if (!ini) return { indispo: false, tropProche: null, vacancesCollee: false, jourOffWE: false, souhaitColonne: null, souhaitVacancesCollee: false }
+//   pontFerie     : être de garde ce week-end CASSERAIT un pont de jour férié souhaité par ini (off posé le
+//                   vendredi = colonne avant-WE de S, ou le lundi = colonne après-WE de S+1, accolé à un
+//                   férié). Un off lun/ven ORDINAIRE n'est pas concerné — seul le pont férié alerte.
+export function analyserAffectation(num, ini, affectations, indispoParAssocie, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, vacancesSouhaiteesParAssocie = {}, pontFerieParAssocie = {}) {
+  if (!ini) return { indispo: false, tropProche: null, vacancesCollee: false, jourOffWE: false, souhaitColonne: null, souhaitVacancesCollee: false, pontFerie: false }
   const indispo = !!indispoParAssocie?.[ini]?.has(num)
   let tropProche = null
   let meilleurEcart = ESPACEMENT_MIN
@@ -67,7 +70,8 @@ export function analyserAffectation(num, ini, affectations, indispoParAssocie, v
   const col = colonnesSouhaiteesParAssocie?.[ini]?.[num]
   // Souhait de vacances accolé (S ou S+1), seulement s'il ne s'agit pas déjà de vacances placées (dur).
   const souhaitVacancesCollee = !vacancesCollee && !!(vacancesSouhaiteesParAssocie?.[ini]?.has(num) || vacancesSouhaiteesParAssocie?.[ini]?.has(num + 1))
-  return { indispo, tropProche, vacancesCollee, jourOffWE, souhaitColonne: Number.isInteger(col) ? col : null, souhaitVacancesCollee }
+  const pontFerie = !!pontFerieParAssocie?.[ini]?.has(num)
+  return { indispo, tropProche, vacancesCollee, jourOffWE, souhaitColonne: Number.isInteger(col) ? col : null, souhaitVacancesCollee, pontFerie }
 }
 
 // Impact d'un week-end W sur les jours off (en semaine) d'un associé, via la trame principale :
@@ -107,8 +111,10 @@ export function impactJourOffWE(num, ini, joursOffDetailParAssocie = {}, avantRe
 // - vacancesSouhaiteesParAssocie : { ini: Set(nums) } semaines de vacances SOUHAITÉES (desiderata) →
 //   anticipation SOUPLE : on évite de coller un week-end de garde à un souhait de vacances (S ou S+1) dès
 //   la 1ʳᵉ passe, SANS jamais bloquer (≠ vacances placées, dures). Si inévitable, charge le plus demandeur.
+// - pontFerieParAssocie : { ini: Set(nums) } week-ends dont l'attribution casserait un pont de jour férié
+//   souhaité (off vendredi avant-WE de S / lundi après-WE de S+1) → évité en auto (souple) + alerte côté UI.
 // Renvoie un objet { num: ini } limité aux week-ends de la plage.
-export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null, dejaFait = {}, demandeParAssocie = {}, vacancesSouhaiteesParAssocie = {}) {
+export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAssocie = {}, affectationsHorsPlage = {}, vacancesParSemaine = {}, joursOffWeekendParAssocie = {}, colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, avantReposJours = null, apresReposJours = null, dejaFait = {}, demandeParAssocie = {}, vacancesSouhaiteesParAssocie = {}, pontFerieParAssocie = {}) {
   const resultat = {}
   // Compteur courant (hors-plage + ce qu'on attribue) : sert UNIQUEMENT à l'espacement.
   const courant = { ...affectationsHorsPlage }
@@ -137,6 +143,8 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     // avant le souhait) → à éviter (souple), pour ne pas se coincer sur une future semaine de congé.
     const souhaiteVacCollee = (ini) =>
       !!(vacancesSouhaiteesParAssocie?.[ini]?.has(num) || vacancesSouhaiteesParAssocie?.[ini]?.has(num + 1))
+    // Être de garde ce week-end casserait un pont de jour férié souhaité par l'associé → à éviter (souple).
+    const casserPontFerie = (ini) => !!pontFerieParAssocie?.[ini]?.has(num)
 
     // Le plafond DUR (sousPlafond) ET la garde collée à des vacances (!vacancesCollee) sont appliqués à
     // CHAQUE niveau : on relâche les contraintes souples (espacement, blocage) mais JAMAIS l'objectif
@@ -150,6 +158,11 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     // synergie (le week-end satisfait un jour off) ; pénalité souhait de colonne ; déficit vs objectif ; ordre figé.
     candidats.sort((a, b) => {
       if (compte[a] !== compte[b]) return compte[a] - compte[b]
+      // Éviter de casser un pont de jour férié souhaité (souple) ; si inévitable, charger le plus demandeur.
+      const pfA = casserPontFerie(a) ? 1 : 0
+      const pfB = casserPontFerie(b) ? 1 : 0
+      if (pfA !== pfB) return pfA - pfB
+      if (pfA && pfB && demande(a) !== demande(b)) return demande(b) - demande(a)
       // Anticiper les souhaits de vacances : éviter de coller le week-end à un souhait (souple) ; si les
       // deux collent, charger le plus demandeur (équité, le moins-demandeur protégé).
       const svA = souhaiteVacCollee(a) ? 1 : 0
