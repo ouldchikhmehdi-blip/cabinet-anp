@@ -53,10 +53,18 @@ export default function Consultations() {
   // Sélection de praticiens (multi). Liste vide = « Tous ».
   const [pratSel, setPratSel] = useState([])
   // Vue agrégée : une seule courbe = total de la spécialité (somme des praticiens), comparable année/année.
-  const [vueAgregee, setVueAgregee] = useState(false)
+  // Vue par défaut : c'est la donnée la plus parlante (évolution annuelle de la spécialité entière).
+  const [vueAgregee, setVueAgregee] = useState(true)
 
   // Années disponibles : union de ANNEES (mock) et des années présentes dans le store
   const anneesDispos = [...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])].sort((a, b) => b - a)
+
+  // Spécialités affichées = les spécialités du store + une catégorie « Téléconsultation » dérivée
+  // de TELECONSULTATIONS (suivi global, sans praticien) — pour la visualiser comme les autres.
+  const specialitesAffichees = [
+    ...CONSULT_SPECIALITES,
+    { id: 'teleconsultation', nom: 'Téléconsultation', couleur: '#0E7490', valeurs: TELECONSULTATIONS },
+  ]
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
@@ -89,7 +97,7 @@ export default function Consultations() {
   })
 
   // Spécialité sélectionnée
-  const spec = CONSULT_SPECIALITES.find(s => s.id === specId) || CONSULT_SPECIALITES[0]
+  const spec = specialitesAffichees.find(s => s.id === specId) || specialitesAffichees[0]
   const specSerieDe = (y) => specMensuel(spec, y).slice(de, a + 1)
   const specTprimary = sum(specSerieDe(primary)), specTref = sum(specSerieDe(ref))
 
@@ -243,13 +251,13 @@ export default function Consultations() {
         Par spécialité — cliquez pour le détail
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        {CONSULT_SPECIALITES.map(sp => {
+        {specialitesAffichees.map(sp => {
           const total = sum(specMensuel(sp, primary).slice(de, a + 1))
           const isSel = sp.id === specId
           return (
             <button
               key={sp.id}
-              onClick={() => { setSpecId(sp.id); setPratSel([]); setVueAgregee(false) }}
+              onClick={() => { setSpecId(sp.id); setPratSel([]); setVueAgregee(true) }}
               style={{
                 background: isSel ? 'var(--color-primary-light)' : 'var(--color-surface)',
                 border: isSel ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-border)',

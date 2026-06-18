@@ -154,10 +154,14 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 - **Comparaison de 2 à 4 années** (filtre `PeriodeFilter` partagé) ; par défaut les 2 années les plus
   récentes disponibles (2025/2024). Couleurs : année principale vive (#1D9E75), autres en dégradé gris.
 - **Graphiques** : barres mensuelles + cumul (toutes les années cochées).
-- **Sélecteur de spécialités** : carte par spécialité (total + nb praticiens).
+- **Sélecteur de spécialités** : carte par spécialité (total + nb praticiens). Inclut une catégorie
+  dérivée **« Téléconsultation »** (à côté de Pneumologie) qui visualise la série `TELECONSULTATIONS`
+  comme une spécialité sans praticien (injectée dans `specialitesAffichees`, non stockée).
+- **Vue par défaut = agrégée** : cliquer sur une spécialité ouvre sa **courbe agrégée** (total de la
+  spécialité, comparable d'une année à l'autre), pas la vue « Tous » empilée (`vueAgregee` initial `true`).
 - **Pills praticiens** : « Tous » (empilé, année principale), vue agrégée (1 courbe comparable
-  année/année), 1 praticien (comparaison multi-années), plusieurs (courbes superposées). Bucket
-  « non attribué » affiché en vue « Tous » si présent.
+  année/année, **sélectionnée par défaut**), 1 praticien (comparaison multi-années), plusieurs (courbes
+  superposées). Bucket « non attribué » affiché en vue « Tous » si présent.
 - Praticiens **masqués** : retirés du détail mais **conservés dans les totaux**.
 
 ---
