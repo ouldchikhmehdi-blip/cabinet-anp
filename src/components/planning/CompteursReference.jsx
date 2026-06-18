@@ -12,7 +12,7 @@ import { PARAMS_REF, compteursVides, parserTableauCompteurs, VERSION_CREF } from
 // Props : { annee, valeur, onEnregistrer(data), onSupprimer(), enregistrement }
 //   - valeur : objet { compteurs, importeLe } enregistré, ou null.
 // ============================================================
-export default function CompteursReference({ annee, valeur, onEnregistrer, onSupprimer, enregistrement = false }) {
+export default function CompteursReference({ annee, valeur, onEnregistrer, onSupprimer, enregistrement = false, aFaire = false }) {
   const [ouvert, setOuvert] = useState(false)
   const [texte, setTexte] = useState('')
   const [edit, setEdit] = useState(() => valeur?.compteurs ?? compteursVides())
@@ -69,6 +69,7 @@ export default function CompteursReference({ annee, valeur, onEnregistrer, onSup
     <div style={{
       background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 24,
+      ...(aFaire ? { boxShadow: '0 0 0 2px var(--color-amber)' } : null),
     }} className="no-print">
       <button
         type="button"
@@ -79,6 +80,7 @@ export default function CompteursReference({ annee, valeur, onEnregistrer, onSup
           <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{ouvert ? '▾' : '▸'}</span>
           Compteurs de référence (cumul à ce stade) — {annee}
           {aDejaEnregistre && <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-success)' }}>● enregistrés</span>}
+          {aFaire && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: '#fff', background: 'var(--color-amber)', padding: '2px 9px', borderRadius: 999 }}>⚠️ À remplir</span>}
         </span>
         <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
           Collez votre tableau récapitulatif des compteurs par associé pour fixer le socle de la suite.

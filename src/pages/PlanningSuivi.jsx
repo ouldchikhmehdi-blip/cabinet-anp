@@ -472,6 +472,12 @@ export default function PlanningSuivi() {
       background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: 24,
     },
+    // Mise en valeur « tâche à faire » : anneau ambre autour de la carte (disparaît une fois la tâche faite).
+    emphase: { boxShadow: '0 0 0 2px var(--color-amber)' },
+    badgeAFaire: {
+      display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
+      color: '#fff', background: 'var(--color-amber)', padding: '2px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+    },
   }
 
   if (!estFaiseur) {
@@ -640,15 +646,16 @@ export default function PlanningSuivi() {
 
       {/* Trame de l'été — seulement quand le recueil SÉLECTIONNÉ est celui qui couvre l'été */}
       {estEteSelection && (
-        <div style={s.carteSection} className="no-print">
+        <div style={{ ...s.carteSection, ...((trameEte && (trameEte.colonnes?.length ?? 0) > 0) ? {} : s.emphase) }} className="no-print">
           <button
             type="button"
             onClick={() => setTramesEteOuvert(o => !o)}
             style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left', display: 'block' }}
           >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{tramesEteOuvert ? '▾' : '▸'}</span>
               Trame de l'été {annee}
+              {!(trameEte && (trameEte.colonnes?.length ?? 0) > 0) && <span style={s.badgeAFaire}>⚠️ À compléter</span>}
             </span>
             <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
               Grille d'été pour « {recueilEte.nom} » (S{recueilEte.semaine_debut}→S{recueilEte.semaine_fin}).
@@ -720,17 +727,19 @@ export default function PlanningSuivi() {
           onEnregistrer={enregistrerCompteursRef}
           onSupprimer={supprimerCompteursRefH}
           enregistrement={enregistrementRef}
+          aFaire={!compteursRef?.importeLe}
         />
       )}
 
       {/* Référence tiers 1+2 (planning manuel collé) — seulement sur le 3ᵉ recueil. Reproduite telle
           quelle, avec ses couleurs, en haut de l'export du 3ᵉ tiers ; le calendrier de la rentrée suit. */}
       {estTroisiemePartie && (
-        <div style={s.carteSection} className="no-print">
+        <div style={{ ...s.carteSection, ...(referenceNonVide(refData) ? {} : s.emphase) }} className="no-print">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
               Référence tiers 1 et 2 (saisie manuelle)
             </div>
+            {!referenceNonVide(refData) && <span style={s.badgeAFaire}>⚠️ À coller</span>}
             <button
               type="button"
               onClick={enregistrerRef}
