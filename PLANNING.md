@@ -218,7 +218,7 @@ Le planning d'une année se fait en **trois tiers** : 1er tiers (avant l'été) 
 - jours où il ne veut pas poser son repos ;
 - préférence Pâques ou février (+ Toussaint souhaitée ou non) — **chaque période scolaire n'est proposée que si ses semaines tombent dans la période du recueil** (sinon masquée, ce qui allège l'écran) ; les périodes affichées sont déduites des **vraies** semaines scolaires (base calendrier), pas d'une constante codée en dur ;
   - **Semaines de vacances scolaires bloquées dans les autres saisies (en place).** Les congés scolaires se gèrent **uniquement** via cette préférence : pendant une semaine de vacances scolaire, l'associé **ne peut pas** sélectionner de **vacances souhaitées/refusées**, de **week-end indisponible**, de **jour off**, ni de **colonne de trame** (semaines retirées/grisées en bleu dans `SelecteurSemaines`, `WeekendsIndispo`, `SelecteurDates` et le sélecteur de colonne de la trame principale) ;
-- week-ends dispo / pas dispo pour astreinte ou garde ; **option par week-end indisponible** : ne pas être **ni de garde ni d'astreinte le vendredi qui précède** (la veille du WE bloqué) — champ `weekendsVeilleIndispo` (sous-ensemble de `weekendsIndispo`), saisi dans `WeekendsIndispo.jsx` (bouton « + vendredi ») et affiché au récap. **Saisie en place ; intégration à l'attribution des week-ends à faire** (étape algorithme, à venir) ;
+- week-ends dispo / pas dispo pour astreinte ou garde ; **option par week-end indisponible** : ne pas être **ni de garde ni d'astreinte le vendredi qui précède** (la veille du WE bloqué) — champ `weekendsVeilleIndispo` (sous-ensemble de `weekendsIndispo`), saisi dans `WeekendsIndispo.jsx` (bouton « + vendredi ») et affiché au récap. **Ce n'est pas un jour off** : l'associé travaille ce vendredi, mais sans garde ni astreinte. **Intégré comme RÈGLE DURE à l'étape « En semaine »** (cf. §12.3) ;
 - éventuellement, demande d'une colonne particulière de la semaine type (ex. associé prenant des remplaçants qui veut un poste-type précis).
 
 Tous ces champs sont **facultatifs** : certains associés n'auront rien à remplir, et c'est un cas normal à gérer.
@@ -271,6 +271,16 @@ Puis, sur cette base :
      les **jours off** via le **repos-levier** (placer sur une colonne dont le repos post-garde/astreinte
      tombe sur le jour off demandé), puis l'**équilibre des gardes** et l'**espacement**. Attribuer une
      colonne attribue d'emblée **sa garde/astreinte et son repos**. Modèle/algorithme : `src/utils/semaines.js`.
+   - **Veille de week-end indisponible (RÈGLE DURE).** Un associé qui a coché un week-end indisponible avec
+     l'option « + vendredi » (`weekendsVeilleIndispo`) **ne peut pas** occuper, la semaine de ce week-end, une
+     **colonne de service le vendredi** (garde **ou** astreinte) : l'outil lui réserve d'office une colonne
+     **sans garde ni astreinte le vendredi** (il travaille normalement ce vendredi, ce n'est **pas** un jour
+     off). Même mécanique que « vendredi-avant-vacances » (`interditsVendredi`, fusionnés dans `semaines.js`) :
+     réservation des colonnes de service vendredi aux non-interdits en priorité, repli signalé si tous les
+     candidats sont interdits. La règle ne s'applique **que si le week-end indispo n'a pas été RETIRÉ par le
+     faiseur** : ni **écarté** (pont férié, `cleEcartWeekend` ∈ `pontsEcartes`), ni l'associé **forcé** sur ce
+     week-end (`weekends.affectations`). Calcul `veilleWEParSemaine` (`PlanningSemaines.jsx`) → moteur ;
+     violation (via repli) = alerte **bloquante** « à arbitrer » (`vendrediVeilleWE`).
    - **Pénibilité des gardes (important).** Une **garde de semaine** = jour où l'associé est sur la
      colonne de service ET le groupe est de garde : **mardi** (toujours) + **jeudi** (si la base
      calendrier le met en garde). Lundi/mercredi = astreinte (**non comptés**) ; **vendredi** = suivi à

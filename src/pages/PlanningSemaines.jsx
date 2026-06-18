@@ -214,6 +214,25 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [desideratas, parUser])
 
+  // RÈGLE DURE « veille de week-end » : associés à NE PAS mettre de garde/astreinte le VENDREDI d'une
+  // semaine, parce qu'ils ont un week-end indisponible CETTE semaine avec l'option « + vendredi ». La règle
+  // ne s'applique que si le week-end indispo n'a pas été RETIRÉ par le faiseur : ni écarté (pont férié),
+  // ni l'associé forcé sur ce week-end (weekendAff). → { num: Set(ini) } (num = semaine du week-end = veille).
+  const veilleWEParSemaine = useMemo(() => {
+    const m = {}
+    const weekendAff = contexteAmont.weekendAff ?? {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      for (const sem of (normaliser(row.data).weekendsVeilleIndispo ?? [])) {
+        if (ecartesSet.has(cleEcartWeekend(ini, sem))) continue // week-end indispo écarté → veille sans objet
+        if (weekendAff[sem] === ini) continue                   // forcé sur ce week-end → indispo retirée
+        ;(m[sem] ??= new Set()).add(ini)
+      }
+    }
+    return m
+  }, [desideratas, parUser, ecartesSet, contexteAmont])
+
   // Contribution des blocs fournis tels quels (Noël + Toussaint) au bilan annuel + semaines ISO couvertes
   // (qu'on exclura des agrégations normales pour éviter le double comptage). bilanNoel est générique.
   const noel = useMemo(() => bilanNoel(noelData, annee), [noelData, annee])
@@ -290,10 +309,11 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         vacanciers: contexteAmont.vacances[sem.num] ?? [],
         vacanciersSuivante: contexteAmont.vacances[sem.num + 1] ?? [],
         estPrincipale: estPrincipaleSem(sem.num),
+        veilleWE: [...(veilleWEParSemaine[sem.num] ?? [])],
       })
     }
     return m
-  }, [semaines, trameDe, contexteAmont, affectationsLibres, annee, calendrier, gardesAnnee, colonnesSouhaiteesParAssocie, estPrincipaleSem])
+  }, [semaines, trameDe, contexteAmont, affectationsLibres, annee, calendrier, gardesAnnee, colonnesSouhaiteesParAssocie, estPrincipaleSem, veilleWEParSemaine])
 
   // Bilan « desiderata non honorés » par associé : ce qui a été ÉCARTÉ par le faiseur et ce qui
   // n'a pas pu être PLACÉ dans le planning final (jours off, week-ends, congés, souhaits de colonne).
@@ -384,6 +404,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       if (enVac.has(contexteAmont.rea[num])) incoherents.add(contexteAmont.rea[num])
       if (incoherents.size) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
       if (al?.vendrediAvantVacances?.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${al.vendrediAvantVacances.join(', ')} de service le vendredi alors qu'il(s) part(ent) en vacances la semaine suivante (interdit) : à réaffecter.` })
+      if (al?.vendrediVeilleWE?.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${al.vendrediVeilleWE.join(', ')} de garde/astreinte le vendredi, veille d'un week-end indisponible avec option « + vendredi » (interdit) : à réaffecter sur une colonne sans garde ni astreinte le vendredi.` })
       // — À surveiller (non bloquant) —
       if (a?.pont) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — pont : ${a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')} — jour férié en semaine : vérifie qui travaille et la garde/astreinte ce jour-là (l'outil ne l'ajuste pas automatiquement).` })
       if (al?.tropProche && Object.keys(al.tropProche).length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — gardes rapprochées (< 1 sem.) : ${Object.entries(al.tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}.` })
@@ -608,7 +629,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(prev)
       const proposees = proposerSemaines({
         semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
-        desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, demandeParAssocie },
+        desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, demandeParAssocie, veilleWEParSemaine },
         gardesInitiales, compteAnneeInitial, fixes,
         aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
         objAVen, objGVen,
@@ -629,7 +650,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(data)
     const { affectations: ameliorees, avant, apres, avantVR, apresVR } = ameliorerEspacementSemaines({
       semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
-      desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie },
+      desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, veilleWEParSemaine },
       gardesInitiales, compteAnneeInitial, fixes, affectations: data.affectations ?? {},
       aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
     })

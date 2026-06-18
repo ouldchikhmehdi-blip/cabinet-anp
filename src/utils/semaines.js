@@ -242,7 +242,9 @@ export function bilanVendrediRecupParAssocie(weeks, calendrier, trameDe, context
 // Renvoie { <num>: { <colIndex>: ini } } pour les colonnes LIBRES de la plage.
 //   trameInfo(num) → { trame, estPrincipale } | null
 //   contexteAmont  → { rea, vacances, weekendAff }
-//   desiderata     → { colonnesSouhaiteesParAssocie:{ini:{num:col}}, joursOffDetailParAssocie:{ini:{num:Set}} }
+//   desiderata     → { colonnesSouhaiteesParAssocie:{ini:{num:col}}, joursOffDetailParAssocie:{ini:{num:Set}},
+//                       veilleWEParSemaine:{num:Set(ini)} } (associés à NE PAS mettre de service le vendredi
+//                       de la semaine num — veille d'un week-end indisponible, option « + vendredi »)
 //   gardesInitiales→ { ini:[Date] } (week-ends année + gardes semaine hors-plage) pour l'espacement
 //   compteAnneeInitial → { ini:n } (gardes de semaine hors-plage) pour l'équilibre annuel
 //   fixes          → { num:{col:ini} } colonnes verrouillées de la plage (préservées)
@@ -253,7 +255,7 @@ export function proposerSemaines({
   objAVen = {}, objGVen = {},
 }) {
   const { vacances = {} } = contexteAmont
-  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, demandeParAssocie = {} } = desiderata
+  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, demandeParAssocie = {}, veilleWEParSemaine = {} } = desiderata
 
   const gardes = {}; const compteAnnee = {}; const comptePeriode = {}
   // Équilibres annuels additionnels (priorité après les gardes de semaine) : A vendredi, G vendredi, récup JF.
@@ -300,9 +302,12 @@ export function proposerSemaines({
       if (spec[col] != null && ASSOCIES.includes(ini)) { spec[col] = ini; out[num][col] = ini }
     }
     const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
-    // Règle DURE : pas de garde/astreinte le vendredi avant une semaine de vacances. L'occupant d'une colonne
-    // de service le vendredi ne peut pas être en vacances la semaine SUIVANTE (num+1).
-    const interditsVendredi = new Set(vacances[num + 1] ?? [])
+    // Règle DURE : pas de garde/astreinte le vendredi pour deux motifs réunis ici (même contrainte —
+    // l'associé ne peut pas occuper une colonne de service le vendredi de la semaine num) :
+    //   1) il part en VACANCES la semaine SUIVANTE (num+1) — vendredi-avant-vacances ;
+    //   2) il a un WEEK-END INDISPONIBLE cette semaine avec l'option « + vendredi » (veille) et ce week-end
+    //      n'a pas été retiré par le faiseur (calculé en amont → veilleWEParSemaine[num]).
+    const interditsVendredi = new Set([...(vacances[num + 1] ?? []), ...(veilleWEParSemaine[num] ?? [])])
     const colServiceVendredi = (c) => roleVendrediCol(trame, c, num, calendrier) !== null
     const filtrerVendredi = (c, liste) => {
       if (!colServiceVendredi(c)) return liste
@@ -453,7 +458,7 @@ export function ameliorerEspacementSemaines({
   aVenInitial = {}, gVenInitial = {}, recupInitial = {}, feriesOffsetsParSemaine = {},
 }) {
   const { vacances = {} } = contexteAmont
-  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {} } = desiderata
+  const { colonnesSouhaiteesParAssocie = {}, joursOffDetailParAssocie = {}, veilleWEParSemaine = {} } = desiderata
   const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
 
   // Copie mutable des affectations de la plage (colonnes libres + colonnes de travail pourvues).
@@ -478,7 +483,9 @@ export function ameliorerEspacementSemaines({
     const spec = colonnesSpeciales(info.trame, num, contexteAmont)
     const verrou = fixes[num] ?? {}
     const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
-    weekInfo[num] = { trame: info.trame, estPrincipale: info.estPrincipale, spec, verrou, vacanciers: new Set(vacances[num] ?? []), interdits: new Set(vacances[num + 1] ?? []) }
+    // interdits = associés à NE PAS placer sur une colonne de service le vendredi (vacances semaine suivante
+    // OU veille d'un week-end indisponible « + vendredi » non retiré par le faiseur).
+    weekInfo[num] = { trame: info.trame, estPrincipale: info.estPrincipale, spec, verrou, vacanciers: new Set(vacances[num] ?? []), interdits: new Set([...(vacances[num + 1] ?? []), ...(veilleWEParSemaine[num] ?? [])]) }
     const ajoutFixe = (col, ini) => {
       if (!ASSOCIES.includes(ini)) return
       const ds = datesGardeSemaine(info.trame, Number(col), annee, num, calendrier)
@@ -641,16 +648,22 @@ export function ameliorerEspacementSemaines({
 //   souhaitsParAssocie    → { ini: { num: col } }
 // Renvoie { tropProche:{ini:ecartJours}, souhaitNonSatisfait:[ini], nonPlaces:[ini], colonnesVides:[col], multiVacances:bool }
 export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolue, gardesParAssocie, {
-  souhaitsParAssocie = {}, vacanciers = [], estPrincipale = true, vacanciersSuivante = [],
+  souhaitsParAssocie = {}, vacanciers = [], estPrincipale = true, vacanciersSuivante = [], veilleWE = [],
 } = {}) {
   const tropProche = {}
   // Règle dure : associés de service le vendredi alors qu'ils sont en vacances la semaine SUIVANTE.
   const vendrediAvantVacances = []
+  // Règle dure : associés de service le vendredi alors qu'ils ont demandé la veille off (week-end indispo « + vendredi »).
+  const vendrediVeilleWE = []
   const enVacancesSuivante = new Set(vacanciersSuivante)
+  const veilleSet = new Set(veilleWE)
   // Pour chaque associé placé qui génère une garde cette semaine, écart à ses AUTRES gardes.
   for (const [col, ini] of Object.entries(affResolue)) {
     if (!ASSOCIES.includes(ini)) continue
-    if (roleVendrediCol(trame, Number(col), num, calendrier) && enVacancesSuivante.has(ini)) vendrediAvantVacances.push(ini)
+    if (roleVendrediCol(trame, Number(col), num, calendrier)) {
+      if (enVacancesSuivante.has(ini)) vendrediAvantVacances.push(ini)
+      if (veilleSet.has(ini)) vendrediVeilleWE.push(ini)
+    }
     const ds = datesGardeSemaine(trame, Number(col), annee, num, calendrier)
     if (!ds.length) continue
     const autres = (gardesParAssocie[ini] ?? []).filter(g => !ds.some(d => d.getTime() === g.getTime()))
@@ -683,5 +696,5 @@ export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolu
     }
   }
 
-  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, vendrediAvantVacances, multiVacances: (vacanciers?.length ?? 0) > 1 }
+  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, vendrediAvantVacances, vendrediVeilleWE, multiVacances: (vacanciers?.length ?? 0) > 1 }
 }
