@@ -32,7 +32,8 @@ export default function Consultations() {
   const [year2, setYear2] = useState(2023)
   const [shortcut, setShortcut] = useState('annee')
   const [specId, setSpecId] = useState(CONSULT_SPECIALITES[0].id)
-  const [pratId, setPratId] = useState('all')
+  // Sélection de praticiens (multi). Liste vide = « Tous ».
+  const [pratSel, setPratSel] = useState([])
 
   // Années disponibles : union de ANNEES (mock) et des années présentes dans le store
   const anneesDispos = [...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])].sort((a, b) => b - a)
@@ -71,14 +72,24 @@ export default function Consultations() {
   const hasPrat = !!spec.praticiens
   const pratsVisibles = hasPrat ? spec.praticiens.filter(p => !p.masque) : []
 
-  // Garde-fou : si le praticien sélectionné est masqué, retomber sur "tous"
-  const pratEffectif = hasPrat && pratId !== 'all' && pratsVisibles.some(p => p.id === pratId) ? pratId : 'all'
-  const prat = hasPrat ? pratsVisibles.find(p => p.id === pratEffectif) : null
-  const pratIndex = prat ? pratsVisibles.findIndex(p => p.id === prat.id) : -1
-  const isAllPrat = hasPrat && !prat
+  // Couleur stable d'un praticien : indexée sur sa position dans la liste visible
+  const colorOf = p => PALETTE[Math.max(0, pratsVisibles.findIndex(x => x.id === p.id)) % PALETTE.length]
+
+  // Sélection courante : on ne garde que des praticiens encore visibles (garde-fou contre un masqué)
+  const selValides = hasPrat ? pratSel.filter(id => pratsVisibles.some(p => p.id === id)) : []
+  const isAllPrat = hasPrat && selValides.length === 0      // « Tous »
+  const isSinglePrat = hasPrat && selValides.length === 1   // un seul → comparaison année vs année
+  const isMultiPrat = hasPrat && selValides.length >= 2     // plusieurs → courbes superposées
+  const showMulti = isAllPrat || isMultiPrat                // graphiques multi-praticiens
+
+  // Praticiens affichés dans les graphiques de détail : la sélection, ou tous si « Tous »
+  const detailPrats = isMultiPrat ? pratsVisibles.filter(p => selValides.includes(p.id)) : pratsVisibles
+
+  // Praticien isolé (un seul sélectionné) : conserve la comparaison année vs année
+  const prat = isSinglePrat ? pratsVisibles.find(p => p.id === selValides[0]) : null
 
   // Série « année vs année » active (spécialité entière sans praticiens, OU un praticien isolé)
-  const aColor = prat ? PALETTE[pratIndex % PALETTE.length] : spec.couleur
+  const aColor = prat ? colorOf(prat) : spec.couleur
   const aSerie1 = prat ? (prat.valeurs[year1] || []).slice(de, a + 1) : specSerie1
   const aSerie2 = prat ? (prat.valeurs[year2] || []).slice(de, a + 1) : specSerie2
   const aT1 = sum(aSerie1), aT2 = sum(aSerie2)
@@ -90,22 +101,27 @@ export default function Consultations() {
     [year2]: sum(aSerie2.slice(0, i + 1)),
   }))
 
+  // Totaux du groupe de praticiens affichés (pour les KPI de la multi-sélection)
+  const detailT1 = sum(detailPrats.map(p => sum((p.valeurs[year1] || []).slice(de, a + 1))))
+  const detailT2 = sum(detailPrats.map(p => sum((p.valeurs[year2] || []).slice(de, a + 1))))
+
   // Bucket « non attribué » : consultations au niveau spécialité (ex. fibro gastro, pneumo)
   const autreValues = hasPrat && spec.valeurs ? (spec.valeurs[year1] || Array(12).fill(0)) : null
   const hasAutre = !!autreValues && autreValues.some(v => v > 0)
+  const showAutre = isAllPrat && hasAutre   // bucket affiché seulement en vue « Tous »
 
-  // Données « Tous les praticiens » : empilé (mensuel y1) + multi-lignes (cumul y1)
-  // On n'itère que sur les praticiens visibles (non masqués) pour les graphiques de détail
-  const pratBar = isAllPrat ? labels.map((m, i) => {
+  // Données multi-praticiens : empilé (mensuel y1) + multi-lignes (cumul y1)
+  // detailPrats = sélection (ou tous) ; on n'itère que sur les praticiens affichés
+  const pratBar = showMulti ? labels.map((m, i) => {
     const row = { mois: m }
-    pratsVisibles.forEach(p => { row[p.id] = (p.valeurs[year1] || [])[de + i] ?? 0 })
-    if (hasAutre) row['__autre'] = autreValues[de + i] ?? 0
+    detailPrats.forEach(p => { row[p.id] = (p.valeurs[year1] || [])[de + i] ?? 0 })
+    if (showAutre) row['__autre'] = autreValues[de + i] ?? 0
     return row
   }) : []
-  const pratCumul = isAllPrat ? labels.map((m, i) => {
+  const pratCumul = showMulti ? labels.map((m, i) => {
     const row = { mois: m }
-    pratsVisibles.forEach(p => { row[p.id] = sum((p.valeurs[year1] || []).slice(de, de + i + 1)) })
-    if (hasAutre) row['__autre'] = sum(autreValues.slice(de, de + i + 1))
+    detailPrats.forEach(p => { row[p.id] = sum((p.valeurs[year1] || []).slice(de, de + i + 1)) })
+    if (showAutre) row['__autre'] = sum(autreValues.slice(de, de + i + 1))
     return row
   }) : []
 
@@ -211,7 +227,7 @@ export default function Consultations() {
           return (
             <button
               key={sp.id}
-              onClick={() => { setSpecId(sp.id); setPratId('all') }}
+              onClick={() => { setSpecId(sp.id); setPratSel([]) }}
               style={{
                 background: isSel ? 'var(--color-primary-light)' : 'var(--color-surface)',
                 border: isSel ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-border)',
@@ -240,17 +256,20 @@ export default function Consultations() {
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 2 }}>Praticien</span>
-            <button onClick={() => setPratId('all')} style={pratId === 'all' ? pillActive : pillBase}>Tous</button>
-            {pratsVisibles.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => setPratId(p.id)}
-                style={pratId === p.id ? pillActive : pillBase}
-              >
-                <span style={{ display: 'inline-block', width: 8, height: 8, background: PALETTE[i % PALETTE.length], borderRadius: 2, marginRight: 6, verticalAlign: 'middle' }} />
-                {p.nom.replace(/^Dr\s+/, '')}
-              </button>
-            ))}
+            <button onClick={() => setPratSel([])} style={isAllPrat ? pillActive : pillBase}>Tous</button>
+            {pratsVisibles.map((p, i) => {
+              const on = selValides.includes(p.id)
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setPratSel(sel => sel.includes(p.id) ? sel.filter(x => x !== p.id) : [...sel, p.id])}
+                  style={on ? pillActive : pillBase}
+                >
+                  <span style={{ display: 'inline-block', width: 8, height: 8, background: PALETTE[i % PALETTE.length], borderRadius: 2, marginRight: 6, verticalAlign: 'middle' }} />
+                  {p.nom.replace(/^Dr\s+/, '')}
+                </button>
+              )
+            })}
           </div>
           <GestionPraticiens spec={spec} onChange={rafraichir} />
         </>
@@ -258,11 +277,17 @@ export default function Consultations() {
 
       {/* Détail */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        {prat ? (
+        {isSinglePrat ? (
           <>
             <KpiCard label={`${prat.nom} · ${year1}`} value={fmtNb(aT1)} sub={periode} subColor="neutral" />
             <KpiCard label={`${prat.nom} · ${year2}`} value={fmtNb(aT2)} sub={diffLabel(aT1, aT2, year2)} subColor={diffColor(aT1, aT2)} />
             <KpiCard label="Part de la spécialité" value={`${specT1 ? Math.round(aT1 / specT1 * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
+          </>
+        ) : isMultiPrat ? (
+          <>
+            <KpiCard label={`${detailPrats.length} praticiens · ${year1}`} value={fmtNb(detailT1)} sub={periode} subColor="neutral" />
+            <KpiCard label={`${detailPrats.length} praticiens · ${year2}`} value={fmtNb(detailT2)} sub={diffLabel(detailT1, detailT2, year2)} subColor={diffColor(detailT1, detailT2)} />
+            <KpiCard label="Part de la spécialité" value={`${specT1 ? Math.round(detailT1 / specT1 * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
           </>
         ) : (
           <>
@@ -273,21 +298,21 @@ export default function Consultations() {
         )}
       </div>
 
-      {isAllPrat ? (
+      {showMulti ? (
         <>
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                {spec.nom} — répartition par praticien · {year1} · {periode}
+                {spec.nom} — {isMultiPrat ? 'praticiens sélectionnés' : 'répartition par praticien'} · {year1} · {periode}
               </span>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {pratsVisibles.map((p, i) => (
+                {detailPrats.map(p => (
                   <span key={p.id} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ display: 'inline-block', width: 10, height: 10, background: PALETTE[i % PALETTE.length], borderRadius: 2 }} />
+                    <span style={{ display: 'inline-block', width: 10, height: 10, background: colorOf(p), borderRadius: 2 }} />
                     {p.nom.replace(/^Dr\s+/, '')}
                   </span>
                 ))}
-                {hasAutre && (
+                {showAutre && (
                   <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
                     <span style={{ display: 'inline-block', width: 10, height: 10, background: '#B4B2A9', borderRadius: 2 }} />
                     Autre / non attribué
@@ -304,16 +329,16 @@ export default function Consultations() {
                   `${fmtNb(v)} consult.`,
                   name === '__autre' ? 'Autre / non attribué' : (pratsVisibles.find(p => p.id === name)?.nom || name),
                 ]} />
-                {pratsVisibles.map((p, i) => (
+                {detailPrats.map((p, i) => (
                   <Bar
                     key={p.id}
                     dataKey={p.id}
                     stackId="prat"
-                    fill={PALETTE[i % PALETTE.length]}
-                    radius={i === pratsVisibles.length - 1 && !hasAutre ? [3,3,0,0] : [0,0,0,0]}
+                    fill={colorOf(p)}
+                    radius={i === detailPrats.length - 1 && !showAutre ? [3,3,0,0] : [0,0,0,0]}
                   />
                 ))}
-                {hasAutre && (
+                {showAutre && (
                   <Bar dataKey="__autre" stackId="prat" fill="#B4B2A9" radius={[3,3,0,0]} />
                 )}
               </BarChart>
@@ -323,7 +348,7 @@ export default function Consultations() {
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                {spec.nom} — cumulé par praticien · {year1} · {periode}
+                {spec.nom} — cumulé par praticien{isMultiPrat ? ' (sélection)' : ''} · {year1} · {periode}
               </span>
             </div>
             <ResponsiveContainer width="100%" height={180}>
@@ -335,10 +360,10 @@ export default function Consultations() {
                   `${fmtNb(v)} consult.`,
                   name === '__autre' ? 'Autre / non attribué' : (pratsVisibles.find(p => p.id === name)?.nom || name),
                 ]} />
-                {pratsVisibles.map((p, i) => (
-                  <Line key={p.id} type="monotone" dataKey={p.id} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={{ r: 2 }} />
+                {detailPrats.map(p => (
+                  <Line key={p.id} type="monotone" dataKey={p.id} stroke={colorOf(p)} strokeWidth={2} dot={{ r: 2 }} />
                 ))}
-                {hasAutre && (
+                {showAutre && (
                   <Line type="monotone" dataKey="__autre" stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="4 3" dot={{ r: 2 }} />
                 )}
               </LineChart>
