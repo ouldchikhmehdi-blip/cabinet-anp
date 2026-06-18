@@ -384,6 +384,31 @@ Il sait ainsi qui relancer. Il n'a pas à attendre que tout le monde ait répond
 >
 > **Couleur des vacances = lundi→vendredi seulement.** Le fond bleu « congé » d'une semaine de vacances ne s'applique qu'aux **jours ouvrés** (lun→ven) ; le **samedi/dimanche** d'une semaine de congé reste en **gris « week-end »** (le porteur de garde garde sa couleur G/A). Vaut pour tous les exports (moteur partagé `celluleAssocieJour`, `src/utils/grilleSemaine.js`). Les blocs imposés Noël/Toussaint, collés tels quels, ne sont pas concernés.
 
+### 18 bis. Synchronisation du planning vers l'agenda perso (abonnement iCal)
+
+Une fois qu'un tiers est **validé** par le faiseur (export Excel archivé, recueil `ferme`), chaque associé peut
+**synchroniser SA colonne** vers son agenda personnel (iPhone/Apple, Android/Google, Outlook) depuis la page
+**« Mon agenda »** (visible dès qu'une colonne lui est attribuée).
+
+- **Mécanisme = abonnement iCal** (universel, sans OAuth) : un flux public `/api/agenda?token=…` (Vercel
+  Function, lecture `service_role`) protégé par un **token** non devinable par associé (table `planning_agenda`,
+  RLS « sa propre ligne »). L'associé s'abonne **une seule fois** (lien `webcal://` pour Apple, « ajouter par
+  URL » pour Google/Outlook) ; les tiers validés s'ajoutent et se mettent à jour automatiquement (rafraîchi
+  périodiquement par l'agenda, ~quelques heures).
+- **Événements « journée entière »** : gardes, astreintes, réanimation, vacances, récup JF (jours consécutifs
+  de même type fusionnés). **Pas** d'événement pour le travail ordinaire / le repos.
+- **Source = celle de l'export Excel.** À la **validation** (`PlanningSemaines.valider`), on précalcule les
+  événements de **chaque** associé sur la plage du tiers (`evenementsAgendaParAssocie`, réutilise
+  `grilleSemaine`/`noel`) et on les stocke (`planning_agenda_evenements`, clé `annee,recueil_id`, écriture
+  faiseur). Le flux ne fait que sérialiser ces données. La **dévalidation** supprime la ligne → seuls les
+  tiers réellement validés sont synchronisés.
+- **Tout supprimer** (revenir en arrière) : la page « Mon agenda » bascule `actif=false` → le flux renvoie un
+  calendrier **vide** → l'agenda abonné se vide au prochain rafraîchissement (puis l'associé peut retirer
+  l'abonnement). « Réactiver » remet `actif=true` sans se réabonner.
+- Aucune donnée sensible dans le flux (rôles + initiales). Fichiers : `api/agenda.js`,
+  `src/pages/MonAgenda.jsx`, `src/utils/evenementsAgenda.js`, `src/utils/agendaApi.js`,
+  `src/utils/agendaEvenementsApi.js`, `supabase/planning_agenda*.sql`.
+
 ### 18. Points encore en suspens
 
 - [ ] Récupérer les couleurs (vrais fichiers .xlsx).

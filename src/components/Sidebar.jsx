@@ -17,11 +17,12 @@ const navItems = [
 ]
 
 // Entrées ajoutées dynamiquement selon les droits
+const agendaItem = { id: 'mon-agenda', label: 'Mon agenda', icon: '📆' }
 const calendrierItem = { id: 'planning-calendrier', label: 'Construction planning', icon: '📅' }
 const suiviItem = { id: 'planning-suivi', label: 'Ouverture du planning', icon: '✅' }
 const adminItem = { id: 'admin-users', label: 'Comptes', icon: '🔑' }
 
-export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur }) {
+export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur, hasInitiales }) {
   const toggleBtn = (active) => ({
     flex: 1,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -37,6 +38,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
 
   const items = [
     ...navItems,
+    ...(hasInitiales ? [agendaItem] : []),
     ...(isFaiseur ? [suiviItem, calendrierItem] : []),
     ...(isAdmin ? [adminItem] : []),
   ]

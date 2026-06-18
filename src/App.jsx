@@ -19,6 +19,7 @@ import Tresorerie from './pages/Tresorerie'
 import ReglesVirements from './pages/ReglesVirements'
 import AdminUsers from './pages/AdminUsers'
 import PlanningDesiderata from './pages/PlanningDesiderata'
+import MonAgenda from './pages/MonAgenda'
 import PlanningSuivi from './pages/PlanningSuivi'
 import PlanningConstruction from './pages/PlanningConstruction'
 import './index.css'
@@ -139,6 +140,7 @@ export default function App() {
       case 'tresorerie':       return <Tresorerie />
       case 'regles-virements': return <ReglesVirements />
       case 'planning-desiderata': return <PlanningDesiderata />
+      case 'mon-agenda':          return profile?.initiales ? <MonAgenda /> : <VueGlobale />
       case 'planning-calendrier': return profile?.is_faiseur ? <PlanningConstruction /> : <VueGlobale />
       case 'planning-suivi':      return profile?.is_faiseur ? <PlanningSuivi /> : <VueGlobale />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
@@ -157,6 +159,7 @@ export default function App() {
         onToggleSombre={toggleSombre}
         isAdmin={profile?.role === 'admin'}
         isFaiseur={profile?.is_faiseur === true}
+        hasInitiales={!!profile?.initiales}
       />
       <main style={{
         flex: 1,

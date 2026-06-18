@@ -17,6 +17,8 @@ import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
 import { chargerRef } from '../utils/refApi'
 import { bilanNoel } from '../utils/noel'
+import { evenementsAgendaParAssocie } from '../utils/evenementsAgenda'
+import { sauverEvenementsTiers, supprimerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
   proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
@@ -888,6 +890,18 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       )
       await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
       await definirStatutRecueil(recueil.id, 'ferme')
+      // Événements d'agenda du tiers (synchronisation iCal côté associés) — best-effort : ne bloque pas la
+      // validation si la table n'est pas encore migrée. Même source de vérité que l'export ci-dessus.
+      try {
+        const evenements = evenementsAgendaParAssocie({
+          annee, semaines, calendrier,
+          weekends: weekends?.affectations ?? {}, conges: effectifs.vacanciers, rea: effectifs.rea,
+          affectationsSemaine, recupParSemaine: recup.parSemaine, compteurs,
+          noelData, toussaintData,
+          plageDebut: recueil.semaine_debut, plageFin: recueil.semaine_fin,
+        })
+        await sauverEvenementsTiers(annee, recueil.id, evenements, session.user.id)
+      } catch { /* agenda secondaire : on n'échoue pas la validation */ }
       setRecueils(prev => prev.map(r => r.id === recueil.id ? { ...r, statut: 'ferme' } : r))
       setValidation({ etat: 'ok', message: 'Planning archivé ✓ — disponible dans Ouverture du planning.' })
       onStatut?.('enregistre')
@@ -904,6 +918,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     setErreur(null)
     try {
       await definirStatutRecueil(recueil.id, 'ouvert')
+      // Le tiers n'est plus validé → retirer ses événements de l'agenda (best-effort).
+      try { await supprimerEvenementsTiers(annee, recueil.id) } catch { /* secondaire */ }
       setRecueils(prev => prev.map(r => r.id === recueil.id ? { ...r, statut: 'ouvert' } : r))
       setValidation(null)
     } catch {
