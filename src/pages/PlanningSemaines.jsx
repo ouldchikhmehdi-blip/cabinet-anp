@@ -15,6 +15,7 @@ import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
+import { chargerRef } from '../utils/refApi'
 import { bilanNoel } from '../utils/noel'
 import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
@@ -65,6 +66,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [reaData, setReaData] = useState(null)
   const [noelData, setNoelData] = useState(null) // grille de Noël (15 jours fournis tels quels)
   const [toussaintData, setToussaintData] = useState(null) // grille de la Toussaint (bloc imposé collé)
+  const [refData, setRefData] = useState(null) // référence tiers 1+2 (collée telle quelle, sans interprétation)
   const [data, setData] = useState(null)        // { v, trameParSemaine, affectations, verrous }
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -113,12 +115,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     let annule = false
     Promise.all([
       chargerTrames(annee), chargerVacances(annee), chargerCalendrier(annee), chargerSemaines(annee),
-      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee), chargerCompteursRef(annee), chargerToussaint(annee),
+      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee), chargerCompteursRef(annee), chargerToussaint(annee), chargerRef(annee),
     ])
-      .then(([tr, vac, cal, sem, obj, we, rea, noel, cref, tous]) => {
+      .then(([tr, vac, cal, sem, obj, we, rea, noel, cref, tous, ref]) => {
         if (annule) return
         setTramesData(tr); setVacancesData(vac); setCalendrier(cal); setData(sem)
-        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel); setCompteursRef(cref); setToussaintData(tous)
+        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel); setCompteursRef(cref); setToussaintData(tous); setRefData(ref)
         setHistorique([]); setSelEchange(null)
         onStatut?.('vierge')
       })
@@ -842,7 +844,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData, toussaintData,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData, toussaintData, refData,
       )
     } catch {
       setErreur('Export Excel impossible.')
@@ -870,7 +872,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const { buffer } = await genererClasseurBuffer(
         annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData, toussaintData,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData, toussaintData, refData,
       )
       await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
       await definirStatutRecueil(recueil.id, 'ferme')

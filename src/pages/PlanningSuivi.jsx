@@ -22,6 +22,9 @@ import { parserGrilleEte } from '../utils/trameEte'
 import { chargerTrameEte, sauverTrameEte, supprimerTrameEte } from '../utils/trameEteApi'
 import CompteursReference from '../components/planning/CompteursReference'
 import { chargerCompteursRef, sauverCompteursRef, supprimerCompteursRef } from '../utils/compteursRefApi'
+import ReferenceTiersColle from '../components/planning/ReferenceTiersColle'
+import { chargerRef, sauverRef } from '../utils/refApi'
+import { referenceVide, referenceNonVide } from '../utils/referenceGrille'
 
 export default function PlanningSuivi() {
   const { session, profile } = useAuth()
@@ -41,6 +44,8 @@ export default function PlanningSuivi() {
   const [msgEte, setMsgEte] = useState(null)
   const [compteursRef, setCompteursRef] = useState(null) // compteurs de référence (cumul) de l'année
   const [enregistrementRef, setEnregistrementRef] = useState(false)
+  const [refData, setRefData] = useState(null)           // référence des tiers 1+2 (collée telle quelle)
+  const [enregistreRef, setEnregistreRef] = useState(false)
   const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
@@ -124,6 +129,39 @@ export default function PlanningSuivi() {
       .catch(() => { if (!annule) setCompteursRef(null) }) // table peut-être pas encore créée
     return () => { annule = true }
   }, [annee, estFaiseur])
+
+  // Référence des tiers 1+2 (planning manuel collé) de l'année — reproduite telle quelle en haut de
+  // l'export du 3ᵉ tiers. chargerRef est tolérant (table absente → référence vide).
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerRef(annee)
+      .then(r => { if (!annule) setRefData(r) })
+      .catch(() => { if (!annule) setRefData(referenceVide()) })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
+  function ajouterRef(grille) {
+    setEnregistreRef(false)
+    setRefData(grille)
+  }
+
+  function effacerRef() {
+    if (!confirm('Effacer la référence des tiers 1 et 2 collée pour cette année ?')) return
+    setEnregistreRef(false)
+    setRefData(referenceVide())
+  }
+
+  async function enregistrerRef() {
+    setErreur(null)
+    try {
+      await sauverRef(annee, refData ?? referenceVide(), session.user.id)
+      setEnregistreRef(true)
+      setTimeout(() => setEnregistreRef(false), 3000)
+    } catch {
+      setErreur('Enregistrement de la référence impossible (réservé au faiseur).')
+    }
+  }
 
   async function enregistrerCompteursRef(data) {
     setErreur(null); setEnregistrementRef(true)
@@ -683,6 +721,32 @@ export default function PlanningSuivi() {
           onSupprimer={supprimerCompteursRefH}
           enregistrement={enregistrementRef}
         />
+      )}
+
+      {/* Référence tiers 1+2 (planning manuel collé) — seulement sur le 3ᵉ recueil. Reproduite telle
+          quelle, avec ses couleurs, en haut de l'export du 3ᵉ tiers ; le calendrier de la rentrée suit. */}
+      {estTroisiemePartie && (
+        <div style={s.carteSection} className="no-print">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
+              Référence tiers 1 et 2 (saisie manuelle)
+            </div>
+            <button
+              type="button"
+              onClick={enregistrerRef}
+              disabled={!referenceNonVide(refData)}
+              style={{ ...s.bouton, marginLeft: 'auto', opacity: referenceNonVide(refData) ? 1 : 0.5 }}
+            >
+              Enregistrer la référence
+            </button>
+            {enregistreRef && <span style={{ fontSize: 12, color: 'var(--color-success)' }}>Enregistré ✓</span>}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
+            Le planning des tiers 1 et 2 a été fait à la main (et le 1er tiers peut encore changer). Collez-le ici :
+            il sera repris tel quel, en référence, en haut de l'export Excel du 3ᵉ tiers.
+          </div>
+          <ReferenceTiersColle data={refData} onAjouter={ajouterRef} onEffacer={effacerRef} />
+        </div>
       )}
 
       {recueil && (

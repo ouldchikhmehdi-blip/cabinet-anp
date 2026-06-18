@@ -10,6 +10,7 @@ import {
   COULEURS_GRILLE, ctxJour, celluleAssocieJour, celluleRemplacantJour, celluleGroupeJour, celluleDateJour,
 } from './grilleSemaine'
 import { groupeJourNoel, compteursNoel } from './noel'
+import { referenceNonVide } from './referenceGrille'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -119,6 +120,28 @@ function ecrireBlocImpose(ws, annee, jours, enteteRempl = [], compteursNoel = nu
   }
 }
 
+// Référence « tiers 1+2 » (planning fait à la main) reproduite TELLE QUELLE, sans interprétation : on
+// recopie le texte de chaque cellule et sa couleur de fond brute. Écrite TOUT EN HAUT de la feuille
+// (avant le calendrier du 3ᵉ tiers), une ligne-titre puis la grille collée. `referenceData.lignes` =
+// [ [ { t, c:'#RRGGBB'|null }, … ], … ].
+function ecrireReference(ws, referenceData) {
+  if (!referenceNonVide(referenceData)) return
+  const titre = ws.addRow(['Tiers 1 et 2 — référence (saisie manuelle)'])
+  titre.getCell(1).font = { name: 'Calibri', bold: true, size: 12 }
+  for (const ligne of referenceData.lignes) {
+    const row = ws.addRow(ligne.map(cell => cell.t ?? ''))
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      cell.border = bordures()
+      cell.alignment = centre
+      cell.font = { name: 'Calibri', size: 11 }
+      const c = ligne[col - 1]?.c
+      if (c && /^#[0-9A-F]{6}$/i.test(c)) cell.fill = solid('FF' + c.slice(1).toUpperCase())
+    })
+  }
+  ws.addRow([]) // séparation avant le calendrier du 3ᵉ tiers
+  ws.addRow([])
+}
+
 // Bloc « Réalisé à ce stade » : cumul par associé (G week-end, A/G vendredi, réa, gardes de semaine,
 // vacances, récup JF). Les valeurs absentes sont rendues à 0 (colonnes/ lignes toujours présentes).
 function ecrireBilan(ws, annee, bilan) {
@@ -157,7 +180,7 @@ function ecrireBilan(ws, annee, bilan) {
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
 // Construit le classeur et renvoie { wb, nomFichier } (sans télécharger).
-async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null, noelData = null, toussaintData = null) {
+async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null, noelData = null, toussaintData = null, referenceData = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -196,7 +219,12 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
   // les dates en continu (cases associés vides là où il n'y a pas de données), en-têtes mensuels et bloc
   // Noël à la fin. `periode` ne borne donc plus le contenu (il ne sert plus qu'au nom de fichier).
   const debutPlanning = premiereSemainePlanning(data.vacancesScolaires ?? [])
-  const semaines = listerSemaines(annee).filter(s => !estImposee(s.num) && s.num >= debutPlanning)
+  // Référence tiers 1+2 (3ᵉ tiers) : reproduite TELLE QUELLE en haut de la feuille. Le calendrier logiciel
+  // démarre alors au début du 3ᵉ tiers (periode.debut) au lieu du début d'année, pour ne pas ré-afficher
+  // (vides) les semaines déjà couvertes par la référence → chronologie continue, sans doublon.
+  const debutGrille = referenceNonVide(referenceData) ? (periode?.debut ?? debutPlanning) : debutPlanning
+  ecrireReference(ws, referenceData)
+  const semaines = listerSemaines(annee).filter(s => !estImposee(s.num) && s.num >= debutGrille)
   let moisPrec = null
   for (const sem of semaines) {
     // Ligne d'en-tête (initiales) à la FRONTIÈRE de semaine : juste avant le lundi, quand le mois du lundi
