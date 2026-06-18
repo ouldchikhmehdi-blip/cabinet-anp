@@ -218,7 +218,7 @@ Le planning d'une année se fait en **trois tiers** : 1er tiers (avant l'été) 
 - jours où il ne veut pas poser son repos ;
 - préférence Pâques ou février (+ Toussaint souhaitée ou non) — **chaque période scolaire n'est proposée que si ses semaines tombent dans la période du recueil** (sinon masquée, ce qui allège l'écran) ; les périodes affichées sont déduites des **vraies** semaines scolaires (base calendrier), pas d'une constante codée en dur ;
   - **Semaines de vacances scolaires bloquées dans les autres saisies (en place).** Les congés scolaires se gèrent **uniquement** via cette préférence : pendant une semaine de vacances scolaire, l'associé **ne peut pas** sélectionner de **vacances souhaitées/refusées**, de **week-end indisponible**, de **jour off**, ni de **colonne de trame** (semaines retirées/grisées en bleu dans `SelecteurSemaines`, `WeekendsIndispo`, `SelecteurDates` et le sélecteur de colonne de la trame principale) ;
-- week-ends dispo / pas dispo pour astreinte ou garde ;
+- week-ends dispo / pas dispo pour astreinte ou garde ; **option par week-end indisponible** : ne pas être **ni de garde ni d'astreinte le vendredi qui précède** (la veille du WE bloqué) — champ `weekendsVeilleIndispo` (sous-ensemble de `weekendsIndispo`), saisi dans `WeekendsIndispo.jsx` (bouton « + vendredi ») et affiché au récap. **Saisie en place ; intégration à l'attribution des week-ends à faire** (étape algorithme, à venir) ;
 - éventuellement, demande d'une colonne particulière de la semaine type (ex. associé prenant des remplaçants qui veut un poste-type précis).
 
 Tous ces champs sont **facultatifs** : certains associés n'auront rien à remplir, et c'est un cas normal à gérer.

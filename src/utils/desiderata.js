@@ -30,6 +30,8 @@ export function desiderataVide() {
     toussaintSouhaitee: null,    // true | false | null
     toussaintSemaine: null,      // 's1' | 's2' | 'les-deux' | null
     weekendsIndispo: [],         // numéros de semaine ISO des week-ends indisponibles
+    weekendsVeilleIndispo: [],   // sous-ensemble de weekendsIndispo : week-ends où l'associé ne veut
+                                 // NI garde NI astreinte le VENDREDI qui précède (la veille du WE bloqué)
     noel: '',                    // texte libre : préférences fêtes de fin d'année (réparties à la main)
     colonnesSouhaitees: {},      // { <numSemaineISO>: <index de colonne> } sur la trame principale
     colonnesEte: { prioritaires: [], possibles: [], refusees: [] }, // choix de colonnes pour l'été (clés de colonne)
@@ -51,6 +53,8 @@ export function normaliser(data) {
   const fusion = { ...desiderataVide(), ...(data ?? {}) }
   fusion.joursOffSouhaites = (fusion.joursOffSouhaites ?? []).filter(iso => !estWeekendISO(iso))
   fusion.colonnesEte = { prioritaires: [], possibles: [], refusees: [], ...(fusion.colonnesEte ?? {}) }
+  // La veille bloquée n'a de sens que pour un week-end effectivement indisponible.
+  fusion.weekendsVeilleIndispo = (fusion.weekendsVeilleIndispo ?? []).filter(n => (fusion.weekendsIndispo ?? []).includes(n))
   return fusion
 }
 

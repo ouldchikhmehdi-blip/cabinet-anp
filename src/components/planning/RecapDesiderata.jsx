@@ -186,7 +186,10 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false, p
       {!estEte && (
         <SectionMois
           titre="Week-ends indisponibles"
-          items={d.weekendsIndispo.map(n => ({ label: weekendInfo[n]?.label ?? `S${n}`, date: weekendInfo[n]?.date }))}
+          items={d.weekendsIndispo.map(n => ({
+            label: (weekendInfo[n]?.label ?? `S${n}`) + ((d.weekendsVeilleIndispo ?? []).includes(n) ? ' (+ vendredi)' : ''),
+            date: weekendInfo[n]?.date,
+          }))}
         />
       )}
 
