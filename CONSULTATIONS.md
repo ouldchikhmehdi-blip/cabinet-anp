@@ -152,7 +152,12 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 - **5 KPIs** : Consultations (année principale), Consultations (réf. + écart %), Téléconsultations
   (part % + écart), Cumul à ce jour, Moyenne mensuelle.
 - **Comparaison de 2 à 4 années** (filtre `PeriodeFilter` partagé) ; par défaut les 2 années les plus
-  récentes disponibles (2025/2024). Couleurs : année principale vive (#1D9E75), autres en dégradé gris.
+  récentes disponibles (2025/2024). **Couleurs distinctes par année** (`couleurAnnee`, `mockData.js`) :
+  année principale = accent vif de la page/spécialité ; années comparées = teintes distinctes
+  (bleu/framboise/ambre) lisibles en thème **clair et sombre** — plus de « dégradé gris » indistinct.
+  Sur les **courbes**, chaque année a en plus un **motif de pointillés propre** (`dashAnnee` : plein →
+  tirets → pointillés → tiret-point) et la **légende reproduit le trait exact** (couleur + pointillé, en SVG).
+  Grille et axes en gris neutre (`GRID_STROKE`/`TICK`) pour rester lisibles sur fond sombre.
 - **Graphiques** : barres mensuelles + cumul (toutes les années cochées).
 - **Sélecteur de spécialités** : carte par spécialité (total + nb praticiens). Inclut une catégorie
   dérivée **« Téléconsultation »** (à côté de Pneumologie) qui visualise la série `TELECONSULTATIONS`

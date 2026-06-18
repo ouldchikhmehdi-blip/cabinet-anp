@@ -10,6 +10,16 @@ import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnne
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
 
+// Motif de pointillés d'une courbe selon le RANG de l'année (rang 0 = trait plein). Couplé à la couleur
+// distincte (couleurAnnee), il rend chaque année identifiable même superposée : plein → tirets → pointillés
+// → tiret-point. Réutilisé par la légende pour qu'elle reproduise EXACTEMENT le trait du graphique.
+const DASH_ANNEE = [undefined, '7 4', '2 3', '9 3 2 3']
+const dashAnnee = rang => DASH_ANNEE[Math.min(rang, DASH_ANNEE.length - 1)]
+
+// Grille et axes neutres (gris moyen) → lisibles en thème CLAIR comme SOMBRE, sans dépendre du fond.
+const GRID_STROKE = 'rgba(128,128,128,0.22)'
+const TICK = { fontSize: 11, fill: '#8C8A82' }
+
 // Tableau mensuel d'une spécialité : somme des praticiens + bucket valeurs (consultations non attribuées)
 const specMensuel = (sp, year) => {
   if (!sp.praticiens) return (sp.valeurs || {})[year] || Array(12).fill(0)
@@ -27,7 +37,15 @@ function LegendAnnees({ years, accent, type }) {
       {years.map((y, rang) => (
         <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
           {type === 'line'
-            ? <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, accent)}` }} />
+            ? (
+              <svg width="22" height="8" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+                <line
+                  x1="1" y1="4" x2="21" y2="4"
+                  stroke={couleurAnnee(rang, accent)} strokeWidth="2.4"
+                  strokeDasharray={dashAnnee(rang)} strokeLinecap="round"
+                />
+              </svg>
+            )
             : <span style={{ display: 'inline-block', width: 10, height: 10, background: couleurAnnee(rang, accent), borderRadius: 2 }} />}
           {y}
         </span>
@@ -207,9 +225,9 @@ export default function Consultations() {
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={dataBar}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-            <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+            <XAxis dataKey="mois" tick={TICK} />
+            <YAxis tick={TICK} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
             {years.map((y, rang) => (
               <Bar key={y} dataKey={y} fill={couleurAnnee(rang, '#1D9E75')} radius={[3,3,0,0]} />
@@ -227,9 +245,9 @@ export default function Consultations() {
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={dataCumul}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-            <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+            <XAxis dataKey="mois" tick={TICK} />
+            <YAxis tick={TICK} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
             {years.map((y, rang) => (
               <Line
@@ -237,9 +255,9 @@ export default function Consultations() {
                 type="monotone"
                 dataKey={y}
                 stroke={couleurAnnee(rang, '#1D9E75')}
-                strokeWidth={rang === 0 ? 2 : 1.5}
-                strokeDasharray={rang === 0 ? undefined : '5 4'}
-                dot={{ r: rang === 0 ? 3 : 2 }}
+                strokeWidth={rang === 0 ? 2.6 : 2}
+                strokeDasharray={dashAnnee(rang)}
+                dot={{ r: rang === 0 ? 3 : 2.4 }}
               />
             ))}
           </LineChart>
@@ -360,9 +378,9 @@ export default function Consultations() {
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={pratBar}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                <XAxis dataKey="mois" tick={TICK} />
+                <YAxis tick={TICK} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [
                   `${fmtNb(v)} consult.`,
                   name === '__autre' ? 'Autre / non attribué' : (pratsVisibles.find(p => p.id === name)?.nom || name),
@@ -391,9 +409,9 @@ export default function Consultations() {
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={pratCumul}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                <XAxis dataKey="mois" tick={TICK} />
+                <YAxis tick={TICK} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [
                   `${fmtNb(v)} consult.`,
                   name === '__autre' ? 'Autre / non attribué' : (pratsVisibles.find(p => p.id === name)?.nom || name),
@@ -419,9 +437,9 @@ export default function Consultations() {
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={aBar}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                <XAxis dataKey="mois" tick={TICK} />
+                <YAxis tick={TICK} />
                 <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
                 {years.map((y, rang) => (
                   <Bar key={y} dataKey={y} fill={couleurAnnee(rang, aColor)} radius={[3,3,0,0]} />
@@ -439,9 +457,9 @@ export default function Consultations() {
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={aCumul}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                <XAxis dataKey="mois" tick={TICK} />
+                <YAxis tick={TICK} />
                 <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
                 {years.map((y, rang) => (
                   <Line
@@ -449,9 +467,9 @@ export default function Consultations() {
                     type="monotone"
                     dataKey={y}
                     stroke={couleurAnnee(rang, aColor)}
-                    strokeWidth={rang === 0 ? 2 : 1.5}
-                    strokeDasharray={rang === 0 ? undefined : '5 4'}
-                    dot={{ r: rang === 0 ? 3 : 2 }}
+                    strokeWidth={rang === 0 ? 2.6 : 2}
+                    strokeDasharray={dashAnnee(rang)}
+                    dot={{ r: rang === 0 ? 3 : 2.4 }}
                   />
                 ))}
               </LineChart>
