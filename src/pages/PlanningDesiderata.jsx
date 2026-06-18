@@ -518,8 +518,9 @@ export default function PlanningDesiderata() {
             <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
               <div style={s.aide}>
                 Cochez les week-ends où vous n'êtes pas disponible. Sur un week-end coché, l'option
-                <strong> « + vendredi »</strong> demande en plus à ne pas être de garde ni d'astreinte le
-                vendredi qui précède.
+                <strong> « + vendredi »</strong> ne demande <em>pas</em> un jour off : elle évite seulement
+                de vous mettre <strong>de garde ou d'astreinte le vendredi qui précède</strong> — vous
+                travaillez normalement ce vendredi, mais sans garde ni astreinte la veille de votre week-end.
                 {semainesScolaires.length > 0 && ' Les week-ends en vacances scolaires (en bleu) ne sont pas sélectionnables — les congés s\'y gèrent dans « Préférence vacances scolaires ».'}
               </div>
               <div style={s.noteFerie}>

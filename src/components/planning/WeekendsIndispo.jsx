@@ -39,7 +39,7 @@ export default function WeekendsIndispo({ weekends, selection, onChange, semaine
   const s = {
     grille: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
       gap: 6,
     },
     item: (actif, scolaire) => ({
@@ -113,9 +113,9 @@ export default function WeekendsIndispo({ weekends, selection, onChange, semaine
             type="button"
             onClick={() => toggleVeille(we.num)}
             style={s.veille(veilleSet.has(we.num))}
-            title="Ne pas être de garde ni d'astreinte le vendredi qui précède ce week-end"
+            title="Ni garde ni astreinte le vendredi qui précède (pas un jour off : vous travaillez ce vendredi)"
           >
-            {veilleSet.has(we.num) ? '✓ vendredi off' : '+ vendredi'}
+            {veilleSet.has(we.num) ? '✓ vendredi sans garde/astreinte' : '+ vendredi'}
           </button>
         )}
       </div>
