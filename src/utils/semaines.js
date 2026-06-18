@@ -291,6 +291,14 @@ export function proposerSemaines({
 
     const spec = colonnesSpeciales(trame, num, contexteAmont)
     const verrou = fixes[num] ?? {}
+    // Échange/override manuel VERROUILLÉ sur une colonne SPÉCIALE (réa / vacances / avant-WE / après-WE) :
+    // il PRIME sur l'occupant dérivé de l'amont ET est persisté dans la sortie, pour qu'un échange manuel
+    // survive à « Proposer » (sans ça, le moteur redérive ces colonnes de l'amont et défait l'échange ;
+    // les colonnes de TRAVAIL verrouillées sont, elles, posées plus bas via colonnesAPourvoir).
+    for (const [c, ini] of Object.entries(verrou)) {
+      const col = Number(c)
+      if (spec[col] != null && ASSOCIES.includes(ini)) { spec[col] = ini; out[num][col] = ini }
+    }
     const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
     // Règle DURE : pas de garde/astreinte le vendredi avant une semaine de vacances. L'occupant d'une colonne
     // de service le vendredi ne peut pas être en vacances la semaine SUIVANTE (num+1).

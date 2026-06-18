@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour, premiereSemainePlanning } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, listerSemaines, formatJJMM, feriesEnSemaine, numeroSemaineISO, parseISO, typeDuJour, premiereSemainePlanning, blocToussaint } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser, scoreDemande } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, definirStatutRecueil } from '../utils/desiderataApi'
@@ -225,12 +225,22 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
+  // Semaines imposées de la Toussaint = vacances scolaires de la Toussaint (calendrier), réunies à la grille
+  // collée si présente. Bloquées D'OFFICE « En semaine » : ni proposées ni arbitrées, mais AFFICHÉES en
+  // lignes verrouillées (gérées par la grille de Toussaint, comme Noël). Indépendant d'une grille collée.
+  const semainesImposeesTous = useMemo(() => {
+    const set = new Set(blocToussaint(annee, calendrier?.vacancesScolaires ?? []))
+    for (const n of toussaint.semaines) set.add(n)
+    return set
+  }, [annee, calendrier, toussaint])
   const semaines = useMemo(
-    () => plage.filter(s => !noel.semaines.has(s.num) && !toussaint.semaines.has(s.num)),
-    [plage, noel, toussaint]
+    () => plage.filter(s => !noel.semaines.has(s.num) && !semainesImposeesTous.has(s.num)),
+    [plage, noel, semainesImposeesTous]
   )
+  // Semaines de Toussaint de la plage, affichées en lignes VERROUILLÉES (non éditables, non arbitrées).
+  const lignesImposeesTous = useMemo(() => plage.filter(s => semainesImposeesTous.has(s.num)), [plage, semainesImposeesTous])
   const noelPeriode = useMemo(() => plage.filter(s => noel.semaines.has(s.num)).map(s => s.num), [plage, noel])
-  const toussaintPeriode = useMemo(() => plage.filter(s => toussaint.semaines.has(s.num)).map(s => s.num), [plage, toussaint])
+  const toussaintPeriode = useMemo(() => lignesImposeesTous.map(s => s.num), [lignesImposeesTous])
   const allNums = useMemo(() => listerSemaines(annee).filter(s => s.num >= debutPlanning).map(s => s.num), [annee, debutPlanning])
 
   // Trame résolue d'une semaine, AVEC repli automatique selon le nombre de vacanciers → { trame,
@@ -393,8 +403,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const nbArbitrer = semainesBloquantes.size
   const nbSurveiller = semainesSurveiller.size
   const semainesAffichees = useMemo(
-    () => (filtreArbitrer ? semaines.filter(s => semainesBloquantes.has(s.num)) : semaines),
-    [semaines, semainesBloquantes, filtreArbitrer]
+    () => (filtreArbitrer
+      ? semaines.filter(s => semainesBloquantes.has(s.num)) // les semaines imposées ne sont jamais bloquantes
+      : [...semaines, ...lignesImposeesTous].sort((a, b) => a.num - b.num)),
+    [semaines, lignesImposeesTous, semainesBloquantes, filtreArbitrer]
   )
 
   // ── Handlers ──
@@ -781,7 +793,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     // Les semaines couvertes par un bloc fourni tel quel (Noël + Toussaint) sont EXCLUES des agrégations
     // normales (gardes, vendredi, réa, vacances, récup) : ces grilles font autorité sur leurs semaines.
     // Leurs comptes sont AJOUTÉS ensuite → total annuel correct, sans double comptage.
-    const numsHN = allNums.filter(n => !noel.semaines.has(n) && !toussaint.semaines.has(n))
+    const numsHN = allNums.filter(n => !noel.semaines.has(n) && !semainesImposeesTous.has(n))
     const gSemHN = calendrier
       ? gardesSemaineParAssocie(numsHN, annee, calendrier, trameDe, contexteAmont, affectationsLibres)
       : { comptes: {} }
@@ -821,7 +833,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       }
     }
     return b
-  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, annee, effectifs, noel, toussaint, calculerRecup])
+  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, annee, effectifs, noel, toussaint, semainesImposeesTous, calculerRecup])
 
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
@@ -1102,8 +1114,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
           {toussaintPeriode.length > 0 && (
             <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
-              🍂 Semaine(s) de Toussaint imposée(s) par la grille collée ({toussaintPeriode.map(n => `S${n}`).join(', ')}) :
-              fournies telles quelles (onglet Vacances) et ni proposées ni remplies ici.
+              🍂 Semaine(s) de Toussaint imposée(s) ({toussaintPeriode.map(n => `S${n}`).join(', ')}) :
+              vacances scolaires gérées par la grille de Toussaint (onglet Vacances) — affichées verrouillées ici, ni remplies ni à arbitrer.
             </div>
           )}
 
@@ -1202,6 +1214,30 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             {semainesAffichees.length === 0 ? (
               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', padding: 8 }}>Aucune semaine à afficher.</div>
             ) : semainesAffichees.map(sem => {
+              // Semaine de Toussaint imposée : ligne VERROUILLÉE (gérée par la grille de Toussaint) — pas
+              // d'analyse/trame/aperçu, ni d'édition ni d'arbitrage.
+              if (semainesImposeesTous.has(sem.num)) {
+                const lib = <span style={s.libSemaine}>S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}</span>
+                const badge = (
+                  <span style={s.badge('var(--color-primary)', 'var(--color-primary-light)')} title="Semaine de la Toussaint imposée (vacances scolaires, gérée par la grille de Toussaint) : verrouillée — ni remplie ni arbitrée ici.">
+                    🔒 Toussaint — imposé
+                  </span>
+                )
+                return vueContinue ? (
+                  <div key={sem.num} style={{ ...s.ligneCompact(null), opacity: 0.75 }}>
+                    <div style={{ ...s.labelCompact(null), display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{lib}{badge}</div>
+                  </div>
+                ) : (
+                  <div key={sem.num} style={{ ...s.ligne(null), opacity: 0.75 }}>
+                    <div style={s.haut}>
+                      <div style={s.bandeauCliquable}>
+                        {lib}
+                        <span style={s.badges}>{badge}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
               const a = analyses[sem.num]
               const { trame, repli } = resoudreSem(sem.num)
               const effectiveId = trame ? trame.id : null
