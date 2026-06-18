@@ -34,6 +34,8 @@ export default function Consultations() {
   const [specId, setSpecId] = useState(CONSULT_SPECIALITES[0].id)
   // Sélection de praticiens (multi). Liste vide = « Tous ».
   const [pratSel, setPratSel] = useState([])
+  // Vue agrégée : une seule courbe = total de la spécialité (somme des praticiens), comparable année/année.
+  const [vueAgregee, setVueAgregee] = useState(false)
 
   // Années disponibles : union de ANNEES (mock) et des années présentes dans le store
   const anneesDispos = [...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])].sort((a, b) => b - a)
@@ -76,8 +78,9 @@ export default function Consultations() {
   const colorOf = p => PALETTE[Math.max(0, pratsVisibles.findIndex(x => x.id === p.id)) % PALETTE.length]
 
   // Sélection courante : on ne garde que des praticiens encore visibles (garde-fou contre un masqué)
-  const selValides = hasPrat ? pratSel.filter(id => pratsVisibles.some(p => p.id === id)) : []
-  const isAllPrat = hasPrat && selValides.length === 0      // « Tous »
+  // En vue agrégée, la sélection est neutralisée → on retombe sur la branche « total spécialité » (année vs année)
+  const selValides = (hasPrat && !vueAgregee) ? pratSel.filter(id => pratsVisibles.some(p => p.id === id)) : []
+  const isAllPrat = hasPrat && !vueAgregee && selValides.length === 0   // « Tous »
   const isSinglePrat = hasPrat && selValides.length === 1   // un seul → comparaison année vs année
   const isMultiPrat = hasPrat && selValides.length >= 2     // plusieurs → courbes superposées
   const showMulti = isAllPrat || isMultiPrat                // graphiques multi-praticiens
@@ -227,7 +230,7 @@ export default function Consultations() {
           return (
             <button
               key={sp.id}
-              onClick={() => { setSpecId(sp.id); setPratSel([]) }}
+              onClick={() => { setSpecId(sp.id); setPratSel([]); setVueAgregee(false) }}
               style={{
                 background: isSel ? 'var(--color-primary-light)' : 'var(--color-surface)',
                 border: isSel ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-border)',
@@ -256,13 +259,21 @@ export default function Consultations() {
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 2 }}>Praticien</span>
-            <button onClick={() => setPratSel([])} style={isAllPrat ? pillActive : pillBase}>Tous</button>
+            <button onClick={() => { setVueAgregee(false); setPratSel([]) }} style={isAllPrat ? pillActive : pillBase}>Tous</button>
+            <button
+              onClick={() => { setVueAgregee(true); setPratSel([]) }}
+              style={vueAgregee ? pillActive : pillBase}
+              title={`${spec.nom} — total agrégé en une seule courbe (comparable d'une année à l'autre)`}
+            >
+              <span style={{ display: 'inline-block', width: 8, height: 8, background: spec.couleur, borderRadius: 2, marginRight: 6, verticalAlign: 'middle' }} />
+              {spec.nom}
+            </button>
             {pratsVisibles.map((p, i) => {
               const on = selValides.includes(p.id)
               return (
                 <button
                   key={p.id}
-                  onClick={() => setPratSel(sel => sel.includes(p.id) ? sel.filter(x => x !== p.id) : [...sel, p.id])}
+                  onClick={() => { setVueAgregee(false); setPratSel(sel => sel.includes(p.id) ? sel.filter(x => x !== p.id) : [...sel, p.id]) }}
                   style={on ? pillActive : pillBase}
                 >
                   <span style={{ display: 'inline-block', width: 8, height: 8, background: PALETTE[i % PALETTE.length], borderRadius: 2, marginRight: 6, verticalAlign: 'middle' }} />
