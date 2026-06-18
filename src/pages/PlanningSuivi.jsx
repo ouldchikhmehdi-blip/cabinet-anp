@@ -46,6 +46,7 @@ export default function PlanningSuivi() {
   const [enregistrementRef, setEnregistrementRef] = useState(false)
   const [refData, setRefData] = useState(null)           // référence des tiers 1+2 (collée telle quelle)
   const [enregistreRef, setEnregistreRef] = useState(false)
+  const [refOuvert, setRefOuvert] = useState(false)      // panneau « Référence tiers 1+2 » replié/déplié
   const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
@@ -735,26 +736,38 @@ export default function PlanningSuivi() {
           quelle, avec ses couleurs, en haut de l'export du 3ᵉ tiers ; le calendrier de la rentrée suit. */}
       {estTroisiemePartie && (
         <div style={{ ...s.carteSection, ...(referenceNonVide(refData) ? {} : s.emphase) }} className="no-print">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
+          <button
+            type="button"
+            onClick={() => setRefOuvert(o => !o)}
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left', display: 'block' }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: 'var(--color-text)', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{refOuvert ? '▾' : '▸'}</span>
               Référence tiers 1 et 2 (saisie manuelle)
+              {!referenceNonVide(refData) && <span style={s.badgeAFaire}>⚠️ À coller</span>}
+              {referenceNonVide(refData) && <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-success)' }}>● collée</span>}
+            </span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+              Planning des tiers 1 et 2 fait à la main (le 1er tiers peut encore changer) : collez-le ici, il sera
+              repris tel quel, en haut de l'export Excel du 3ᵉ tiers.
+            </span>
+          </button>
+          {refOuvert && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={enregistrerRef}
+                  disabled={!referenceNonVide(refData)}
+                  style={{ ...s.bouton, opacity: referenceNonVide(refData) ? 1 : 0.5 }}
+                >
+                  Enregistrer la référence
+                </button>
+                {enregistreRef && <span style={{ fontSize: 12, color: 'var(--color-success)' }}>Enregistré ✓</span>}
+              </div>
+              <ReferenceTiersColle data={refData} onAjouter={ajouterRef} onEffacer={effacerRef} />
             </div>
-            {!referenceNonVide(refData) && <span style={s.badgeAFaire}>⚠️ À coller</span>}
-            <button
-              type="button"
-              onClick={enregistrerRef}
-              disabled={!referenceNonVide(refData)}
-              style={{ ...s.bouton, marginLeft: 'auto', opacity: referenceNonVide(refData) ? 1 : 0.5 }}
-            >
-              Enregistrer la référence
-            </button>
-            {enregistreRef && <span style={{ fontSize: 12, color: 'var(--color-success)' }}>Enregistré ✓</span>}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
-            Le planning des tiers 1 et 2 a été fait à la main (et le 1er tiers peut encore changer). Collez-le ici :
-            il sera repris tel quel, en référence, en haut de l'export Excel du 3ᵉ tiers.
-          </div>
-          <ReferenceTiersColle data={refData} onAjouter={ajouterRef} onEffacer={effacerRef} />
+          )}
         </div>
       )}
 
