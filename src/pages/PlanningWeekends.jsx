@@ -202,6 +202,19 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     return map
   }, [desideratas, profils])
 
+  // Semaines de vacances SOUHAITÉES par associé (desiderata) : { ini: Set(nums) }. Anticipées à l'étape
+  // week-end pour éviter (souple) de coller un week-end de garde à un souhait de vacances (S ou S+1).
+  const vacancesSouhaiteesParAssocie = useMemo(() => {
+    const parUser = {}
+    for (const p of profils) parUser[p.id] = p.initiales
+    const map = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (ini) map[ini] = new Set((normaliser(row.data).vacancesSouhaitees ?? []).map(Number))
+    }
+    return map
+  }, [desideratas, profils])
+
   // Volume de desiderata par associé (scoreDemande) → arbitrage d'équité : un week-end rapproché inévitable
   // est chargé sur le plus demandeur, jamais sur le moins-demandeur.
   const demandeParAssocie = useMemo(() => {
@@ -303,9 +316,9 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   // Analyse des conflits sur la plage courante.
   const analyses = useMemo(() => {
     const m = {}
-    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie)
+    for (const w of weekends) m[w.num] = analyserAffectation(w.num, affectations[w.num], affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie)
     return m
-  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie])
+  }, [weekends, affectations, indispoParAssocie, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie])
 
   // À arbitrer : uniquement les week-ends où AUCUN associé n'est plaçable sans contrainte
   // (les desiderata d'une seule personne ne sont pas des « conflits » — cf. PLANNING.md §13).
@@ -371,7 +384,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
       // Les week-ends de garde imposés par Noël ne sont PAS réattribués ni persistés ici, mais comptent
       // dans l'équilibrage des autres (ajoutés au contexte hors-plage de proposerWeekends).
       const aProposer = weekends.filter(w => !(ver.has(w.num) && prev.affectations[w.num]) && !weekendsNoel[w.num])
-      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW, demandeParAssocie)
+      const proposees = proposerWeekends(aProposer, indispoParAssocie, objectifGW, { ...fixes, ...weekendsNoel }, vacancesParSemaine, joursOffWeekendParAssocie, colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, avantReposJours, apresReposJours, dejaFaitGW, demandeParAssocie, vacancesSouhaiteesParAssocie)
       return { ...prev, affectations: { ...fixes, ...proposees } }
     })
   }
@@ -609,6 +622,8 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                         <span style={s.etat('var(--color-amber)')} title={`Moins de ${ESPACEMENT_MIN} semaines depuis le week-end S${a.tropProche}`}>🟠 &lt;{ESPACEMENT_MIN} sem</span>
                       ) : a.souhaitColonne != null ? (
                         <span style={s.etat('var(--color-amber)')} title={`Cet associé a souhaité la colonne C${a.souhaitColonne + 1} (travailler) cette semaine`}>🟠 colonne</span>
+                      ) : a.souhaitVacancesCollee ? (
+                        <span style={s.etat('var(--color-amber)')} title="Week-end accolé à un SOUHAIT de vacances de cet associé (S ou S+1) — anticipé : à éviter si possible">🟡 souhait vac.</span>
                       ) : impact.bloque ? (
                         <span style={s.etat('var(--color-amber)')} title="Ce week-end empêche un jour off demandé en semaine W ou W+1 : la colonne avant/après-WE ne repose pas ce jour-là">🟠 bloque jour off</span>
                       ) : (
