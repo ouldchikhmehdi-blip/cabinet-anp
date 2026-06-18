@@ -304,6 +304,38 @@ export function bilanNoel(noelData, annee) {
   return { parAssocie: par, semaines }
 }
 
+// Vacanciers PAR SEMAINE d'une grille imposée (Noël/Toussaint) : { <numSemaineISO>: [<ini>, …] }.
+// Même définition de « vacances » que bilanNoel : une semaine dont les 5 jours ouvrés (lun→ven) sont
+// présents dans la grille et où l'associé est OFF les 5 (rôle ∉ G/A/F et rôle 'C' ou case vide). Sert à
+// l'étape Week-ends pour traiter les congés de Toussaint collés comme des vacances PLACÉES (dures).
+export function vacanciersParSemaineNoel(noelData) {
+  const data = normaliserNoel(noelData)
+  const ouvres = {} // { num: { presents:Set(dow1-5), off:{ ini:Set(dow) } } }
+  for (const j of data.jours) {
+    const d = parseISO(j.iso)
+    const dow = d.getUTCDay()
+    if (dow < 1 || dow > 5) continue
+    const num = numeroSemaineISO(d)
+    const o = (ouvres[num] ??= { presents: new Set(), off: {} })
+    o.presents.add(dow)
+    for (const ini of ASSOCIES) {
+      const cell = j.parAssocie?.[ini]
+      const poste = (cell?.poste ?? '').trim()
+      const role = cell?.role ?? null
+      const off = role !== 'G' && role !== 'A' && role !== 'F' && (role === 'C' || poste === '')
+      if (off) (o.off[ini] ??= new Set()).add(dow)
+    }
+  }
+  const out = {}
+  for (const [num, info] of Object.entries(ouvres)) {
+    if (info.presents.size < 5) continue
+    for (const ini of ASSOCIES) {
+      if ((info.off[ini]?.size ?? 0) >= 5) (out[Number(num)] ??= []).push(ini)
+    }
+  }
+  return out
+}
+
 // Compteurs cumulés AFFICHÉS dans les cases de Noël, en PROLONGEMENT du cumul annuel (week-end, réa,
 // vacances uniquement — cf. décision : les gardes de semaine de Noël ne sont pas numérotées car leur
 // continuité exigerait le planning assemblé complet).

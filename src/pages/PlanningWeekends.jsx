@@ -12,7 +12,7 @@ import { chargerVacances } from '../utils/vacancesApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
-import { weekendsGardeNoel } from '../utils/noel'
+import { weekendsGardeNoel, vacanciersParSemaineNoel } from '../utils/noel'
 import { JOURS } from '../utils/trames'
 import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
 import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleEcart, cleEcartWeekend } from '../utils/ponts'
@@ -290,7 +290,20 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
 
   const affectations = useMemo(() => data?.affectations ?? {}, [data])
   const verrous = useMemo(() => new Set(data?.verrous ?? []), [data])
-  const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
+  // Vacances PLACÉES par semaine = planning_vacances RÉUNI aux vacanciers des grilles imposées collées
+  // (Toussaint ET Noël). Ainsi, dès que la Toussaint est collée (onglet Vacances), l'étape Week-ends la
+  // traite comme du DUR : la règle « jamais de week-end de garde collé à une vacance (S/S+1) » s'applique
+  // à ses vacanciers (proposition + badge « 🟠 vac. »).
+  const vacancesParSemaine = useMemo(() => {
+    const base = { ...(vacancesData?.vacances ?? {}) }
+    for (const src of [toussaintData, noelData]) {
+      for (const [num, inis] of Object.entries(vacanciersParSemaineNoel(src))) {
+        const n = Number(num)
+        base[n] = [...new Set([...(base[n] ?? []), ...inis])]
+      }
+    }
+    return base
+  }, [vacancesData, toussaintData, noelData])
   // Semaines de vacances SCOLAIRES (toutes périodes : février, Pâques, Toussaint, été, Noël…), mises en
   // évidence sur la liste des week-ends. Source = base calendrier.
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
