@@ -44,6 +44,15 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
     ...(isAdmin ? [adminItem] : []),
   ]
 
+  // Clic du milieu sur un onglet → ouvre cet onglet dans une nouvelle fenêtre,
+  // via le paramètre ?page=<id> que App.jsx lit au démarrage.
+  function ouvrirNouvelleFenetre(id) {
+    const url = `${window.location.pathname}?page=${encodeURIComponent(id)}`
+    const largeur = window.screen?.availWidth || 1280
+    const hauteur = window.screen?.availHeight || 800
+    window.open(url, '_blank', `noopener,noreferrer,width=${largeur},height=${hauteur}`)
+  }
+
   async function deconnecter() {
     if (!peutQuitter()) return // brouillon de desiderata non transmis : confirmation
     await supabase.auth.signOut()
@@ -98,6 +107,18 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
           <button
             key={item.id}
             onClick={() => !item.disabled && onNavigate(item.id)}
+            onAuxClick={(e) => {
+              // bouton du milieu de la souris (e.button === 1)
+              if (e.button === 1 && !item.disabled) {
+                e.preventDefault()
+                ouvrirNouvelleFenetre(item.id)
+              }
+            }}
+            onMouseDown={(e) => {
+              // empêche le défilement automatique déclenché par le clic du milieu
+              if (e.button === 1) e.preventDefault()
+            }}
+            title={item.disabled ? undefined : 'Clic du milieu : ouvrir dans une nouvelle fenêtre'}
             style={{
               display: 'flex',
               alignItems: 'center',

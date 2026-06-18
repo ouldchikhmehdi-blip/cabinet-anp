@@ -28,7 +28,12 @@ import './index.css'
 
 export default function App() {
   const { session, profile, aal, nextAal, loading, recovery } = useAuth()
-  const [page, setPage] = useState('vue-globale')
+  // Onglet initial : lu depuis l'URL (?page=...) pour permettre l'ouverture
+  // d'un onglet précis dans une nouvelle fenêtre (clic du milieu dans la sidebar).
+  const [page, setPage] = useState(() => {
+    const p = new URLSearchParams(window.location.search).get('page')
+    return p || 'vue-globale'
+  })
   const [masque, setMasque] = useState(() => localStorage.getItem('masque') === '1')
   const [sombre, setSombre] = useState(() => localStorage.getItem('theme') === 'sombre')
 
