@@ -11,6 +11,7 @@ import { chargerWeekends, sauverWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerNoel } from '../utils/noelApi'
+import { chargerToussaint } from '../utils/toussaintApi'
 import { weekendsGardeNoel } from '../utils/noel'
 import { JOURS } from '../utils/trames'
 import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
@@ -47,6 +48,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [vacancesData, setVacancesData] = useState(null) // { v, vacances: { num: [ini] } }
   const [tramesData, setTramesData] = useState(null)     // { v, principaleId, trames: [...] }
   const [noelData, setNoelData] = useState(null)         // grille de Noël (week-ends de garde imposés)
+  const [toussaintData, setToussaintData] = useState(null) // grille de la Toussaint (week-ends de garde imposés)
   const [data, setData] = useState(null)        // { v, affectations: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -72,10 +74,10 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee), chargerNoel(annee), chargerCompteursRef(annee)])
-      .then(([cal, obj, we, vac, tr, noel, cref]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerTrames(annee), chargerNoel(annee), chargerCompteursRef(annee), chargerToussaint(annee)])
+      .then(([cal, obj, we, vac, tr, noel, cref, tous]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); setNoelData(noel); setCompteursRef(cref); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setData(we); setVacancesData(vac); setTramesData(tr); setNoelData(noel); setCompteursRef(cref); setToussaintData(tous); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -244,16 +246,19 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   // évidence sur la liste des week-ends. Source = base calendrier.
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
 
-  // Week-ends de garde IMPOSÉS par la grille de Noël (notamment ceux qui encadrent les 15 jours),
-  // restreints aux semaines de l'année en cours : { <numSemaine>: ini }. Source unique = grille de Noël
-  // (non persistés ici) ; ils sont comptés dans l'équilibrage et affichés « imposés », jamais réattribués.
+  // Week-ends de garde IMPOSÉS par un bloc fourni tel quel (grille de Noël ET grille de Toussaint, y compris
+  // les week-ends qui encadrent ces blocs), restreints aux semaines de l'année : { <numSemaine>: ini }.
+  // Sources = grilles collées (non persistées ici) ; comptés dans l'équilibrage et affichés « imposés », jamais réattribués.
   const semainesAnnee = useMemo(() => new Set(listerSemaines(annee).map(s => s.num)), [annee])
   const weekendsNoel = useMemo(() => {
-    const tout = weekendsGardeNoel(noelData)
     const m = {}
-    for (const [num, ini] of Object.entries(tout)) if (semainesAnnee.has(Number(num))) m[Number(num)] = ini
+    for (const src of [noelData, toussaintData]) {
+      for (const [num, ini] of Object.entries(weekendsGardeNoel(src))) {
+        if (semainesAnnee.has(Number(num))) m[Number(num)] = ini
+      }
+    }
     return m
-  }, [noelData, semainesAnnee])
+  }, [noelData, toussaintData, semainesAnnee])
 
   // Objectif « G week-end » par associé (étape 2), si renseigné.
   const objectifGW = useMemo(() => {
@@ -578,7 +583,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                     <div style={s.role(roles.dim)} title="Rôle du dimanche (Étape 0)">{roles.dim}</div>
                     <span>
                       {impose ? (
-                        <span style={s.etat('var(--color-primary)')} title="Week-end de garde imposé par la grille de Noël (encadrant les 15 jours)">🎄 imposé</span>
+                        <span style={s.etat('var(--color-primary)')} title="Week-end de garde imposé par une grille fournie telle quelle (Noël ou Toussaint)">🗓️ imposé</span>
                       ) : !ini ? (
                         <span style={s.etat('var(--color-text-tertiary)')}>—</span>
                       ) : a.indispo ? (
@@ -611,7 +616,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
                     {impose ? (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>
                         {impose}
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)' }} title="Imposé par la grille de Noël — non réattribué, mais compté dans l'équilibrage">🎄 Noël</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)' }} title="Imposé par une grille fournie telle quelle (Noël ou Toussaint) — non réattribué, mais compté dans l'équilibrage">🗓️ imposé</span>
                       </span>
                     ) : (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

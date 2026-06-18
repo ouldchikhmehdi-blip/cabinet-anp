@@ -1,4 +1,11 @@
 // ============================================================
+// noel.js — Moteur des « blocs imposés » fournis tels quels : une grille colorée jour × associés
+// collée depuis Excel, détectée (pas calculée) et intégrée au bilan/export. Conçu pour Noël, ce moteur
+// est GÉNÉRIQUE et sert AUSSI aux vacances de la Toussaint (cf. toussaintApi.js / PlanningVacances) :
+// parserCollageNoel / normaliserNoel / bilanNoel / semainesImposeesNoel / weekendsGardeNoel /
+// compteursNoel / groupeJourNoel ne supposent rien de spécifique à Noël (la déduction d'année gère
+// oct/nov → annee comme nov/déc). Les noms gardent le suffixe « Noel » pour limiter le churn.
+//
 // noel.js — Période de Noël « fournie telle quelle » (PLANNING.md §10).
 // Le faiseur COLLE depuis Excel la grille assemblée des ~15 jours : 1ʳᵉ colonne = dates,
 // colonnes suivantes = les 8 associés. Cases jaune = garde, orange = astreinte (convention

@@ -14,6 +14,7 @@ import { chargerRea } from '../utils/reaApi'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import { chargerNoel } from '../utils/noelApi'
+import { chargerToussaint } from '../utils/toussaintApi'
 import { bilanNoel } from '../utils/noel'
 import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
@@ -63,6 +64,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   const [weekends, setWeekends] = useState(null)
   const [reaData, setReaData] = useState(null)
   const [noelData, setNoelData] = useState(null) // grille de Noël (15 jours fournis tels quels)
+  const [toussaintData, setToussaintData] = useState(null) // grille de la Toussaint (bloc imposé collé)
   const [data, setData] = useState(null)        // { v, trameParSemaine, affectations, verrous }
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -111,12 +113,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     let annule = false
     Promise.all([
       chargerTrames(annee), chargerVacances(annee), chargerCalendrier(annee), chargerSemaines(annee),
-      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee), chargerCompteursRef(annee),
+      chargerObjectifs(annee), chargerWeekends(annee), chargerRea(annee), chargerNoel(annee), chargerCompteursRef(annee), chargerToussaint(annee),
     ])
-      .then(([tr, vac, cal, sem, obj, we, rea, noel, cref]) => {
+      .then(([tr, vac, cal, sem, obj, we, rea, noel, cref, tous]) => {
         if (annule) return
         setTramesData(tr); setVacancesData(vac); setCalendrier(cal); setData(sem)
-        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel); setCompteursRef(cref)
+        setObjectifs(obj); setWeekends(we); setReaData(rea); setNoelData(noel); setCompteursRef(cref); setToussaintData(tous)
         setHistorique([]); setSelEchange(null)
         onStatut?.('vierge')
       })
@@ -213,20 +215,25 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [desideratas, parUser])
 
-  // Contribution de la période de Noël (15 jours fournis tels quels) au bilan annuel + semaines ISO
-  // couvertes (qu'on exclura des agrégations normales pour éviter le double comptage).
+  // Contribution des blocs fournis tels quels (Noël + Toussaint) au bilan annuel + semaines ISO couvertes
+  // (qu'on exclura des agrégations normales pour éviter le double comptage). bilanNoel est générique.
   const noel = useMemo(() => bilanNoel(noelData, annee), [noelData, annee])
+  const toussaint = useMemo(() => bilanNoel(toussaintData, annee), [toussaintData, annee])
 
   // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
   const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  // Semaines imposées par la grille de Noël : la grille fait foi (trame/colonnes déjà fixées) → exclues de
-  // la construction « En semaine » (ni proposées ni remplies ; leurs comptes restent gérés par le bilan).
+  // Semaines imposées par un bloc fourni tel quel (Noël/Toussaint) : la grille fait foi (trame/colonnes
+  // déjà fixées) → exclues de la construction « En semaine » (ni proposées ni remplies ; comptes via le bilan).
   const plage = useMemo(
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
-  const semaines = useMemo(() => plage.filter(s => !noel.semaines.has(s.num)), [plage, noel])
+  const semaines = useMemo(
+    () => plage.filter(s => !noel.semaines.has(s.num) && !toussaint.semaines.has(s.num)),
+    [plage, noel, toussaint]
+  )
   const noelPeriode = useMemo(() => plage.filter(s => noel.semaines.has(s.num)).map(s => s.num), [plage, noel])
+  const toussaintPeriode = useMemo(() => plage.filter(s => toussaint.semaines.has(s.num)).map(s => s.num), [plage, toussaint])
   const allNums = useMemo(() => listerSemaines(annee).filter(s => s.num >= debutPlanning).map(s => s.num), [annee, debutPlanning])
 
   // Trame résolue d'une semaine, AVEC repli automatique selon le nombre de vacanciers → { trame,
@@ -774,11 +781,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
   // Bilan CUMULÉ sur l'année par associé (export, comparaison aux objectifs annuels) :
   // G week-end, A/G vendredi, semaines de réa, gardes de semaine (mardi+jeudi), semaines de vacances.
   const bilan = useMemo(() => {
-    // Les semaines couvertes par la grille de Noël sont EXCLUES des agrégations normales (gardes,
-    // vendredi, réa, vacances, récup) : la grille de Noël fait autorité sur ces semaines. Ses comptes
-    // sont AJOUTÉS ensuite → total annuel correct, sans double comptage.
-    const exclu = noel.semaines
-    const numsHN = allNums.filter(n => !exclu.has(n))
+    // Les semaines couvertes par un bloc fourni tel quel (Noël + Toussaint) sont EXCLUES des agrégations
+    // normales (gardes, vendredi, réa, vacances, récup) : ces grilles font autorité sur leurs semaines.
+    // Leurs comptes sont AJOUTÉS ensuite → total annuel correct, sans double comptage.
+    const numsHN = allNums.filter(n => !noel.semaines.has(n) && !toussaint.semaines.has(n))
     const gSemHN = calendrier
       ? gardesSemaineParAssocie(numsHN, annee, calendrier, trameDe, contexteAmont, affectationsLibres)
       : { comptes: {} }
@@ -803,20 +809,22 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         else if (rv === 'G') b[ini].gVendredi++
       }
     }
-    // Ajout des comptes de Noël (sur les semaines exclues ci-dessus).
-    for (const ini of ASSOCIES) {
-      const n = noel.parAssocie[ini]
-      if (!n) continue
-      b[ini].gWeekend += n.gWeekend
-      b[ini].aVendredi += n.aVendredi
-      b[ini].gVendredi += n.gVendredi
-      b[ini].gardeSemaine += n.gardeSemaine
-      b[ini].rea += n.rea
-      b[ini].recupJF += n.recupJF
-      b[ini].vacances += n.vacances ?? 0
+    // Ajout des comptes des blocs imposés (Noël + Toussaint) sur les semaines exclues ci-dessus.
+    for (const bloc of [noel, toussaint]) {
+      for (const ini of ASSOCIES) {
+        const n = bloc.parAssocie[ini]
+        if (!n) continue
+        b[ini].gWeekend += n.gWeekend
+        b[ini].aVendredi += n.aVendredi
+        b[ini].gVendredi += n.gVendredi
+        b[ini].gardeSemaine += n.gardeSemaine
+        b[ini].rea += n.rea
+        b[ini].recupJF += n.recupJF
+        b[ini].vacances += n.vacances ?? 0
+      }
     }
     return b
-  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, annee, effectifs, noel, calculerRecup])
+  }, [allNums, contexteAmont, trameDe, affectationsLibres, calendrier, annee, effectifs, noel, toussaint, calculerRecup])
 
   // Récap « Trames par semaine » pour l'export Excel (2ᵉ feuille).
   const recapTrames = useMemo(() => semaines.map(sem => {
@@ -839,7 +847,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       await exporterCalendrierExcel(
         annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData, toussaintData,
       )
     } catch {
       setErreur('Export Excel impossible.')
@@ -867,7 +875,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const { buffer } = await genererClasseurBuffer(
         annee, calendrier, objectifs, weekends?.affectations, effectifs.vacanciers, effectifs.rea,
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
-        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData,
+        recapTrames, affectationsSemaine, bilan, recup.parSemaine, remplacantsSemaine, compteurs, noelData, toussaintData,
       )
       await uploaderArchive({ annee, recueil, buffer, userId: session.user.id })
       await definirStatutRecueil(recueil.id, 'ferme')
@@ -1092,6 +1100,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
               🎄 Semaine(s) de Noël imposée(s) par la grille ({noelPeriode.map(n => `S${n}`).join(', ')}) :
               elles sont gérées par la grille de Noël (« Période de Noël ») et ne sont ni proposées ni remplies ici.
+            </div>
+          )}
+
+          {toussaintPeriode.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+              🍂 Semaine(s) de Toussaint imposée(s) par la grille collée ({toussaintPeriode.map(n => `S${n}`).join(', ')}) :
+              fournies telles quelles (onglet Vacances) et ni proposées ni remplies ici.
             </div>
           )}
 

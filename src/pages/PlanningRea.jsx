@@ -11,6 +11,7 @@ import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea, sauverRea } from '../utils/reaApi'
 import { chargerNoel } from '../utils/noelApi'
+import { chargerToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
 import { proposerRea, analyserRea } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
@@ -38,6 +39,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   const [weekends, setWeekends] = useState(null)
   const [vacancesData, setVacancesData] = useState(null)
   const [noelData, setNoelData] = useState(null) // grille de Noël (semaines imposées, fournies telles quelles)
+  const [toussaintData, setToussaintData] = useState(null) // grille de la Toussaint (bloc imposé collé)
   const [data, setData] = useState(null)        // { v, rea: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -63,8 +65,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee), chargerCompteursRef(annee), chargerNoel(annee)])
-      .then(([cal, obj, we, vac, reaData, cref, noel]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee), chargerCompteursRef(annee), chargerNoel(annee), chargerToussaint(annee)])
+      .then(([cal, obj, we, vac, reaData, cref, noel, tous]) => {
         if (annule) return
         // Vacances = poste exclusif (absolu) : on écarte toute réa tombant sur une semaine
         // de congé de l'associé (purge des conflits résiduels au chargement).
@@ -73,7 +75,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
         for (const [num, ini] of Object.entries(reaData.rea ?? {})) {
           if (!vacs[Number(num)]?.includes(ini)) reaPur[Number(num)] = ini
         }
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setCompteursRef(cref); setNoelData(noel)
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setCompteursRef(cref); setNoelData(noel); setToussaintData(tous)
         setData({ ...reaData, rea: reaPur }); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
@@ -157,15 +159,20 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
 
   // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
   const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  // Semaines imposées par la grille de Noël : la grille fait foi (réa déjà fixée) → exclues de la
-  // construction (ni proposées, ni remplies automatiquement, déjà comptées dans les Compteurs de référence).
+  // Semaines imposées par un bloc fourni tel quel (Noël ou Toussaint) : la grille fait foi (réa déjà fixée)
+  // → exclues de la construction (ni proposées, ni remplies, déjà comptées dans les Compteurs de référence).
   const semainesNoel = useMemo(() => semainesImposeesNoel(noelData), [noelData])
+  const semainesToussaint = useMemo(() => semainesImposeesNoel(toussaintData), [toussaintData])
   const plage = useMemo(
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
-  const semaines = useMemo(() => plage.filter(s => !semainesNoel.has(s.num)), [plage, semainesNoel])
+  const semaines = useMemo(
+    () => plage.filter(s => !semainesNoel.has(s.num) && !semainesToussaint.has(s.num)),
+    [plage, semainesNoel, semainesToussaint]
+  )
   const noelPeriode = useMemo(() => plage.filter(s => semainesNoel.has(s.num)).map(s => s.num), [plage, semainesNoel])
+  const toussaintPeriode = useMemo(() => plage.filter(s => semainesToussaint.has(s.num)).map(s => s.num), [plage, semainesToussaint])
 
   const analyses = useMemo(() => {
     const m = {}
@@ -300,8 +307,11 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     },
     ligne: {
       display: 'grid', gridTemplateColumns: '200px 110px 150px 160px',
-      gap: 8, alignItems: 'center', padding: '5px 0',
+      gap: 8, alignItems: 'center', padding: '5px 6px',
     },
+    // Mise en évidence des semaines de vacances scolaires (bleu « scolaire », comme Week-ends / Vacances).
+    ligneScol: { background: 'rgba(45, 108, 181, 0.10)', borderRadius: 6, boxShadow: 'inset 3px 0 0 #2D6CB5' },
+    badgeScol: { marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#2D6CB5' },
     entete: { fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 },
     selRea: (alerte) => ({
       padding: '6px 8px', fontSize: 13, borderRadius: 'var(--radius-md)',
@@ -404,6 +414,13 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
             </div>
           )}
 
+          {toussaintPeriode.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+              🍂 Semaine(s) de Toussaint imposée(s) par la grille collée ({toussaintPeriode.map(n => `S${n}`).join(', ')}) :
+              fournies telles quelles (onglet Vacances) et ni proposées ni remplies ici.
+            </div>
+          )}
+
           {/* Récap */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.attribuees}/{recap.total} semaines attribuées</span>
@@ -436,6 +453,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
               const sep = idx === 0 || jeudi.getUTCMonth() !== moisPrec
               const ini = rea[sem.num] ?? ''
               const verrou = verrous.has(sem.num)
+              const estScol = scolairesSet.has(sem.num)
               const a = analyses[sem.num]
               const alerte = (a?.vacances || a?.jourOff) ? 'rouge' : (a?.garde || a?.souhaitColonne != null ? 'orange' : null)
               const dispo = ASSOCIES.filter(x =>
@@ -446,10 +464,10 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
               return (
                 <Fragment key={sem.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(jeudi)}</div>}
-                  <div style={s.ligne}>
+                  <div style={{ ...s.ligne, ...(estScol ? s.ligneScol : {}) }}>
                     <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                       S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
-                      {scolairesSet.has(sem.num) && <span style={{ color: '#2D6CB5' }}> · scol.</span>}
+                      {estScol && <span style={s.badgeScol} title="Semaine de vacances scolaires">📚 scol.</span>}
                     </span>
                     <span>
                       {!ini ? (

@@ -66,15 +66,16 @@ function ligneEnteteInitiales(ws, date, enteteRempl = []) {
   })
 }
 
-// Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au format du calendrier.
-// compteursNoel (facultatif) = { '<iso>|<ini>': '<texte>' } : n° cumulés à afficher (week-end/réa/vacances),
-// en prolongement du cumul annuel ; remplace le poste de la case quand présent.
-function ecrireBlocNoel(ws, annee, joursNoel, enteteRempl = [], compteursNoel = null) {
-  if (!joursNoel.length) return
+// Bloc « imposé » (grille fournie telle quelle — Noël ou Toussaint, jours + week-ends encadrants) au
+// format du calendrier. compteurs (facultatif) = { '<iso>|<ini>': '<texte>' } : n° cumulés à afficher
+// (week-end/réa/vacances), en prolongement du cumul annuel ; remplace le poste de la case quand présent.
+function ecrireBlocImpose(ws, annee, jours, enteteRempl = [], compteursNoel = null, titreBloc = 'Noël') {
+  if (!jours.length) return
+  const joursNoel = jours
   const feriesNoel = {}
   for (const f of [...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)]) feriesNoel[f.iso] = f.nom
   ws.addRow([])
-  const titre = ws.addRow([`Noël ${annee}`])
+  const titre = ws.addRow([`${titreBloc} ${annee}`])
   titre.getCell(1).font = { name: 'Calibri', bold: true, size: 12 }
   ligneEnteteInitiales(ws, parseISO(joursNoel[0].iso), enteteRempl)
   for (const j of joursNoel) {
@@ -156,7 +157,7 @@ function ecrireBilan(ws, annee, bilan) {
 // periode = { debut, fin } (numéros de semaine ISO) borne l'export à cette plage (étapes
 // Week-ends / Vacances / Réa). null → année entière (Base calendrier / Objectifs).
 // Construit le classeur et renvoie { wb, nomFichier } (sans télécharger).
-async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null, noelData = null) {
+async function construireClasseur(annee, data, objectifs = null, weekends = null, conges = null, rea = null, periode = null, tramesParSemaine = null, affectationsSemaine = null, bilan = null, recupParSemaine = null, remplacantsSemaine = null, compteurs = null, noelData = null, toussaintData = null) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet(`Calendrier ${annee}`)
 
@@ -181,17 +182,21 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
 
   const ligneEntete = (date) => ligneEnteteInitiales(ws, date, enteteRempl)
 
-  // Jours de Noël (grille fournie telle quelle) triés par date + semaines ISO couvertes : ces semaines
-  // sont EXCLUES du calendrier normal (rendues dans le bloc « Noël » plus bas) → pas de doublon.
-  const joursNoel = (noelData?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+  // Jours des blocs fournis tels quels (Noël + Toussaint) triés par date + semaines ISO couvertes : ces
+  // semaines sont EXCLUES du calendrier normal (rendues dans leurs blocs dédiés plus bas) → pas de doublon.
+  const trierJours = (src) => (src?.jours ?? []).slice().sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
+  const joursNoel = trierJours(noelData)
+  const joursToussaint = trierJours(toussaintData)
   const semainesNoel = new Set(joursNoel.map(j => numeroSemaineISO(parseISO(j.iso))))
+  const semainesToussaint = new Set(joursToussaint.map(j => numeroSemaineISO(parseISO(j.iso))))
+  const estImposee = (num) => semainesNoel.has(num) || semainesToussaint.has(num)
 
   // Tous les exports couvrent l'ANNÉE ENTIÈRE à partir du début du planning (après les vacances de Noël :
   // S1 et bloc scolaire de tête exclus, ils relèvent de l'année précédente) : la colonne de gauche déroule
   // les dates en continu (cases associés vides là où il n'y a pas de données), en-têtes mensuels et bloc
   // Noël à la fin. `periode` ne borne donc plus le contenu (il ne sert plus qu'au nom de fichier).
   const debutPlanning = premiereSemainePlanning(data.vacancesScolaires ?? [])
-  const semaines = listerSemaines(annee).filter(s => !semainesNoel.has(s.num) && s.num >= debutPlanning)
+  const semaines = listerSemaines(annee).filter(s => !estImposee(s.num) && s.num >= debutPlanning)
   let moisPrec = null
   for (const sem of semaines) {
     // Ligne d'en-tête (initiales) à la FRONTIÈRE de semaine : juste avant le lundi, quand le mois du lundi
@@ -255,16 +260,25 @@ async function construireClasseur(annee, data, objectifs = null, weekends = null
     }
   }
 
-  // ── Bloc « Noël » (15 jours + week-ends encadrants, fournis tels quels) au même format que le calendrier ──
-  // Socle PRÉ-Noël (totaux par associé hors semaines de Noël) à partir des données disponibles
-  // (week-ends / vacances / réa) → les cases de Noël affichent un n° qui CONTINUE le cumul annuel.
-  const baseNoel = { weekend: {}, rea: {}, vac: {} }
-  for (const ini of ASSOCIES) { baseNoel.weekend[ini] = 0; baseNoel.rea[ini] = 0; baseNoel.vac[ini] = 0 }
-  for (const [num, ini] of Object.entries(weekends ?? {})) if (!semainesNoel.has(Number(num)) && baseNoel.weekend[ini] != null) baseNoel.weekend[ini]++
-  for (const [num, ini] of Object.entries(rea ?? {})) if (!semainesNoel.has(Number(num)) && baseNoel.rea[ini] != null) baseNoel.rea[ini]++
-  for (const [num, inis] of Object.entries(conges ?? {})) { if (semainesNoel.has(Number(num))) continue; for (const ini of (inis ?? [])) if (baseNoel.vac[ini] != null) baseNoel.vac[ini]++ }
-  const cptNoel = joursNoel.length ? compteursNoel(noelData, annee, baseNoel) : null
-  ecrireBlocNoel(ws, annee, joursNoel, enteteRempl, cptNoel)
+  // ── Blocs fournis tels quels (Noël + Toussaint) au même format que le calendrier ──
+  // Socle PRÉ-bloc (totaux par associé sur les semaines qui PRÉCÈDENT le bloc, hors semaines imposées) à
+  // partir des données disponibles (week-ends / vacances / réa) → les cases affichent un n° qui CONTINUE
+  // le cumul annuel. `garde(num)` = vrai si la semaine compte dans le socle.
+  const socleBloc = (garde) => {
+    const base = { weekend: {}, rea: {}, vac: {} }
+    for (const ini of ASSOCIES) { base.weekend[ini] = 0; base.rea[ini] = 0; base.vac[ini] = 0 }
+    for (const [num, ini] of Object.entries(weekends ?? {})) if (garde(Number(num)) && base.weekend[ini] != null) base.weekend[ini]++
+    for (const [num, ini] of Object.entries(rea ?? {})) if (garde(Number(num)) && base.rea[ini] != null) base.rea[ini]++
+    for (const [num, inis] of Object.entries(conges ?? {})) { if (!garde(Number(num))) continue; for (const ini of (inis ?? [])) if (base.vac[ini] != null) base.vac[ini]++ }
+    return base
+  }
+  // Noël (fin d'année) : tout l'année hors semaines imposées.
+  const cptNoel = joursNoel.length ? compteursNoel(noelData, annee, socleBloc(n => !estImposee(n))) : null
+  ecrireBlocImpose(ws, annee, joursNoel, enteteRempl, cptNoel, 'Noël')
+  // Toussaint (milieu d'année) : seulement ce qui précède chronologiquement le bloc, hors semaines imposées.
+  const minTous = joursToussaint.length ? Math.min(...semainesToussaint) : Infinity
+  const cptTous = joursToussaint.length ? compteursNoel(toussaintData, annee, socleBloc(n => n < minTous && !estImposee(n))) : null
+  ecrireBlocImpose(ws, annee, joursToussaint, enteteRempl, cptTous, 'Toussaint')
 
   // ── Bloc « Objectifs » en bas (cf. PLANNING.md §16, photo « Objectifs 2025 ») ──
   // Aligné sur les colonnes du calendrier : libellé | 8 associés | libellé.

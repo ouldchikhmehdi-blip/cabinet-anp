@@ -8,20 +8,19 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, parseISO, formatJJMM, joursFeriesFR } from '../utils/calendrier'
+import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerNoel, sauverNoel } from '../utils/noelApi'
-import { parserCollageNoel, normaliserNoel, bilanNoel, groupeJourNoel } from '../utils/noel'
+import { normaliserNoel, bilanNoel } from '../utils/noel'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerRea } from '../utils/reaApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
-import { COULEURS_GRILLE, compteursAmont } from '../utils/grilleSemaine'
-
-const JOUR_LABEL = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'] // getUTCDay() : 0=dim … 6=sam
+import { compteursAmont } from '../utils/grilleSemaine'
+import BlocImposeColle from '../components/planning/BlocImposeColle'
 
 const LIGNES_RECAP = [
   ['gWeekend', 'G week-end'],
@@ -32,11 +31,6 @@ const LIGNES_RECAP = [
   ['recupJF', 'Récup jours fériés'],
   ['vacances', 'Semaines de vacances'],
 ]
-
-// Couleurs FIXES type-Excel (indépendantes du thème, lisibles en clair ET sombre), comme ApercuSemaine.
-const ENCRE = 'rgba(0,0,0,0.85)'
-const BORD = 'rgba(0,0,0,0.18)'
-const fondCss = (fond) => (fond ? '#' + COULEURS_GRILLE[fond] : '#fff')
 
 export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut, onRegisterSave } = {}) {
   const { session, profile } = useAuth()
@@ -61,9 +55,6 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
   const [ouvert, setOuvert] = useState(null) // initiales de l'associé dont on montre le texte Noël
-  // Zone de collage : grille candidate (avant « Ajouter »).
-  const [texteCandidat, setTexteCandidat] = useState('')
-  const [candidat, setCandidat] = useState(null) // { colle, jours } | null
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -124,12 +115,6 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
     return m
   }, [profils, desideratas])
 
-  // Fériés des deux années (Noël chevauche l'an) → coloration verte de la date.
-  const feriesSet = useMemo(
-    () => new Set([...joursFeriesFR(annee), ...joursFeriesFR(annee + 1)].map(f => f.iso)),
-    [annee]
-  )
-
   const jours = useMemo(() => {
     const js = (data?.jours ?? []).slice()
     js.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
@@ -137,36 +122,12 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
   }, [data])
 
   const recap = useMemo(() => (data ? bilanNoel(data, annee) : null), [data, annee])
-  const joursCandidat = useMemo(() => {
-    const js = (candidat?.jours ?? []).slice()
-    js.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0))
-    return js
-  }, [candidat])
 
-  // ── Collage (candidat, avant « Ajouter ») ──
-  function majTexteCandidat(valeur) {
-    setTexteCandidat(valeur)
-    setCandidat(parserCollageNoel(valeur, '', annee)) // saisie clavier : sans couleurs
-  }
-
-  function collerDepuisExcel(e) {
-    const html = e.clipboardData?.getData('text/html') ?? ''
-    if (!html) return // sans HTML, onChange gère le texte brut (sans couleurs)
-    e.preventDefault()
-    const texte = e.clipboardData.getData('text/plain')
-    setTexteCandidat(texte)
-    setCandidat(parserCollageNoel(texte, html, annee))
-  }
-
-  // « Ajouter » : fige la grille candidate comme grille de Noël.
-  function ajouterGrille() {
-    if (!candidat?.jours?.length) return
+  // Figer / effacer la grille (callbacks du composant de collage partagé BlocImposeColle).
+  function ajouterGrille(grille) {
     setEnregistre(false); onStatut?.('modifie')
-    setData(normaliserNoel({ colle: candidat.colle, jours: candidat.jours }))
-    setTexteCandidat(''); setCandidat(null)
+    setData(grille)
   }
-
-  // « Effacer » : vide la grille de Noël committée.
   function effacerGrille() {
     if (!window.confirm('Effacer la grille de Noël de cette année ?')) return
     setEnregistre(false); onStatut?.('modifie')
@@ -227,19 +188,6 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
     },
     titreSection: { fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 },
     aide: { fontSize: 12.5, color: 'var(--color-text-secondary)', marginBottom: 12, lineHeight: 1.5 },
-    textarea: {
-      width: '100%', minHeight: 90, padding: '10px 12px', fontSize: 13, fontFamily: 'monospace',
-      border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-      background: 'var(--color-bg)', color: 'var(--color-text)', outline: 'none', resize: 'vertical',
-      boxSizing: 'border-box',
-    },
-    table: { borderCollapse: 'collapse', fontSize: 12.5, background: '#fff', color: ENCRE },
-    th: {
-      padding: '5px 8px', fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.8)', textAlign: 'center',
-      border: `0.5px solid ${BORD}`, background: '#' + COULEURS_GRILLE.header, whiteSpace: 'nowrap',
-    },
-    tdJour: { padding: '5px 8px', fontSize: 12, fontWeight: 600, color: ENCRE, border: `0.5px solid ${BORD}`, whiteSpace: 'nowrap' },
-    td: { padding: '4px 6px', textAlign: 'center', color: ENCRE, border: `0.5px solid ${BORD}`, whiteSpace: 'nowrap' },
     recapTh: { padding: '4px 10px', fontSize: 12, fontWeight: 700, color: 'var(--color-text)', textAlign: 'center', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' },
     recapTdLabel: { padding: '4px 10px', fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', borderBottom: '0.5px solid var(--color-border)' },
     recapTd: { padding: '4px 10px', fontSize: 12.5, textAlign: 'center', color: 'var(--color-text)', borderBottom: '0.5px solid var(--color-border)' },
@@ -250,42 +198,6 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
       color: actif ? '#fff' : aTexte ? 'var(--color-text)' : 'var(--color-text-tertiary)',
     }),
   }
-
-  // Aperçu d'une grille (candidate ou committée) au MÊME format que l'export Excel : Date | 8 associés | G/A.
-  const apercuTable = (joursList) => (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={s.table}>
-        <thead>
-          <tr>
-            <th style={s.th}>Date</th>
-            {ASSOCIES.map(ini => <th key={ini} style={s.th}>{ini}</th>)}
-            <th style={s.th}>G/A</th>
-          </tr>
-        </thead>
-        <tbody>
-          {joursList.map(j => {
-            const d = parseISO(j.iso)
-            const dow = d.getUTCDay()
-            const fondDate = feriesSet.has(j.iso) ? 'ferie' : (dow === 0 || dow === 6) ? 'weekend' : null
-            const grp = groupeJourNoel(j)
-            const grpFond = grp === 'G' ? 'garde' : grp === 'A' ? 'astreinte' : null
-            return (
-              <tr key={j.iso}>
-                <td style={{ ...s.tdJour, background: fondCss(fondDate) }}>{JOUR_LABEL[dow]} {formatJJMM(d)}</td>
-                {ASSOCIES.map(ini => {
-                  const cell = j.parAssocie?.[ini]
-                  const poste = (cell?.poste ?? '').trim()
-                  const fond = cell?.role === 'G' ? 'garde' : cell?.role === 'A' ? 'astreinte' : cell?.role === 'C' ? 'conge' : null
-                  return <td key={ini} style={{ ...s.td, background: fondCss(fond), fontWeight: (cell?.role === 'G' || cell?.role === 'A') ? 700 : 400 }}>{poste}</td>
-                })}
-                <td style={{ ...s.td, background: fondCss(grpFond), fontWeight: 700 }}>{grp}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
 
   if (!estFaiseur) {
     return (
@@ -372,55 +284,24 @@ export default function PlanningNoel({ annee: anneeProp, onChangeAnnee, onStatut
             )}
           </div>
 
-          {/* Coller une grille candidate puis « Ajouter » */}
-          <div style={s.carte}>
-            <div style={s.titreSection}>Coller la grille de Noël depuis Excel</div>
-            <p style={s.aide}>
-              Sélectionnez dans Excel le bloc complet : <strong>ligne d'en-tête</strong> (les initiales des
-              associés), <strong>colonne des dates</strong> à gauche (incluez les <strong>week-ends de garde
-              avant et après</strong> les 15 jours), et les cases colorées, puis collez ci-dessous (Ctrl+V). Les
-              fonds <strong>jaune (garde)</strong> et <strong>orange (astreinte)</strong> sont lus automatiquement ;
-              une case vide = repos. Vérifiez l'aperçu, puis <strong>Ajouter</strong>.
-            </p>
-            <textarea
-              value={texteCandidat}
-              onChange={e => majTexteCandidat(e.target.value)}
-              onPaste={collerDepuisExcel}
-              placeholder="Collez ici la grille (en-tête + dates + cases colorées) copiée depuis Excel…"
-              style={s.textarea}
-            />
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '12px 0' }}>
-              <button
-                type="button"
-                onClick={ajouterGrille}
-                disabled={joursCandidat.length === 0}
-                style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: joursCandidat.length === 0 ? 0.5 : 1, cursor: joursCandidat.length === 0 ? 'default' : 'pointer' }}
-              >
-                + Ajouter la grille
-              </button>
-              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                {joursCandidat.length > 0
-                  ? `${joursCandidat.length} jour${joursCandidat.length > 1 ? 's' : ''} détecté${joursCandidat.length > 1 ? 's' : ''}`
-                  : 'Collez une grille ci-dessus pour activer l’ajout.'}
-              </span>
-            </div>
-            {joursCandidat.length > 0 && apercuTable(joursCandidat)}
-          </div>
-
-          {/* Grille de Noël committée (au format Excel) */}
-          {jours.length > 0 && (
-            <div style={s.carte}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-                <div style={s.titreSection}>
-                  Grille de Noël <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}>· {jours.length} jour{jours.length > 1 ? 's' : ''} · apparaît telle quelle dans l'export Excel</span>
-                </div>
-                <button type="button" onClick={effacerGrille} style={{ marginLeft: 'auto', padding: '5px 11px', fontSize: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', border: '0.5px solid var(--color-danger)', background: 'var(--color-bg)', color: 'var(--color-danger)' }}>
-                  Remplacer / Effacer
-                </button>
-              </div>
-              {apercuTable(jours)}
-            </div>
-          )}
+          {/* Collage + aperçu (composant partagé avec le panneau Toussaint de l'onglet Vacances) */}
+          <BlocImposeColle
+            annee={annee}
+            data={data}
+            nom="grille de Noël"
+            sousTitreGrille="apparaît telle quelle dans l'export Excel"
+            onAjouter={ajouterGrille}
+            onEffacer={effacerGrille}
+            aide={(
+              <p style={s.aide}>
+                Sélectionnez dans Excel le bloc complet : <strong>ligne d'en-tête</strong> (les initiales des
+                associés), <strong>colonne des dates</strong> à gauche (incluez les <strong>week-ends de garde
+                avant et après</strong> les 15 jours), et les cases colorées, puis collez ci-dessous (Ctrl+V). Les
+                fonds <strong>jaune (garde)</strong> et <strong>orange (astreinte)</strong> sont lus automatiquement ;
+                une case vide = repos. Vérifiez l'aperçu, puis <strong>Ajouter</strong>.
+              </p>
+            )}
+          />
 
           {/* Récap détecté par associé */}
           {recap && jours.length > 0 && (

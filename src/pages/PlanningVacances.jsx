@@ -9,6 +9,7 @@ import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { chargerNoel } from '../utils/noelApi'
+import { chargerToussaint, sauverToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
 import { cleEcartVacances } from '../utils/ponts'
@@ -16,6 +17,7 @@ import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
 import BoutonVerrou from '../components/planning/BoutonVerrou'
 import PanneauVacances from '../components/planning/PanneauVacances'
+import BlocImposeColle from '../components/planning/BlocImposeColle'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -35,11 +37,14 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   const [objectifs, setObjectifs] = useState(null)
   const [weekends, setWeekends] = useState(null)
   const [noelData, setNoelData] = useState(null) // grille de Noël (semaines imposées, fournies telles quelles)
+  const [toussaintData, setToussaintData] = useState(null) // grille de la Toussaint (bloc imposé collé ici)
   const [data, setData] = useState(null)        // { v, vacances: { num: [ini] } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
+  const [enregistreTous, setEnregistreTous] = useState(false) // confirmation d'enregistrement de la grille Toussaint
   const [exportEnCours, setExportEnCours] = useState(false)
   const [voirNonRealises, setVoirNonRealises] = useState(false) // panneau souhaits de congé non réalisés
+  const [ouvertToussaint, setOuvertToussaint] = useState(false) // panneau de collage Toussaint ouvert
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -61,10 +66,10 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerNoel(annee)])
-      .then(([cal, obj, we, vac, noel]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerNoel(annee), chargerToussaint(annee)])
+      .then(([cal, obj, we, vac, noel, tous]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setNoelData(noel); setData(vac); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setNoelData(noel); setToussaintData(tous); setData(vac); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -132,15 +137,28 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
   const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  // Semaines imposées par la grille de Noël : la grille fait foi (congés déjà fixés) → exclues de la
-  // construction (ni proposées, ni remplies automatiquement, déjà comptées dans les Compteurs de référence).
+  // Semaines imposées par un bloc fourni tel quel (Noël ou Toussaint) : la grille fait foi (congés déjà
+  // fixés) → exclues de la construction (ni proposées, ni remplies, déjà comptées dans les Compteurs de réf).
   const semainesNoel = useMemo(() => semainesImposeesNoel(noelData), [noelData])
+  const semainesToussaint = useMemo(() => semainesImposeesNoel(toussaintData), [toussaintData])
   const plage = useMemo(
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
-  const semaines = useMemo(() => plage.filter(s => !semainesNoel.has(s.num)), [plage, semainesNoel])
+  const semaines = useMemo(
+    () => plage.filter(s => !semainesNoel.has(s.num) && !semainesToussaint.has(s.num)),
+    [plage, semainesNoel, semainesToussaint]
+  )
   const noelPeriode = useMemo(() => plage.filter(s => semainesNoel.has(s.num)).map(s => s.num), [plage, semainesNoel])
+  const toussaintPeriode = useMemo(() => plage.filter(s => semainesToussaint.has(s.num)).map(s => s.num), [plage, semainesToussaint])
+
+  // Le bouton de collage Toussaint n'apparaît que si la période sélectionnée chevauche les semaines de
+  // vacances scolaires de la Toussaint (blocToussaint), ou si une grille Toussaint est déjà saisie.
+  const plageCouvreToussaint = useMemo(() => {
+    const plageNums = new Set(plage.map(s => s.num))
+    return [...toussaintSet].some(n => plageNums.has(n))
+  }, [plage, toussaintSet])
+  const afficherCollageToussaint = plageCouvreToussaint || semainesToussaint.size > 0
 
   const vacances = useMemo(() => data?.vacances ?? {}, [data])
   const places = useMemo(() => data?.places ?? {}, [data])
@@ -330,7 +348,31 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   // Permet au parent (assistant) de déclencher cet enregistrement avant un changement d'étape.
   useEffect(() => { onRegisterSave?.(enregistrer) })
 
-  async function exporter() {
+  // ── Grille de la Toussaint (bloc imposé collé, comme Noël) ──
+  // « Ajouter » fige la grille candidate ; « Effacer » la vide. L'enregistrement persiste dans planning_toussaint.
+  function ajouterToussaint(grille) {
+    setEnregistreTous(false); onStatut?.('modifie')
+    setToussaintData(grille)
+  }
+  function effacerToussaint() {
+    if (!window.confirm('Effacer la grille de la Toussaint de cette année ?')) return
+    setEnregistreTous(false); onStatut?.('modifie')
+    setToussaintData({ v: 1, colle: '', jours: [] })
+  }
+  async function enregistrerToussaint() {
+    setErreur(null)
+    try {
+      await sauverToussaint(annee, toussaintData, session.user.id)
+      setEnregistreTous(true); onStatut?.('enregistre')
+      setTimeout(() => setEnregistreTous(false), 3000)
+    } catch {
+      setErreur('Enregistrement de la Toussaint impossible (réservé au faiseur).')
+    }
+  }
+
+  // Export Excel. `avecBlocs` ajoute les blocs imposés (Noël + Toussaint) au classeur (le bouton du panneau
+  // Toussaint l'utilise) ; l'export principal de l'étape reste incrémental sans ces blocs.
+  async function exporter(avecBlocs = false) {
     setErreur(null); setExportEnCours(true)
     try {
       // Étape 4 : base calendrier + objectifs + week-ends + vacances (incrémental), borné à la période du recueil.
@@ -340,6 +382,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         recueil ? { debut: recueil.semaine_debut, fin: recueil.semaine_fin } : null,
         null, null, null, null, null,
         compteursAmont(annee, { weekendAff: weekends?.affectations, vacanciers: data.vacances }),
+        avecBlocs ? noelData : null,
+        avecBlocs ? toussaintData : null,
       )
     } catch {
       setErreur('Export Excel impossible.')
@@ -454,7 +498,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
           </button>
           <button
             type="button"
-            onClick={exporter}
+            onClick={() => exporter(false)}
             disabled={!pret || exportEnCours}
             style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || exportEnCours) ? 0.6 : 1 }}
             title="Génère un fichier Excel : base calendrier + objectifs + week-ends + vacances"
@@ -476,6 +520,22 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
           >
             ⚠ Souhaits non réalisés ({nbNonRealises})
           </button>
+          {afficherCollageToussaint && (
+            <button
+              type="button"
+              onClick={() => setOuvertToussaint(v => !v)}
+              disabled={!pret}
+              style={{
+                ...s.bouton, padding: '8px 14px', fontSize: 13,
+                background: ouvertToussaint ? 'var(--color-primary)' : 'transparent',
+                color: ouvertToussaint ? '#fff' : 'var(--color-primary)',
+                border: '0.5px solid var(--color-primary)', opacity: !pret ? 0.5 : 1,
+              }}
+              title="Coller la grille imposée des vacances de la Toussaint (fournie telle quelle, comme Noël)"
+            >
+              🍂 Coller la Toussaint{semainesToussaint.size > 0 ? ' ✓' : ''}
+            </button>
+          )}
           {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         </div>
       </div>
@@ -483,6 +543,44 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
           {erreur}
+        </div>
+      )}
+
+      {ouvertToussaint && afficherCollageToussaint && pret && (
+        <div className="no-print" style={{ ...s.carte, padding: '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>🍂 Vacances de la Toussaint (grille imposée)</div>
+            <button type="button" onClick={enregistrerToussaint} disabled={!toussaintData} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !toussaintData ? 0.5 : 1 }}>
+              Enregistrer la Toussaint
+            </button>
+            <button
+              type="button"
+              onClick={() => exporter(true)}
+              disabled={exportEnCours}
+              style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: exportEnCours ? 0.6 : 1 }}
+              title="Génère l'Excel avec les blocs imposés (Toussaint + Noël) fournis tels quels"
+            >
+              {exportEnCours ? 'Export…' : '⬇ Exporter (avec la Toussaint)'}
+            </button>
+            {enregistreTous && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
+          </div>
+          <BlocImposeColle
+            annee={annee}
+            data={toussaintData}
+            nom="grille de la Toussaint"
+            sousTitreGrille="fournie telle quelle (imposée, comme Noël)"
+            onAjouter={ajouterToussaint}
+            onEffacer={effacerToussaint}
+            aide={(
+              <p style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+                Les vacances de la Toussaint sont <strong>fournies telles quelles</strong> (pas calculées). Collez la
+                grille depuis Excel (<strong>dates en 1ʳᵉ colonne</strong>, les <strong>8 associés en colonnes</strong>,
+                cases <strong>jaune = garde</strong> / <strong>orange = astreinte</strong> / <strong>bleu = congé</strong>) :
+                l'outil détecte gardes, astreintes, congés, réa et récup, et les <strong>ajoute au bilan annuel</strong>.
+                Les semaines couvertes ne sont alors <strong>plus remplies automatiquement</strong>.
+              </p>
+            )}
+          />
         </div>
       )}
 
@@ -517,6 +615,13 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
             <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
               🎄 Semaine(s) de Noël imposée(s) par la grille ({noelPeriode.map(n => `S${n}`).join(', ')}) :
               elles sont gérées par la grille de Noël (« Période de Noël ») et ne sont ni proposées ni remplies ici.
+            </div>
+          )}
+
+          {toussaintPeriode.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+              🍂 Semaine(s) de Toussaint imposée(s) par la grille collée ({toussaintPeriode.map(n => `S${n}`).join(', ')}) :
+              fournies telles quelles et ni proposées ni remplies automatiquement ici.
             </div>
           )}
 
