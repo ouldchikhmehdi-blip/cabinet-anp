@@ -27,8 +27,8 @@ Dans le dashboard Supabase → **Authentication → Providers** :
 2. Section **MFA** : activer **"Enable TOTP (Time-based One-Time Password)"**.
 
 Dans **Authentication → URL Configuration** :
-- **Site URL** : `https://votre-site.vercel.app` (ou `http://localhost:5173` en dev).
-- **Redirect URLs** : ajouter `https://votre-site.vercel.app` et `http://localhost:5173`.
+- **Site URL** : `https://sarm-dashboard.vercel.app` (ou `http://localhost:5173` en dev).
+- **Redirect URLs** : ajouter `https://sarm-dashboard.vercel.app/**` et `http://localhost:5173/**` (le suffixe `/**` autorise les sous-pages, ex. le lien d'invitation `…/?invite=…`).
 
 ---
 
@@ -94,7 +94,7 @@ Remplir `RESEND_API_KEY` et `INVITE_FROM_EMAIL`.
 |---|---|---|
 | `VITE_SUPABASE_URL` | Production, Preview | Exposée au build |
 | `VITE_SUPABASE_ANON_KEY` | Production, Preview | Exposée au build |
-| `VITE_APP_URL` | Production | `https://votre-site.vercel.app` |
+| `VITE_APP_URL` | Production | `https://sarm-dashboard.vercel.app` |
 | `SUPABASE_URL` | Production, Preview | Sans préfixe VITE_ |
 | `SUPABASE_SERVICE_ROLE_KEY` | Production, Preview | **Secret — ne jamais exposer** |
 | `RESEND_API_KEY` | Production, Preview | Secret |
@@ -155,13 +155,13 @@ Depuis "Comptes" (admin) :
 ### 5. Vérifier la protection côté serveur
 ```bash
 # Appel sans JWT → 401
-curl -X POST https://votre-site.vercel.app/api/promote \
+curl -X POST https://sarm-dashboard.vercel.app/api/promote \
   -H "Content-Type: application/json" \
   -d '{"userId":"xxx","role":"admin"}'
 # Réponse attendue : {"error":"Non authentifié."}
 
 # Appel avec JWT non-admin → 403
-curl -X POST https://votre-site.vercel.app/api/invite \
+curl -X POST https://sarm-dashboard.vercel.app/api/invite \
   -H "Authorization: Bearer <token-utilisateur-normal>" \
   -H "Content-Type: application/json" \
   -d '{"email":"test@exemple.fr"}'

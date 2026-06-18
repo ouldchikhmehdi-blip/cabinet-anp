@@ -13,7 +13,7 @@
 Tableau de bord financier privé pour **SARM** (Service Anesthésie Réanimation Millénaire), cabinet d'anesthésie-réanimation organisé en **8 associés à parts égales**.
 
 - **Dossier / repo** : `cabinet-anp`
-- **Hébergement** : Vercel (`cabinet-anp-b32k.vercel.app`)
+- **Hébergement** : Vercel (`sarm-dashboard.vercel.app`) — ancien domaine `cabinet-anp-b32k.vercel.app` encore actif
 - **Dev** : VS Code, en local (`http://localhost:5173`)
 - **Public** : strictement les 8 associés. **Accès sur invitation seulement, aucune inscription publique.**
 
