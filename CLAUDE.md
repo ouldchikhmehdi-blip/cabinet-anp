@@ -5,6 +5,8 @@
 > **Docs de référence à lire avant de toucher l'auth ou la DB : `AUTH.md` (setup + tests complets) et `supabase/schema.sql` (schéma + RLS). Elles font foi.**
 >
 > **Le site a deux parties indépendantes : le _dashboard financier_ (décrit ci-dessous) et le _planning_ (aide à la fabrication du planning d'anesthésie). Avant toute intervention sur le planning, lire `PLANNING.md` à la racine — il fait foi pour ce module.**
+>
+> **Onglet _Consultations_ → tout est dans `CONSULTATIONS.md` (racine), qui fait foi : le lire avant toute intervention sur les consultations. Ses données sont _réelles_ (Doctolib 2022→2026).**
 
 ---
 

@@ -14,7 +14,8 @@ import { REGLES_DEFAUT } from './consultationsReglesDefaut'
 import { normaliserCle } from '../utils/importConsultations'
 import { charger, sauver } from '../utils/stockage'
 
-const CLE       = 'sarm:consult'
+// v3 : données réelles Doctolib 2022→2026 (ajout 2026 jan→mai + Charpy-Debourdeau réintégrée).
+const CLE       = 'sarm:consult:v3'
 const CLE_REGLES = 'sarm:consult-regles'
 
 // Clone profond simple (pas de Date ni de RegExp dans ces structures)

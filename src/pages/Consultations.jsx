@@ -44,7 +44,10 @@ export default function Consultations() {
 
   const [moisDe, setMoisDe] = useState(0)
   const [moisA, setMoisA] = useState(11)
-  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
+  const [years, setYears] = useState(() => {
+    const dispo = [...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])].sort((a, b) => b - a)
+    return [dispo[0], dispo[1]]
+  })
   const [shortcut, setShortcut] = useState('annee')
   const [specId, setSpecId] = useState(CONSULT_SPECIALITES[0].id)
   // Sélection de praticiens (multi). Liste vide = « Tous ».
