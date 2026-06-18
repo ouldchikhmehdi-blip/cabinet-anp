@@ -5,7 +5,7 @@ import KpiCard from '../components/KpiCard'
 import ImportConsultations from '../components/ImportConsultations'
 import GestionPraticiens from '../components/GestionPraticiens'
 import { getConsultData } from '../data/consultations'
-import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL } from '../data/mockData'
+import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee } from '../data/mockData'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -20,6 +20,22 @@ const specMensuel = (sp, year) => {
   return Array.from({ length: 12 }, (_, m) => pratPart[m] + (valPart[m] || 0))
 }
 
+// Légende des années comparées (carré = barres, trait = courbes).
+function LegendAnnees({ years, accent, type }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {years.map((y, rang) => (
+        <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+          {type === 'line'
+            ? <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, accent)}` }} />
+            : <span style={{ display: 'inline-block', width: 10, height: 10, background: couleurAnnee(rang, accent), borderRadius: 2 }} />}
+          {y}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export default function Consultations() {
   const [consultData, setConsultData] = useState(() => getConsultData())
   const { global: CONSULTATIONS, teleconsultations: TELECONSULTATIONS, specialites: CONSULT_SPECIALITES } = consultData
@@ -28,8 +44,7 @@ export default function Consultations() {
 
   const [moisDe, setMoisDe] = useState(0)
   const [moisA, setMoisA] = useState(11)
-  const [year1, setYear1] = useState(2024)
-  const [year2, setYear2] = useState(2023)
+  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
   const [shortcut, setShortcut] = useState('annee')
   const [specId, setSpecId] = useState(CONSULT_SPECIALITES[0].id)
   // Sélection de praticiens (multi). Liste vide = « Tous ».
@@ -42,33 +57,38 @@ export default function Consultations() {
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
-
-  const d1 = (CONSULTATIONS[year1] || CONSULTATIONS[2024]).slice(de, a + 1)
-  const d2 = (CONSULTATIONS[year2] || CONSULTATIONS[2023]).slice(de, a + 1)
-  const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
+  const labels = MOIS_COURT.slice(de, a + 1)
 
-  const t1 = sum(d1), t2 = sum(d2)
-  const all1 = CONSULTATIONS[year1] || CONSULTATIONS[2024]
-  const cumulAujourdhui = sum(all1.slice(0, MOIS_ACTUEL + 1))
-  const moyenne = d1.length ? t1 / d1.length : 0
+  const primary = years[0]
+  const ref = years[1]
 
-  const tc1 = sum((TELECONSULTATIONS[year1] || []).slice(de, a + 1))
-  const tc2 = sum((TELECONSULTATIONS[year2] || []).slice(de, a + 1))
+  // ── Niveau global (toutes consultations) ──
+  const consultDe = (y) => (CONSULTATIONS[y] || []).slice(de, a + 1)
+  const t1 = sum(consultDe(primary)), t2 = sum(consultDe(ref))
+  const allPrimary = CONSULTATIONS[primary] || []
+  const cumulAujourdhui = sum(allPrimary.slice(0, MOIS_ACTUEL + 1))
+  const moyenne = consultDe(primary).length ? t1 / consultDe(primary).length : 0
+
+  const tc1 = sum((TELECONSULTATIONS[primary] || []).slice(de, a + 1))
+  const tc2 = sum((TELECONSULTATIONS[ref] || []).slice(de, a + 1))
   const partTele = t1 ? Math.round(tc1 / t1 * 100) : 0
 
-  const dataBar = labels.map((m, i) => ({ mois: m, [year1]: d1[i], [year2]: d2[i] }))
-  const dataCumul = labels.map((m, i) => ({
-    mois: m,
-    [year1]: sum(d1.slice(0, i + 1)),
-    [year2]: sum(d2.slice(0, i + 1)),
-  }))
+  const dataBar = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = consultDe(y)[i] ?? 0 })
+    return row
+  })
+  const dataCumul = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = sum(consultDe(y).slice(0, i + 1)) })
+    return row
+  })
 
   // Spécialité sélectionnée
   const spec = CONSULT_SPECIALITES.find(s => s.id === specId) || CONSULT_SPECIALITES[0]
-  const specSerie1 = specMensuel(spec, year1).slice(de, a + 1)
-  const specSerie2 = specMensuel(spec, year2).slice(de, a + 1)
-  const specT1 = sum(specSerie1), specT2 = sum(specSerie2)
+  const specSerieDe = (y) => specMensuel(spec, y).slice(de, a + 1)
+  const specTprimary = sum(specSerieDe(primary)), specTref = sum(specSerieDe(ref))
 
   // Praticiens visibles (non masqués) pour le détail — les masqués restent dans les totaux via specMensuel
   const hasPrat = !!spec.praticiens
@@ -78,12 +98,11 @@ export default function Consultations() {
   const colorOf = p => PALETTE[Math.max(0, pratsVisibles.findIndex(x => x.id === p.id)) % PALETTE.length]
 
   // Sélection courante : on ne garde que des praticiens encore visibles (garde-fou contre un masqué)
-  // En vue agrégée, la sélection est neutralisée → on retombe sur la branche « total spécialité » (année vs année)
   const selValides = (hasPrat && !vueAgregee) ? pratSel.filter(id => pratsVisibles.some(p => p.id === id)) : []
   const isAllPrat = hasPrat && !vueAgregee && selValides.length === 0   // « Tous »
   const isSinglePrat = hasPrat && selValides.length === 1   // un seul → comparaison année vs année
   const isMultiPrat = hasPrat && selValides.length >= 2     // plusieurs → courbes superposées
-  const showMulti = isAllPrat || isMultiPrat                // graphiques multi-praticiens
+  const showMulti = isAllPrat || isMultiPrat                // graphiques multi-praticiens (année principale)
 
   // Praticiens affichés dans les graphiques de détail : la sélection, ou tous si « Tous »
   const detailPrats = isMultiPrat ? pratsVisibles.filter(p => selValides.includes(p.id)) : pratsVisibles
@@ -91,39 +110,41 @@ export default function Consultations() {
   // Praticien isolé (un seul sélectionné) : conserve la comparaison année vs année
   const prat = isSinglePrat ? pratsVisibles.find(p => p.id === selValides[0]) : null
 
-  // Série « année vs année » active (spécialité entière sans praticiens, OU un praticien isolé)
+  // Série « année vs année » active (spécialité entière sans praticiens, OU un praticien isolé) — toutes les années.
   const aColor = prat ? colorOf(prat) : spec.couleur
-  const aSerie1 = prat ? (prat.valeurs[year1] || []).slice(de, a + 1) : specSerie1
-  const aSerie2 = prat ? (prat.valeurs[year2] || []).slice(de, a + 1) : specSerie2
-  const aT1 = sum(aSerie1), aT2 = sum(aSerie2)
+  const aSerieDe = (y) => prat ? (prat.valeurs[y] || []).slice(de, a + 1) : specSerieDe(y)
+  const aTprimary = sum(aSerieDe(primary)), aTref = sum(aSerieDe(ref))
 
-  const aBar = labels.map((m, i) => ({ mois: m, [year1]: aSerie1[i], [year2]: aSerie2[i] }))
-  const aCumul = labels.map((m, i) => ({
-    mois: m,
-    [year1]: sum(aSerie1.slice(0, i + 1)),
-    [year2]: sum(aSerie2.slice(0, i + 1)),
-  }))
+  const aBar = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = aSerieDe(y)[i] ?? 0 })
+    return row
+  })
+  const aCumul = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = sum(aSerieDe(y).slice(0, i + 1)) })
+    return row
+  })
 
-  // Totaux du groupe de praticiens affichés (pour les KPI de la multi-sélection)
-  const detailT1 = sum(detailPrats.map(p => sum((p.valeurs[year1] || []).slice(de, a + 1))))
-  const detailT2 = sum(detailPrats.map(p => sum((p.valeurs[year2] || []).slice(de, a + 1))))
+  // Totaux du groupe de praticiens affichés (KPI multi-sélection) — année principale vs référence
+  const detailTprimary = sum(detailPrats.map(p => sum((p.valeurs[primary] || []).slice(de, a + 1))))
+  const detailTref = sum(detailPrats.map(p => sum((p.valeurs[ref] || []).slice(de, a + 1))))
 
-  // Bucket « non attribué » : consultations au niveau spécialité (ex. fibro gastro, pneumo)
-  const autreValues = hasPrat && spec.valeurs ? (spec.valeurs[year1] || Array(12).fill(0)) : null
+  // Bucket « non attribué » : consultations au niveau spécialité, sur l'année principale
+  const autreValues = hasPrat && spec.valeurs ? (spec.valeurs[primary] || Array(12).fill(0)) : null
   const hasAutre = !!autreValues && autreValues.some(v => v > 0)
   const showAutre = isAllPrat && hasAutre   // bucket affiché seulement en vue « Tous »
 
-  // Données multi-praticiens : empilé (mensuel y1) + multi-lignes (cumul y1)
-  // detailPrats = sélection (ou tous) ; on n'itère que sur les praticiens affichés
+  // Données multi-praticiens (année principale) : empilé (mensuel) + multi-lignes (cumul)
   const pratBar = showMulti ? labels.map((m, i) => {
     const row = { mois: m }
-    detailPrats.forEach(p => { row[p.id] = (p.valeurs[year1] || [])[de + i] ?? 0 })
+    detailPrats.forEach(p => { row[p.id] = (p.valeurs[primary] || [])[de + i] ?? 0 })
     if (showAutre) row['__autre'] = autreValues[de + i] ?? 0
     return row
   }) : []
   const pratCumul = showMulti ? labels.map((m, i) => {
     const row = { mois: m }
-    detailPrats.forEach(p => { row[p.id] = sum((p.valeurs[year1] || []).slice(de, de + i + 1)) })
+    detailPrats.forEach(p => { row[p.id] = sum((p.valeurs[primary] || []).slice(de, de + i + 1)) })
     if (showAutre) row['__autre'] = sum(autreValues.slice(de, de + i + 1))
     return row
   }) : []
@@ -153,18 +174,17 @@ export default function Consultations() {
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}
         moisA={moisA} setMoisA={setMoisA}
-        year1={year1} setYear1={setYear1}
-        year2={year2} setYear2={setYear2}
+        years={years} setYears={setYears}
         shortcut={shortcut} setShortcut={setShortcut}
         availableYears={anneesDispos}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-        <KpiCard label={`Consultations · ${year1}`} value={fmtNb(t1)} sub={periode} subColor="neutral" />
-        <KpiCard label={`Consultations · ${year2}`} value={fmtNb(t2)} sub={diffLabel(t1, t2, year2)} subColor={diffColor(t1, t2)} />
-        <KpiCard label={`Téléconsultations · ${year1}`} value={fmtNb(tc1)} sub={`${partTele} % · ${diffLabel(tc1, tc2, year2)}`} subColor="neutral" />
-        <KpiCard label="Cumul à ce jour" value={fmtNb(cumulAujourdhui)} sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${year1}`} subColor="neutral" />
-        <KpiCard label="Moyenne mensuelle" value={fmtNb(moyenne)} sub={`sur ${d1.length} mois`} subColor="neutral" />
+        <KpiCard label={`Consultations · ${primary}`} value={fmtNb(t1)} sub={periode} subColor="neutral" />
+        <KpiCard label={`Consultations · ${ref}`} value={fmtNb(t2)} sub={diffLabel(t1, t2, ref)} subColor={diffColor(t1, t2)} />
+        <KpiCard label={`Téléconsultations · ${primary}`} value={fmtNb(tc1)} sub={`${partTele} % · ${diffLabel(tc1, tc2, ref)}`} subColor="neutral" />
+        <KpiCard label="Cumul à ce jour" value={fmtNb(cumulAujourdhui)} sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${primary}`} subColor="neutral" />
+        <KpiCard label="Moyenne mensuelle" value={fmtNb(moyenne)} sub={`sur ${consultDe(primary).length} mois`} subColor="neutral" />
       </div>
 
       <div style={cardStyle}>
@@ -172,14 +192,7 @@ export default function Consultations() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             Consultations par mois — {periode}
           </span>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#1D9E75', borderRadius: 2 }} />{year1}
-            </span>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#D3D1C7', borderRadius: 2 }} />{year2}
-            </span>
-          </div>
+          <LegendAnnees years={years} accent="#1D9E75" type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={dataBar}>
@@ -187,8 +200,9 @@ export default function Consultations() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-            <Bar dataKey={year1} fill="#1D9E75" radius={[3,3,0,0]} />
-            <Bar dataKey={year2} fill="#D3D1C7" radius={[3,3,0,0]} />
+            {years.map((y, rang) => (
+              <Bar key={y} dataKey={y} fill={couleurAnnee(rang, '#1D9E75')} radius={[3,3,0,0]} />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -198,14 +212,7 @@ export default function Consultations() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             Consultations cumulées — {periode}
           </span>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 18, height: 2, background: '#1D9E75', borderRadius: 1 }} />{year1}
-            </span>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #B4B2A9' }} />{year2}
-            </span>
-          </div>
+          <LegendAnnees years={years} accent="#1D9E75" type="line" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={dataCumul}>
@@ -213,8 +220,17 @@ export default function Consultations() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-            <Line type="monotone" dataKey={year1} stroke="#1D9E75" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
+            {years.map((y, rang) => (
+              <Line
+                key={y}
+                type="monotone"
+                dataKey={y}
+                stroke={couleurAnnee(rang, '#1D9E75')}
+                strokeWidth={rang === 0 ? 2 : 1.5}
+                strokeDasharray={rang === 0 ? undefined : '5 4'}
+                dot={{ r: rang === 0 ? 3 : 2 }}
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -225,7 +241,7 @@ export default function Consultations() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         {CONSULT_SPECIALITES.map(sp => {
-          const total = sum(specMensuel(sp, year1).slice(de, a + 1))
+          const total = sum(specMensuel(sp, primary).slice(de, a + 1))
           const isSel = sp.id === specId
           return (
             <button
@@ -247,7 +263,7 @@ export default function Consultations() {
               </div>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text)' }}>{fmtNb(total)}</div>
               <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                consultations {year1} · {periode}{sp.praticiens ? ` · ${sp.praticiens.filter(p => !p.masque).length} praticien${sp.praticiens.filter(p => !p.masque).length > 1 ? 's' : ''}` : ''}
+                consultations {primary} · {periode}{sp.praticiens ? ` · ${sp.praticiens.filter(p => !p.masque).length} praticien${sp.praticiens.filter(p => !p.masque).length > 1 ? 's' : ''}` : ''}
               </div>
             </button>
           )
@@ -290,21 +306,21 @@ export default function Consultations() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         {isSinglePrat ? (
           <>
-            <KpiCard label={`${prat.nom} · ${year1}`} value={fmtNb(aT1)} sub={periode} subColor="neutral" />
-            <KpiCard label={`${prat.nom} · ${year2}`} value={fmtNb(aT2)} sub={diffLabel(aT1, aT2, year2)} subColor={diffColor(aT1, aT2)} />
-            <KpiCard label="Part de la spécialité" value={`${specT1 ? Math.round(aT1 / specT1 * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
+            <KpiCard label={`${prat.nom} · ${primary}`} value={fmtNb(aTprimary)} sub={periode} subColor="neutral" />
+            <KpiCard label={`${prat.nom} · ${ref}`} value={fmtNb(aTref)} sub={diffLabel(aTprimary, aTref, ref)} subColor={diffColor(aTprimary, aTref)} />
+            <KpiCard label="Part de la spécialité" value={`${specTprimary ? Math.round(aTprimary / specTprimary * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
           </>
         ) : isMultiPrat ? (
           <>
-            <KpiCard label={`${detailPrats.length} praticiens · ${year1}`} value={fmtNb(detailT1)} sub={periode} subColor="neutral" />
-            <KpiCard label={`${detailPrats.length} praticiens · ${year2}`} value={fmtNb(detailT2)} sub={diffLabel(detailT1, detailT2, year2)} subColor={diffColor(detailT1, detailT2)} />
-            <KpiCard label="Part de la spécialité" value={`${specT1 ? Math.round(detailT1 / specT1 * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
+            <KpiCard label={`${detailPrats.length} praticiens · ${primary}`} value={fmtNb(detailTprimary)} sub={periode} subColor="neutral" />
+            <KpiCard label={`${detailPrats.length} praticiens · ${ref}`} value={fmtNb(detailTref)} sub={diffLabel(detailTprimary, detailTref, ref)} subColor={diffColor(detailTprimary, detailTref)} />
+            <KpiCard label="Part de la spécialité" value={`${specTprimary ? Math.round(detailTprimary / specTprimary * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
           </>
         ) : (
           <>
-            <KpiCard label={`${spec.nom} · ${year1}`} value={fmtNb(specT1)} sub={periode} subColor="neutral" />
-            <KpiCard label={`${spec.nom} · ${year2}`} value={fmtNb(specT2)} sub={diffLabel(specT1, specT2, year2)} subColor={diffColor(specT1, specT2)} />
-            <KpiCard label="Part des consultations" value={`${t1 ? Math.round(specT1 / t1 * 100) : 0} %`} sub={`du total ${year1} · ${periode}`} subColor="neutral" />
+            <KpiCard label={`${spec.nom} · ${primary}`} value={fmtNb(specTprimary)} sub={periode} subColor="neutral" />
+            <KpiCard label={`${spec.nom} · ${ref}`} value={fmtNb(specTref)} sub={diffLabel(specTprimary, specTref, ref)} subColor={diffColor(specTprimary, specTref)} />
+            <KpiCard label="Part des consultations" value={`${t1 ? Math.round(specTprimary / t1 * 100) : 0} %`} sub={`du total ${primary} · ${periode}`} subColor="neutral" />
           </>
         )}
       </div>
@@ -314,7 +330,7 @@ export default function Consultations() {
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                {spec.nom} — {isMultiPrat ? 'praticiens sélectionnés' : 'répartition par praticien'} · {year1} · {periode}
+                {spec.nom} — {isMultiPrat ? 'praticiens sélectionnés' : 'répartition par praticien'} · {primary} · {periode}
               </span>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {detailPrats.map(p => (
@@ -359,7 +375,7 @@ export default function Consultations() {
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                {spec.nom} — cumulé par praticien{isMultiPrat ? ' (sélection)' : ''} · {year1} · {periode}
+                {spec.nom} — cumulé par praticien{isMultiPrat ? ' (sélection)' : ''} · {primary} · {periode}
               </span>
             </div>
             <ResponsiveContainer width="100%" height={180}>
@@ -388,14 +404,7 @@ export default function Consultations() {
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
                 {prat ? prat.nom : spec.nom} — par mois · {periode}
               </span>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, background: aColor, borderRadius: 2 }} />{year1}
-                </span>
-                <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, background: '#D3D1C7', borderRadius: 2 }} />{year2}
-                </span>
-              </div>
+              <LegendAnnees years={years} accent={aColor} type="bar" />
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={aBar}>
@@ -403,8 +412,9 @@ export default function Consultations() {
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-                <Bar dataKey={year1} fill={aColor} radius={[3,3,0,0]} />
-                <Bar dataKey={year2} fill="#D3D1C7" radius={[3,3,0,0]} />
+                {years.map((y, rang) => (
+                  <Bar key={y} dataKey={y} fill={couleurAnnee(rang, aColor)} radius={[3,3,0,0]} />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -414,14 +424,7 @@ export default function Consultations() {
               <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
                 {prat ? prat.nom : spec.nom} — cumulé · {periode}
               </span>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ display: 'inline-block', width: 18, height: 2, background: aColor, borderRadius: 1 }} />{year1}
-                </span>
-                <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #B4B2A9' }} />{year2}
-                </span>
-              </div>
+              <LegendAnnees years={years} accent={aColor} type="line" />
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={aCumul}>
@@ -429,8 +432,17 @@ export default function Consultations() {
                 <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-                <Line type="monotone" dataKey={year1} stroke={aColor} strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
+                {years.map((y, rang) => (
+                  <Line
+                    key={y}
+                    type="monotone"
+                    dataKey={y}
+                    stroke={couleurAnnee(rang, aColor)}
+                    strokeWidth={rang === 0 ? 2 : 1.5}
+                    strokeDasharray={rang === 0 ? undefined : '5 4'}
+                    dot={{ r: rang === 0 ? 3 : 2 }}
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>

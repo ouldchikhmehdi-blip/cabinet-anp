@@ -3,61 +3,78 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { RETRO_FIXE, RETRO_VARIABLE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL , getMasqueMontants } from '../data/mockData'
+import { RETRO_FIXE, RETRO_VARIABLE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants, couleurAnnee } from '../data/mockData'
+
+const ACCENT = '#534AB7'
+
+function LegendAnnees({ years }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {years.map((y, rang) => (
+        <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, ACCENT)}` }} />
+          {y}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 export default function Retrocessions() {
   const [moisDe, setMoisDe] = useState(0)
   const [moisA, setMoisA] = useState(11)
-  const [year1, setYear1] = useState(2024)
-  const [year2, setYear2] = useState(2023)
+  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
   const [shortcut, setShortcut] = useState('annee')
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
   const masque = getMasqueMontants()
-
-  const f1 = (RETRO_FIXE[year1] || RETRO_FIXE[2024]).slice(de, a + 1)
-  const v1 = (RETRO_VARIABLE[year1] || RETRO_VARIABLE[2024]).slice(de, a + 1)
-  const f2 = (RETRO_FIXE[year2] || RETRO_FIXE[2023]).slice(de, a + 1)
-  const v2 = (RETRO_VARIABLE[year2] || RETRO_VARIABLE[2023]).slice(de, a + 1)
   const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const tot1 = f1.map((v, i) => v + v1[i])
-  const tot2 = f2.map((v, i) => v + v2[i])
-  const tFixe1 = sum(f1), tVar1 = sum(v1)
-  const tTot1 = sum(tot1), tTot2 = sum(tot2)
+  const primary = years[0]
+  const ref = years[1]
+  const fixeDe = (y) => (RETRO_FIXE[y] || []).slice(de, a + 1)
+  const varDe = (y) => (RETRO_VARIABLE[y] || []).slice(de, a + 1)
+  const totalSerie = (y) => fixeDe(y).map((v, i) => v + (varDe(y)[i] ?? 0))
 
-  const fAll = RETRO_FIXE[year1] || RETRO_FIXE[2024]
-  const vAll = RETRO_VARIABLE[year1] || RETRO_VARIABLE[2024]
-  const cumulAujourdhui = sum(fAll.slice(0, MOIS_ACTUEL + 1)) + sum(vAll.slice(0, MOIS_ACTUEL + 1))
+  const tFixePrimary = sum(fixeDe(primary))
+  const tVarPrimary = sum(varDe(primary))
+  const tTotPrimary = sum(totalSerie(primary))
+  const tTotRef = sum(totalSerie(ref))
+  const cumulAujourdhui = sum((RETRO_FIXE[primary] || []).slice(0, MOIS_ACTUEL + 1)) + sum((RETRO_VARIABLE[primary] || []).slice(0, MOIS_ACTUEL + 1))
+
+  // Barres empilées fixe/variable : année principale.
+  const dataBar = labels.map((m, i) => ({ mois: m, fixe: fixeDe(primary)[i] ?? 0, variable: varDe(primary)[i] ?? 0 }))
+  // Cumul du total versé : une courbe par année comparée.
+  const dataCumul = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = sum(totalSerie(y).slice(0, i + 1)) })
+    return row
+  })
 
   const exportsRetro = [{
     label: 'Virements associés',
     build: () => {
-      const lignes = labels.map((_, i) => ({
-        Mois: MOIS_LONG[de + i],
-        [`Fixe ${year1}`]: f1[i], [`Variable ${year1}`]: v1[i], [`Total ${year1}`]: f1[i] + v1[i],
-        [`Fixe ${year2}`]: f2[i], [`Variable ${year2}`]: v2[i], [`Total ${year2}`]: f2[i] + v2[i],
-      }))
-      lignes.push({
-        Mois: 'TOTAL',
-        [`Fixe ${year1}`]: tFixe1, [`Variable ${year1}`]: tVar1, [`Total ${year1}`]: tTot1,
-        [`Fixe ${year2}`]: sum(f2), [`Variable ${year2}`]: sum(v2), [`Total ${year2}`]: tTot2,
+      const lignes = labels.map((_, i) => {
+        const row = { Mois: MOIS_LONG[de + i] }
+        years.forEach(y => {
+          row[`Fixe ${y}`] = fixeDe(y)[i] ?? 0
+          row[`Variable ${y}`] = varDe(y)[i] ?? 0
+          row[`Total ${y}`] = (fixeDe(y)[i] ?? 0) + (varDe(y)[i] ?? 0)
+        })
+        return row
       })
-      return { nomFichier: `virements-associes_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${year1}-vs-${year2}.xlsx`, lignes, feuille: 'Virements associés' }
+      const total = { Mois: 'TOTAL' }
+      years.forEach(y => {
+        total[`Fixe ${y}`] = sum(fixeDe(y))
+        total[`Variable ${y}`] = sum(varDe(y))
+        total[`Total ${y}`] = sum(totalSerie(y))
+      })
+      lignes.push(total)
+      return { nomFichier: `virements-associes_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'Virements associés' }
     }
   }]
-
-  const dataBar = labels.map((m, i) => ({
-    mois: m, fixe: f1[i], variable: v1[i]
-  }))
-
-  const dataCumul = labels.map((m, i) => ({
-    mois: m,
-    [year1]: sum(tot1.slice(0, i + 1)),
-    [year2]: sum(tot2.slice(0, i + 1)),
-  }))
 
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
@@ -77,35 +94,24 @@ export default function Retrocessions() {
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}
         moisA={moisA} setMoisA={setMoisA}
-        year1={year1} setYear1={setYear1}
-        year2={year2} setYear2={setYear2}
+        years={years} setYears={setYears}
         shortcut={shortcut} setShortcut={setShortcut}
         availableYears={ANNEES}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        <KpiCard label={`Fixe versé · ${primary}`} value={fmtEur(tFixePrimary)} sub={periode} subColor="neutral" />
+        <KpiCard label={`Variable versé · ${primary}`} value={fmtEur(tVarPrimary)} sub={periode} subColor="neutral" />
         <KpiCard
-          label={`Fixe versé · ${year1}`}
-          value={fmtEur(tFixe1)}
-          sub={periode}
-          subColor="neutral"
-        />
-        <KpiCard
-          label={`Variable versé · ${year1}`}
-          value={fmtEur(tVar1)}
-          sub={periode}
-          subColor="neutral"
-        />
-        <KpiCard
-          label={`Total / associé · ${year1}`}
-          value={fmtEur(tTot1)}
-          sub={diffLabel(tTot1, tTot2, year2)}
-          subColor={diffColor(tTot1, tTot2)}
+          label={`Total / associé · ${primary}`}
+          value={fmtEur(tTotPrimary)}
+          sub={diffLabel(tTotPrimary, tTotRef, ref)}
+          subColor={diffColor(tTotPrimary, tTotRef)}
         />
         <KpiCard
           label="Cumul versé / associé à ce jour"
           value={fmtEur(cumulAujourdhui)}
-          sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${year1}`}
+          sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${primary}`}
           subColor="neutral"
         />
       </div>
@@ -113,7 +119,7 @@ export default function Retrocessions() {
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-            Versement mensuel / associé — {periode}
+            Versement mensuel / associé · {primary} — {periode}
           </span>
           <div style={{ display: 'flex', gap: 12 }}>
             <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -141,14 +147,7 @@ export default function Retrocessions() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             Cumul versé / associé — {periode}
           </span>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 18, height: 2, background: '#534AB7', borderRadius: 1 }} />{year1}
-            </span>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #B4B2A9' }} />{year2}
-            </span>
-          </div>
+          <LegendAnnees years={years} />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={dataCumul}>
@@ -156,8 +155,17 @@ export default function Retrocessions() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-            <Line type="monotone" dataKey={year1} stroke="#534AB7" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
+            {years.map((y, rang) => (
+              <Line
+                key={y}
+                type="monotone"
+                dataKey={y}
+                stroke={couleurAnnee(rang, ACCENT)}
+                strokeWidth={rang === 0 ? 2 : 1.5}
+                strokeDasharray={rang === 0 ? undefined : '5 4'}
+                dot={{ r: rang === 0 ? 3 : 2 }}
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>

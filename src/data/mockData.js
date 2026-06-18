@@ -268,3 +268,10 @@ export const diffColor = (a, b, invert = false) => {
   if (invert) return d > 0 ? 'down' : 'up'
   return d > 0 ? 'up' : 'down'
 }
+
+// Couleur d'une série d'année selon son RANG dans la sélection (comparaison de 2 à 4 années).
+// Rang 0 = année principale (la plus récente) → couleur d'accent de la page (vive).
+// Rangs suivants = rampe grise : plus l'année est ancienne, plus c'est clair.
+const NUANCES_ANNEES = ['#8C99A6', '#B4B2A9', '#D3D1C7']
+export const couleurAnnee = (rang, accent) =>
+  rang === 0 ? accent : NUANCES_ANNEES[Math.min(rang - 1, NUANCES_ANNEES.length - 1)]

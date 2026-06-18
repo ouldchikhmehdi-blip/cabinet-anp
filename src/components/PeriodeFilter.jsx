@@ -1,11 +1,20 @@
 export default function PeriodeFilter({
   moisDe, setMoisDe,
   moisA, setMoisA,
-  year1, setYear1,
-  year2, setYear2,
+  years, setYears,
   shortcut, setShortcut,
   availableYears = [2024, 2023, 2022]
 }) {
+  // Sélection de 2 à 4 années à comparer ; `years` est conservé trié décroissant
+  // (years[0] = année principale, la plus récente). Min 2, max 4.
+  const toggleYear = (y) => {
+    const on = years.includes(y)
+    if (on) {
+      if (years.length > 2) setYears(years.filter(x => x !== y).sort((a, b) => b - a))
+    } else if (years.length < 4) {
+      setYears([...years, y].sort((a, b) => b - a))
+    }
+  }
   const mois = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
   const shortcuts = [
     { key: 'annee', label: 'Année complète', de: 0, a: 11 },
@@ -58,6 +67,15 @@ export default function PeriodeFilter({
     color: 'var(--color-text)',
   }
 
+  const yearActive = {
+    ...btnBase,
+    background: 'var(--color-primary-light)',
+    color: 'var(--color-primary-dark)',
+    borderColor: 'var(--color-primary)',
+    fontWeight: 500,
+  }
+  const yearDisabled = { ...btnBase, opacity: 0.4, cursor: 'default' }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -101,14 +119,26 @@ export default function PeriodeFilter({
 
         <div style={{ width: '0.5px', height: 24, background: 'var(--color-border)' }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <select style={selectStyle} value={year1} onChange={e => setYear1(Number(e.target.value))}>
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500 }}>vs</span>
-          <select style={selectStyle} value={year2} onChange={e => setYear2(Number(e.target.value))}>
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500, marginRight: 2 }}>Comparer</span>
+          {availableYears.map(y => {
+            const on = years.includes(y)
+            const auMax = !on && years.length >= 4
+            const auMin = on && years.length <= 2
+            const style = on ? yearActive : (auMax ? yearDisabled : btnBase)
+            return (
+              <button
+                key={y}
+                onClick={() => toggleYear(y)}
+                disabled={auMax || auMin}
+                title={auMax ? 'Maximum 4 années' : auMin ? 'Minimum 2 années' : undefined}
+                style={style}
+              >
+                {y}
+              </button>
+            )
+          })}
+          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>2 à 4 ans</span>
         </div>
       </div>
     </div>

@@ -3,44 +3,71 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { REMPL_IADE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
+import { REMPL_IADE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee } from '../data/mockData'
+
+const ACCENT = '#EF9F27'
+
+function LegendAnnees({ years, type }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {years.map((y, rang) => (
+        <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+          {type === 'line'
+            ? <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, ACCENT)}` }} />
+            : <span style={{ display: 'inline-block', width: 10, height: 10, background: couleurAnnee(rang, ACCENT), borderRadius: 2 }} />}
+          {y}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 export default function RemplacantsIADE() {
   const [moisDe, setMoisDe] = useState(0)
   const [moisA, setMoisA] = useState(11)
-  const [year1, setYear1] = useState(2024)
-  const [year2, setYear2] = useState(2023)
+  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
   const [shortcut, setShortcut] = useState('annee')
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
   const masque = getMasqueMontants()
-
-  const d1 = (REMPL_IADE[year1] || REMPL_IADE[2024]).slice(de, a + 1)
-  const d2 = (REMPL_IADE[year2] || REMPL_IADE[2023]).slice(de, a + 1)
-  const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const t1 = sum(d1), t2 = sum(d2)
+  const primary = years[0]
+  const ref = years[1]
+  const serieDe = (y) => (REMPL_IADE[y] || []).slice(de, a + 1)
+  const totalDe = (y) => sum(serieDe(y))
+  const tPrimary = totalDe(primary)
+  const tRef = totalDe(ref)
+
+  const labels = MOIS_COURT.slice(de, a + 1)
+  const dataBar = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = serieDe(y)[i] ?? 0 })
+    return row
+  })
+  const dataCumul = labels.map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = sum(serieDe(y).slice(0, i + 1)) })
+    return row
+  })
 
   const exportsIADE = [{
     label: 'Remplaçants IADE',
     build: () => {
+      const col = (y) => `Coût ${y}`
       const lignes = []
       for (let m = de; m <= a; m++) {
-        lignes.push({ Mois: MOIS_LONG[m], [`Coût ${year1}`]: d1[m - de], [`Coût ${year2}`]: d2[m - de] })
+        const ligne = { Mois: MOIS_LONG[m] }
+        years.forEach(y => { ligne[col(y)] = serieDe(y)[m - de] ?? 0 })
+        lignes.push(ligne)
       }
-      lignes.push({ Mois: 'TOTAL', [`Coût ${year1}`]: t1, [`Coût ${year2}`]: t2 })
-      return { nomFichier: `remplacants-iade_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${year1}-vs-${year2}.xlsx`, lignes, feuille: 'Remplaçants IADE' }
+      const total = { Mois: 'TOTAL' }
+      years.forEach(y => { total[col(y)] = totalDe(y) })
+      lignes.push(total)
+      return { nomFichier: `remplacants-iade_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'Remplaçants IADE' }
     }
   }]
-
-  const dataBar = labels.map((m, i) => ({ mois: m, [year1]: d1[i], [year2]: d2[i] }))
-  const dataCumul = labels.map((m, i) => ({
-    mois: m,
-    [year1]: sum(d1.slice(0, i + 1)),
-    [year2]: sum(d2.slice(0, i + 1)),
-  }))
 
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
@@ -60,24 +87,18 @@ export default function RemplacantsIADE() {
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}
         moisA={moisA} setMoisA={setMoisA}
-        year1={year1} setYear1={setYear1}
-        year2={year2} setYear2={setYear2}
+        years={years} setYears={setYears}
         shortcut={shortcut} setShortcut={setShortcut}
         availableYears={ANNEES}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        <KpiCard label={`Coût total · ${primary}`} value={fmtEur(tPrimary)} sub={periode} subColor="neutral" />
         <KpiCard
-          label={`Coût total · ${year1}`}
-          value={fmtEur(t1)}
-          sub={periode}
-          subColor="neutral"
-        />
-        <KpiCard
-          label={`Coût total · ${year2}`}
-          value={fmtEur(t2)}
-          sub={diffLabel(t1, t2, year2)}
-          subColor={diffColor(t1, t2, true)}
+          label={`Coût total · ${ref}`}
+          value={fmtEur(tRef)}
+          sub={diffLabel(tPrimary, tRef, ref)}
+          subColor={diffColor(tPrimary, tRef, true)}
         />
       </div>
 
@@ -86,14 +107,7 @@ export default function RemplacantsIADE() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             Coût mensuel — {periode}
           </span>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#EF9F27', borderRadius: 2 }} />{year1}
-            </span>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#D3D1C7', borderRadius: 2 }} />{year2}
-            </span>
-          </div>
+          <LegendAnnees years={years} type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={dataBar}>
@@ -101,8 +115,9 @@ export default function RemplacantsIADE() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-            <Bar dataKey={year1} fill="#EF9F27" radius={[3,3,0,0]} />
-            <Bar dataKey={year2} fill="#D3D1C7" radius={[3,3,0,0]} />
+            {years.map((y, rang) => (
+              <Bar key={y} dataKey={y} fill={couleurAnnee(rang, ACCENT)} radius={[3,3,0,0]} />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -112,14 +127,7 @@ export default function RemplacantsIADE() {
           <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
             Coût cumulé — {periode}
           </span>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 18, height: 2, background: '#EF9F27', borderRadius: 1 }} />{year1}
-            </span>
-            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #B4B2A9' }} />{year2}
-            </span>
-          </div>
+          <LegendAnnees years={years} type="line" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={dataCumul}>
@@ -127,8 +135,17 @@ export default function RemplacantsIADE() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-            <Line type="monotone" dataKey={year1} stroke="#EF9F27" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey={year2} stroke="#B4B2A9" strokeWidth={1.5} strokeDasharray="5 4" dot={{ r: 2 }} />
+            {years.map((y, rang) => (
+              <Line
+                key={y}
+                type="monotone"
+                dataKey={y}
+                stroke={couleurAnnee(rang, ACCENT)}
+                strokeWidth={rang === 0 ? 2 : 1.5}
+                strokeDasharray={rang === 0 ? undefined : '5 4'}
+                dot={{ r: rang === 0 ? 3 : 2 }}
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
