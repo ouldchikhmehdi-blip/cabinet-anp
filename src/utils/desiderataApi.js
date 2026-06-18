@@ -116,10 +116,11 @@ export async function chargerTousDesiderata(recueilId) {
 }
 
 // ── Profils ayant des initiales (mapper user_id → initiales côté faiseur) ──
+// Inclut nom_complet (export « Planning par service » : noms en entier au lieu des initiales).
 export async function chargerProfilsAvecInitiales() {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, initiales')
+    .select('id, email, initiales, nom_complet')
     .not('initiales', 'is', null)
   if (error) throw error
   return data ?? []

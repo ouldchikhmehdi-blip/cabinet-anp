@@ -41,7 +41,7 @@ export default function AdminUsers() {
     setErreur(null)
     try {
       const [{ data: p }, { data: i }] = await Promise.all([
-        supabase.from('profiles').select('id, email, role, status, initiales, is_faiseur, created_at').order('created_at'),
+        supabase.from('profiles').select('id, email, role, status, initiales, is_faiseur, nom_complet, created_at').order('created_at'),
         supabase.from('invitations').select('id, email, role, expires_at, used_at, created_at').order('created_at', { ascending: false }),
       ])
       setProfiles(p ?? [])
@@ -97,12 +97,12 @@ export default function AdminUsers() {
     }
   }
 
-  // ── Attribuer initiales + rôle faiseur de planning ────────────────
-  async function attribuer(userId, initiales, isFaiseur) {
+  // ── Attribuer initiales + rôle faiseur + nom complet ──────────────
+  async function attribuer(userId, initiales, isFaiseur, nomComplet) {
     try {
       const res = await fetch('/api/planning-attribuer', {
         method: 'POST', headers,
-        body: JSON.stringify({ userId, initiales, isFaiseur }),
+        body: JSON.stringify({ userId, initiales, isFaiseur, nomComplet }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -312,6 +312,7 @@ export default function AdminUsers() {
                   <th style={s.th}>Rôle</th>
                   <th style={s.th}>Statut</th>
                   <th style={s.th}>Initiales</th>
+                  <th style={s.th}>Nom complet</th>
                   <th style={s.th}>Faiseur</th>
                   <th style={s.th}>Depuis</th>
                   <th style={s.th}>Actions</th>
@@ -338,7 +339,7 @@ export default function AdminUsers() {
                       <select
                         value={p.initiales ?? ''}
                         disabled={p.status !== 'active'}
-                        onChange={e => attribuer(p.id, e.target.value || null, p.is_faiseur)}
+                        onChange={e => attribuer(p.id, e.target.value || null, p.is_faiseur, p.nom_complet ?? null)}
                         style={{ ...s.input, padding: '4px 8px', fontSize: 12 }}
                       >
                         <option value="">—</option>
@@ -349,12 +350,29 @@ export default function AdminUsers() {
                       </select>
                     </td>
                     <td style={s.td}>
+                      {/* Nom complet (export « Planning par service »). key inclut la valeur enregistrée pour
+                          réinitialiser le champ après sauvegarde ; commit au blur ou à Entrée. */}
+                      <input
+                        type="text"
+                        key={`nom-${p.id}-${p.nom_complet ?? ''}`}
+                        defaultValue={p.nom_complet ?? ''}
+                        disabled={p.status !== 'active'}
+                        placeholder="Dr Nom"
+                        onBlur={e => {
+                          const v = e.target.value.trim()
+                          if (v !== (p.nom_complet ?? '')) attribuer(p.id, p.initiales ?? null, p.is_faiseur, v || null)
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        style={{ ...s.input, padding: '4px 8px', fontSize: 12, width: 130 }}
+                      />
+                    </td>
+                    <td style={s.td}>
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: p.status === 'active' ? 'pointer' : 'default' }}>
                         <input
                           type="checkbox"
                           checked={p.is_faiseur === true}
                           disabled={p.status !== 'active'}
-                          onChange={e => attribuer(p.id, p.initiales ?? null, e.target.checked)}
+                          onChange={e => attribuer(p.id, p.initiales ?? null, e.target.checked, p.nom_complet ?? null)}
                           style={{ accentColor: 'var(--color-primary)' }}
                         />
                         {p.is_faiseur && <span style={s.badge('admin', p.status)}>Faiseur</span>}

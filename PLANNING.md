@@ -423,6 +423,27 @@ Une fois qu'un tiers est **validé** par le faiseur (export Excel archivé, recu
   `src/pages/MonAgenda.jsx`, `src/utils/evenementsAgenda.js`, `src/utils/agendaApi.js`,
   `src/utils/agendaEvenementsApi.js`, `supabase/planning_agenda*.sql`.
 
+### 18 ter. Planning par service (vue/export par poste)
+
+Onglet **faiseur** « Planning par service » : une **autre lecture** du planning saisi (par associé) sous forme
+de tableau **par poste** — lignes = jours, colonnes = postes, cellule = le(s) médecin(s) en **nom complet**.
+
+- **Source = données existantes** (trames + affectations de semaine). On **transpose** : pour chaque semaine,
+  `affectationResolue` donne la colonne de chaque associé ; `colonne[jour]` donne son libellé de poste, qu'on
+  **normalise** vers un poste canonique.
+- **6 postes canoniques** : SARM 1, SARM 2, Bloc A viscéral, Bloc A NC, Bloc B, USC/Réa. Normalisation
+  (`normaliserPosteCanonique`, sans accents/casse) : « SARM 1/2 » (le suffixe **VPA** est **toujours retiré**,
+  quelle que soit la case) ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/
+  « endoscopie » → Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Libellé non reconnu / « VPA » seul →
+  ignoré. Les **remplaçants** nommés des trames apparaissent avec leur nom.
+- **Noms complets** : champ `nom_complet` par associé, saisi dans l'onglet **Comptes** (à côté des initiales ;
+  colonne `profiles.nom_complet`, via `/api/planning-attribuer`). Repli sur l'initiale si non renseigné.
+- **Plage de semaines** sélectionnable (de S… à S…) + **export Excel** (jours × postes ; week-ends/fériés grisés).
+- *Hors v1* : remplacements ponctuels manuscrits (non modélisés) et semaines **Noël/Toussaint** (blocs imposés,
+  autre source) — non dérivés ici.
+- Fichiers : `src/pages/PlanningParService.jsx`, `src/utils/planningParService.js`, `src/utils/exportParService.js`,
+  `src/pages/AdminUsers.jsx`, `api/planning-attribuer.js`, `supabase/planning.sql` (colonne `nom_complet`).
+
 ### 18. Points encore en suspens
 
 - [ ] Récupérer les couleurs (vrais fichiers .xlsx).

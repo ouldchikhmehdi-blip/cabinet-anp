@@ -8,10 +8,13 @@
 -- année, ouverte par le faiseur pour recueillir les desiderata des associés.
 -- ============================================================
 
--- ---- 1. profiles : initiales + drapeau faiseur ----
+-- ---- 1. profiles : initiales + drapeau faiseur + nom complet ----
+-- nom_complet : nom affiché en entier (ex. « Dr Hatterer ») pour l'export « Planning par service »
+-- (à la place des initiales). Saisi par l'admin dans l'onglet Comptes. Nullable, sans contrainte d'unicité.
 alter table public.profiles
-  add column if not exists initiales  text,
-  add column if not exists is_faiseur boolean not null default false;
+  add column if not exists initiales   text,
+  add column if not exists is_faiseur  boolean not null default false,
+  add column if not exists nom_complet text;
 
 create unique index if not exists profiles_initiales_unique
   on public.profiles (initiales)

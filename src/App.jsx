@@ -23,6 +23,7 @@ import PlanningDesiderata from './pages/PlanningDesiderata'
 import MonAgenda from './pages/MonAgenda'
 import PlanningSuivi from './pages/PlanningSuivi'
 import PlanningConstruction from './pages/PlanningConstruction'
+import PlanningParService from './pages/PlanningParService'
 import './index.css'
 
 export default function App() {
@@ -151,6 +152,7 @@ export default function App() {
       case 'mon-agenda':          return profile?.initiales ? <MonAgenda /> : <VueGlobale />
       case 'planning-calendrier': return profile?.is_faiseur ? <PlanningConstruction /> : <VueGlobale />
       case 'planning-suivi':      return profile?.is_faiseur ? <PlanningSuivi /> : <VueGlobale />
+      case 'planning-par-service': return profile?.is_faiseur ? <PlanningParService /> : <VueGlobale />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }

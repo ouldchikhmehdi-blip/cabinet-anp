@@ -4,10 +4,11 @@ import { ASSOCIES } from './_lib/associes.js'
 
 /**
  * POST /api/planning-attribuer
- * Body : { userId: string, initiales: string|null, isFaiseur: boolean }
+ * Body : { userId: string, initiales: string|null, isFaiseur: boolean, nomComplet?: string|null }
  *
- * Attribue à un compte ses initiales d'associé et/ou le rôle « faiseur de
- * planning ». Réservé aux administrateurs. Garantit l'unicité des initiales.
+ * Attribue à un compte ses initiales d'associé, le rôle « faiseur de planning »
+ * et/ou son nom complet (export « Planning par service »). Réservé aux
+ * administrateurs. Garantit l'unicité des initiales.
  */
 export default async function handler(req, res) {
   setCorsHeaders(res)
@@ -20,13 +21,17 @@ export default async function handler(req, res) {
     return sendError(res, err.status ?? 403, err.message)
   }
 
-  const { userId, initiales = null, isFaiseur = false } = req.body ?? {}
+  const body = req.body ?? {}
+  const { userId, initiales = null, isFaiseur = false, nomComplet } = body
 
   if (!userId) return sendError(res, 400, 'userId manquant.')
   if (initiales !== null && !ASSOCIES.includes(initiales)) {
     return sendError(res, 400, 'Initiales invalides.')
   }
   const faiseur = !!isFaiseur
+  // Nom complet : mis à jour seulement s'il est fourni dans le body (sinon on ne le touche pas).
+  const aNomComplet = Object.prototype.hasOwnProperty.call(body, 'nomComplet')
+  const nomCompletValeur = typeof nomComplet === 'string' && nomComplet.trim() ? nomComplet.trim() : null
 
   // Récupère le profil cible
   const { data: cible, error: cibleErr } = await supabaseAdmin
@@ -51,9 +56,12 @@ export default async function handler(req, res) {
     }
   }
 
+  const champs = { initiales, is_faiseur: faiseur }
+  if (aNomComplet) champs.nom_complet = nomCompletValeur
+
   const { error: updateErr } = await supabaseAdmin
     .from('profiles')
-    .update({ initiales, is_faiseur: faiseur })
+    .update(champs)
     .eq('id', userId)
 
   if (updateErr) {
