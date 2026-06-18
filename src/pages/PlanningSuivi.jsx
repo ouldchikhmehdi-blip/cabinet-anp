@@ -286,16 +286,20 @@ export default function PlanningSuivi() {
   }, [lignes])
   const scolairesSet = useMemo(() => new Set(calendrier?.vacancesScolaires ?? []), [calendrier])
   const aSouhaitScolaire = aDesSouhaitsScolaires(desiderataParAssocie, scolairesSet)
-  // Suggestion de période pour un nouveau recueil : reprend après le dernier recueil. La fin proposée
-  // est la fin des vacances d'été tant qu'on n'a pas dépassé l'été (2ᵉ partie), sinon la dernière
-  // semaine de l'année (3ᵉ partie : automne → fin d'année, Noël inclus).
+  // Suggestion de période pour un nouveau recueil : reprend après le dernier recueil, en 3 parties :
+  //  1) avant l'été → s'arrête la semaine PRÉCÉDANT les vacances d'été (été géré à part, par sa grille) ;
+  //  2) été → vacances d'été incluses (recueil de type « été ») ;
+  //  3) fin d'année → de l'automne à la dernière semaine (Noël inclus, géré par sa grille).
   const suggestionRecueil = useMemo(() => {
     const dernierFin = recueils.length ? Math.max(...recueils.map(r => r.semaine_fin)) : 0
     const dernierNum = semainesAnnee.length ? semainesAnnee[semainesAnnee.length - 1].num : 53
     const debut = Math.min(Math.max(dernierFin + 1, debutPlanning), dernierNum)
     const ete = blocEteVacancesScolaires(calendrier?.vacancesScolaires ?? [])
-    const fin = (ete && debut <= ete.fin) ? ete.fin : dernierNum
-    return { debut, fin, jusquEte: !!(ete && debut <= ete.fin) }
+    let fin, mode
+    if (ete && debut < ete.debut) { fin = ete.debut - 1; mode = 'avantEte' }   // 1ʳᵉ partie : jusqu'à 1 semaine avant l'été
+    else if (ete && debut <= ete.fin) { fin = ete.fin; mode = 'ete' }          // partie été : vacances d'été incluses
+    else { fin = dernierNum; mode = 'finAnnee' }                               // dernière partie : automne → fin d'année
+    return { debut, fin, mode }
   }, [recueils, calendrier, semainesAnnee, debutPlanning])
 
   // Valeurs effectives du formulaire : override manuel s'il existe, sinon la suggestion (qui se recalcule
@@ -540,7 +544,7 @@ export default function PlanningSuivi() {
           </div>
           {suggestionRecueil.fin != null && (
             <div style={{ paddingBottom: 9, alignSelf: 'flex-end', fontSize: 12, color: 'var(--color-text-tertiary)', maxWidth: 280 }}>
-              Suggéré : reprend après le dernier recueil, {suggestionRecueil.jusquEte ? 'jusqu\'aux vacances d\'été incluses' : 'jusqu\'à la fin de l\'année'} (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
+              Suggéré : reprend après le dernier recueil, {suggestionRecueil.mode === 'avantEte' ? 'jusqu\'à la semaine précédant les vacances d\'été' : suggestionRecueil.mode === 'ete' ? 'jusqu\'aux vacances d\'été incluses' : 'jusqu\'à la fin de l\'année'} (S{suggestionRecueil.debut} → S{suggestionRecueil.fin}).
             </div>
           )}
           <button type="button" onClick={creer} style={s.bouton}>Créer le recueil</button>
