@@ -64,12 +64,30 @@ export default async function handler(req, res) {
     const ini = prof?.initiales
     if (!ini) return res.status(200).send(calendrier([]))
 
+    // Source de vérité = les ARCHIVES vivantes (planning Excel validé, reçu par l'associé).
+    // Un tiers = (année, plage de semaines) ; on ne retient que l'archive la PLUS RÉCENTE de chaque
+    // tiers → son recueil_id. Une archive supprimée par le faiseur disparaît donc du flux ; s'il n'y a
+    // aucune archive, rien n'est synchronisé. Cela donne au plus un agenda par tiers (3 max/an : 1, 2, 3).
+    const { data: archs } = await supabaseAdmin
+      .from('planning_archives')
+      .select('recueil_id, annee, semaine_debut, semaine_fin, created_at')
+    const meilleureParTiers = new Map() // "annee|deb|fin" → { recueil_id, t }
+    for (const a of (archs ?? [])) {
+      if (!a?.recueil_id) continue
+      const cle = `${a.annee}|${a.semaine_debut}|${a.semaine_fin}`
+      const t = Date.parse(a.created_at ?? '') || 0
+      const cur = meilleureParTiers.get(cle)
+      if (!cur || t >= cur.t) meilleureParTiers.set(cle, { recueil_id: a.recueil_id, t })
+    }
+    const recueilsValides = new Set([...meilleureParTiers.values()].map(v => v.recueil_id))
+
     const { data: rows } = await supabaseAdmin
       .from('planning_agenda_evenements')
       .select('recueil_id, data')
 
     const lignes = []
     for (const row of (rows ?? [])) {
+      if (!recueilsValides.has(row?.recueil_id)) continue // pas d'archive vivante (supprimée / remplacée)
       if (exclus.has(row?.recueil_id)) continue // tiers désynchronisé par l'associé
       const evts = row?.data?.[ini]
       if (!Array.isArray(evts)) continue

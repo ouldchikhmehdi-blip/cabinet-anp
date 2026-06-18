@@ -8,6 +8,7 @@ import { useAuth } from '../auth/AuthContext'
 import { obtenirAbonnement, definirActif, definirExclus } from '../utils/agendaApi'
 import { listerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { listerRecueils } from '../utils/desiderataApi'
+import { listerArchives } from '../utils/archivesApi'
 
 const PLATEFORMES = [
   { id: 'apple', label: '🍎 iPhone / Mac (Apple)' },
@@ -46,21 +47,40 @@ export default function MonAgenda() {
         const aMoi = rows.filter(r => Array.isArray(r.data?.[ini]) && r.data[ini].length > 0)
         const annees = [...new Set(aMoi.map(r => r.annee))]
         const parId = {}
+        const archivesParAn = {}
         for (const an of annees) {
           try {
             for (const rc of await listerRecueils(an)) parId[rc.id] = rc
           } catch { /* noms indisponibles : on retombe sur un libellé générique */ }
+          try { archivesParAn[an] = await listerArchives(an) } catch { archivesParAn[an] = [] }
         }
-        const liste = aMoi.map(r => {
-          const rc = parId[r.recueil_id]
-          return {
-            recueilId: r.recueil_id,
-            annee: r.annee,
-            nom: rc?.nom ?? 'Tiers validé',
-            debut: rc?.semaine_debut, fin: rc?.semaine_fin,
-            nbEv: r.data[ini].length,
+        // Source de vérité = les ARCHIVES vivantes. Pour chaque tiers (année + plage de semaines),
+        // on ne garde que l'archive la PLUS RÉCENTE → son recueil_id. Une archive supprimée disparaît
+        // donc d'ici ; sans archive, rien n'est synchronisable. Au plus un agenda par tiers (3 max/an).
+        const valides = new Set()
+        for (const an of annees) {
+          const meilleure = new Map() // "deb|fin" → { recueilId, t }
+          for (const a of (archivesParAn[an] ?? [])) {
+            if (!a?.recueil_id) continue
+            const cle = `${a.semaine_debut}|${a.semaine_fin}`
+            const t = new Date(a.created_at).getTime() || 0
+            const cur = meilleure.get(cle)
+            if (!cur || t >= cur.t) meilleure.set(cle, { recueilId: a.recueil_id, t })
           }
-        }).sort((a, b) => (a.annee - b.annee) || ((a.debut ?? 0) - (b.debut ?? 0)))
+          for (const v of meilleure.values()) valides.add(v.recueilId)
+        }
+        const liste = aMoi
+          .filter(r => valides.has(r.recueil_id))
+          .map(r => {
+            const rc = parId[r.recueil_id]
+            return {
+              recueilId: r.recueil_id,
+              annee: r.annee,
+              nom: rc?.nom ?? 'Tiers validé',
+              debut: rc?.semaine_debut, fin: rc?.semaine_fin,
+              nbEv: r.data[ini].length,
+            }
+          }).sort((a, b) => (a.annee - b.annee) || ((a.debut ?? 0) - (b.debut ?? 0)))
         if (!annule) setTiers(liste)
       })
       .catch(() => { /* liste indicative seulement */ })

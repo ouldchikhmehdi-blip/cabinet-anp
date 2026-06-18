@@ -402,6 +402,14 @@ Une fois qu'un tiers est **validé** par le faiseur (export Excel archivé, recu
   `grilleSemaine`/`noel`) et on les stocke (`planning_agenda_evenements`, clé `annee,recueil_id`, écriture
   faiseur). Le flux ne fait que sérialiser ces données. La **dévalidation** supprime la ligne → seuls les
   tiers réellement validés sont synchronisés.
+- **Les ARCHIVES font autorité** (flux iCal **et** liste « Mon agenda ») : on ne synchronise un tiers que s'il
+  existe une **archive vivante** (`planning_archives`) pour son recueil. Conséquences : si le faiseur **supprime**
+  l'archive d'un tiers, il disparaît de l'agenda de tous ; **sans aucune archive**, rien n'est synchronisable
+  (même si de vieilles lignes d'événements subsistent). Pour un même **tiers** (clé `annee + semaine_debut +
+  semaine_fin`), seule l'archive **la plus récente** est retenue (ses événements) → au plus **un agenda par
+  tiers, 3 max/an** (1, 2, 3). On ne supprime pas les lignes d'événements à la suppression d'archive (un même
+  recueil peut avoir plusieurs archives) : le filtrage se fait **à la lecture**, ce qui couvre aussi les lignes
+  héritées.
 - **Sélection par planning** : chaque tiers validé est listé (groupé par année) avec un bouton
   **Synchronisé / Désynchronisé**. L'associé choisit individuellement ce qu'il garde dans son agenda
   (opt-out via la colonne `planning_agenda.exclus` = recueil_id retirés ; un nouveau tiers validé est inclus
