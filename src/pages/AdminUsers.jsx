@@ -183,6 +183,7 @@ export default function AdminUsers() {
       background: 'transparent',
       color: 'var(--color-danger)',
       cursor: 'pointer',
+      whiteSpace: 'nowrap',
     },
     boutonSec: {
       fontSize: 12,
@@ -192,6 +193,7 @@ export default function AdminUsers() {
       background: 'transparent',
       color: 'var(--color-text-secondary)',
       cursor: 'pointer',
+      whiteSpace: 'nowrap',
     },
     input: {
       padding: '8px 12px',
@@ -220,7 +222,7 @@ export default function AdminUsers() {
   const invitationsActives = invitations.filter(i => !i.used_at && new Date(i.expires_at) > new Date())
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 1180 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 24 }}>Gestion des comptes</h1>
 
       {/* Messages flash */}
@@ -305,7 +307,8 @@ export default function AdminUsers() {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Chargement…</div>
         ) : (
           <div style={s.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1024 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>E-mail</th>
@@ -401,6 +404,7 @@ export default function AdminUsers() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
