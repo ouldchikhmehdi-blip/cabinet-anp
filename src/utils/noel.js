@@ -230,6 +230,17 @@ export function weekendsGardeNoel(noelData) {
   return m
 }
 
+// Semaines ISO « imposées » par la grille de Noël (les ~15 jours fournis tels quels) : la grille fait
+// foi sur ces semaines (réa, vacances, gardes de semaine et week-ends y sont déjà fixés). Les étapes de
+// construction (réa, vacances, en semaine) NE doivent donc pas les remplir automatiquement, et leurs
+// comptes sont déjà inclus dans les Compteurs de référence. Même découpage que bilanNoel / l'export.
+export function semainesImposeesNoel(noelData) {
+  const data = normaliserNoel(noelData)
+  const out = new Set()
+  for (const j of data.jours) out.add(numeroSemaineISO(parseISO(j.iso)))
+  return out
+}
+
 // Bilan des comptes de Noël par associé + ensemble des semaines ISO couvertes (pour exclure le double
 // comptage côté bilan annuel). Les fériés des DEUX années sont pris en compte (Noël chevauche l'an).
 //   → { parAssocie:{ <ini>:{ gWeekend, aVendredi, gVendredi, gardeSemaine, rea, recupJF, vacances } }, semaines }

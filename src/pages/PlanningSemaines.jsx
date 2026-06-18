@@ -213,12 +213,20 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     return m
   }, [desideratas, parUser])
 
+  // Contribution de la période de Noël (15 jours fournis tels quels) au bilan annuel + semaines ISO
+  // couvertes (qu'on exclura des agrégations normales pour éviter le double comptage).
+  const noel = useMemo(() => bilanNoel(noelData, annee), [noelData, annee])
+
   // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
   const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  const semaines = useMemo(
+  // Semaines imposées par la grille de Noël : la grille fait foi (trame/colonnes déjà fixées) → exclues de
+  // la construction « En semaine » (ni proposées ni remplies ; leurs comptes restent gérés par le bilan).
+  const plage = useMemo(
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
+  const semaines = useMemo(() => plage.filter(s => !noel.semaines.has(s.num)), [plage, noel])
+  const noelPeriode = useMemo(() => plage.filter(s => noel.semaines.has(s.num)).map(s => s.num), [plage, noel])
   const allNums = useMemo(() => listerSemaines(annee).filter(s => s.num >= debutPlanning).map(s => s.num), [annee, debutPlanning])
 
   // Trame résolue d'une semaine, AVEC repli automatique selon le nombre de vacanciers → { trame,
@@ -704,10 +712,6 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
 
   const recup = useMemo(() => calculerRecup(allNums), [calculerRecup, allNums])
 
-  // Contribution de la période de Noël (15 jours fournis tels quels) au bilan annuel + semaines ISO
-  // couvertes (qu'on exclura des agrégations normales pour éviter le double comptage).
-  const noel = useMemo(() => bilanNoel(noelData, annee), [noelData, annee])
-
   // Réa / vacanciers EFFECTIFS par semaine : qui occupe RÉELLEMENT la colonne réa / les colonnes vacances
   // dans l'affectation résolue (overrides compris). Permet aux échanges manuels (réa/vacances inclus) de se
   // répercuter sur le bilan, les compteurs, la grille et l'export. Les données amont (contexteAmont.rea,
@@ -1084,6 +1088,13 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          {noelPeriode.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+              🎄 Semaine(s) de Noël imposée(s) par la grille ({noelPeriode.map(n => `S${n}`).join(', ')}) :
+              elles sont gérées par la grille de Noël (« Période de Noël ») et ne sont ni proposées ni remplies ici.
+            </div>
+          )}
+
           <PanneauConflits conflits={conflitsBloquants} titre="⚠ À arbitrer" couleurBordure="var(--color-danger)" messageVide="Rien à arbitrer ✓" />
           <PanneauConflits conflits={conflitsSurveiller} titre="👁 À surveiller" couleurBordure="var(--color-primary)" messageVide="Rien à surveiller ✓" />
 

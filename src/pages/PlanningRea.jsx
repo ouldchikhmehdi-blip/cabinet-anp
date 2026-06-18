@@ -10,6 +10,8 @@ import { chargerCompteursRef } from '../utils/compteursRefApi'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances } from '../utils/vacancesApi'
 import { chargerRea, sauverRea } from '../utils/reaApi'
+import { chargerNoel } from '../utils/noelApi'
+import { semainesImposeesNoel } from '../utils/noel'
 import { proposerRea, analyserRea } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
@@ -35,6 +37,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   const [compteursRef, setCompteursRef] = useState(null) // socle « déjà réalisé » (parties faites dans Excel)
   const [weekends, setWeekends] = useState(null)
   const [vacancesData, setVacancesData] = useState(null)
+  const [noelData, setNoelData] = useState(null) // grille de Noël (semaines imposées, fournies telles quelles)
   const [data, setData] = useState(null)        // { v, rea: { num: ini } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -60,8 +63,8 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee), chargerCompteursRef(annee)])
-      .then(([cal, obj, we, vac, reaData, cref]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerRea(annee), chargerCompteursRef(annee), chargerNoel(annee)])
+      .then(([cal, obj, we, vac, reaData, cref, noel]) => {
         if (annule) return
         // Vacances = poste exclusif (absolu) : on écarte toute réa tombant sur une semaine
         // de congé de l'associé (purge des conflits résiduels au chargement).
@@ -70,7 +73,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
         for (const [num, ini] of Object.entries(reaData.rea ?? {})) {
           if (!vacs[Number(num)]?.includes(ini)) reaPur[Number(num)] = ini
         }
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setCompteursRef(cref)
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setVacancesData(vac); setCompteursRef(cref); setNoelData(noel)
         setData({ ...reaData, rea: reaPur }); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
@@ -154,10 +157,15 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
 
   // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
   const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  const semaines = useMemo(
+  // Semaines imposées par la grille de Noël : la grille fait foi (réa déjà fixée) → exclues de la
+  // construction (ni proposées, ni remplies automatiquement, déjà comptées dans les Compteurs de référence).
+  const semainesNoel = useMemo(() => semainesImposeesNoel(noelData), [noelData])
+  const plage = useMemo(
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
+  const semaines = useMemo(() => plage.filter(s => !semainesNoel.has(s.num)), [plage, semainesNoel])
+  const noelPeriode = useMemo(() => plage.filter(s => semainesNoel.has(s.num)).map(s => s.num), [plage, semainesNoel])
 
   const analyses = useMemo(() => {
     const m = {}
@@ -388,6 +396,13 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
       ) : (
         <>
           <PanneauConflits conflits={conflits} />
+
+          {noelPeriode.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+              🎄 Semaine(s) de Noël imposée(s) par la grille ({noelPeriode.map(n => `S${n}`).join(', ')}) :
+              elles sont gérées par la grille de Noël (« Période de Noël ») et ne sont ni proposées ni remplies ici.
+            </div>
+          )}
 
           {/* Récap */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>

@@ -8,6 +8,8 @@ import { chargerCalendrier, sauverCalendrier } from '../utils/calendrierApi'
 import { chargerObjectifs } from '../utils/objectifsApi'
 import { chargerWeekends } from '../utils/weekendsApi'
 import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
+import { chargerNoel } from '../utils/noelApi'
+import { semainesImposeesNoel } from '../utils/noel'
 import { proposerVacances, analyserSemaine } from '../utils/vacances'
 import { cleEcartVacances } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
@@ -32,6 +34,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   const [calendrier, setCalendrier] = useState(null)
   const [objectifs, setObjectifs] = useState(null)
   const [weekends, setWeekends] = useState(null)
+  const [noelData, setNoelData] = useState(null) // grille de Noël (semaines imposées, fournies telles quelles)
   const [data, setData] = useState(null)        // { v, vacances: { num: [ini] } } (toute l'année)
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
@@ -58,10 +61,10 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee)])
-      .then(([cal, obj, we, vac]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerNoel(annee)])
+      .then(([cal, obj, we, vac, noel]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setData(vac); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setNoelData(noel); setData(vac); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -129,10 +132,15 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   // Le planning commence après les vacances de Noël : S1 (et bloc scolaire de tête) jamais incluse.
   const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  const semaines = useMemo(
+  // Semaines imposées par la grille de Noël : la grille fait foi (congés déjà fixés) → exclues de la
+  // construction (ni proposées, ni remplies automatiquement, déjà comptées dans les Compteurs de référence).
+  const semainesNoel = useMemo(() => semainesImposeesNoel(noelData), [noelData])
+  const plage = useMemo(
     () => (recueil ? semainesDansPlage(annee, Math.max(recueil.semaine_debut, debutPlanning), recueil.semaine_fin) : []),
     [annee, recueil, debutPlanning]
   )
+  const semaines = useMemo(() => plage.filter(s => !semainesNoel.has(s.num)), [plage, semainesNoel])
+  const noelPeriode = useMemo(() => plage.filter(s => semainesNoel.has(s.num)).map(s => s.num), [plage, semainesNoel])
 
   const vacances = useMemo(() => data?.vacances ?? {}, [data])
   const places = useMemo(() => data?.places ?? {}, [data])
@@ -505,6 +513,13 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Chargement…</div>
       ) : (
         <>
+          {noelPeriode.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '0.5px solid var(--color-primary)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+              🎄 Semaine(s) de Noël imposée(s) par la grille ({noelPeriode.map(n => `S${n}`).join(', ')}) :
+              elles sont gérées par la grille de Noël (« Période de Noël ») et ne sont ni proposées ni remplies ici.
+            </div>
+          )}
+
           {/* Récap */}
           <div style={{ fontSize: 13, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-text-secondary)' }}>{recap.couvertes}/{recap.total} semaines couvertes</span>

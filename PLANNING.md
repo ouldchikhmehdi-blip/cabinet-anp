@@ -181,6 +181,7 @@ Helper : `impactJourOffWE()` dans `src/utils/weekends.js`.
 ### 10. Périodes spéciales fournies d'emblée
 
 - Les deux dernières semaines de Noël : rotation spécifique, fournie telle quelle au démarrage (pas calculée par l'outil).
+- **Semaines imposées par la grille de Noël = exclues de la construction.** Les semaines ISO couvertes par la grille de Noël (`semainesImposeesNoel` dans `noel.js`, même découpage que `bilanNoel`/l'export) sont **imposées** : réa, congés, gardes de semaine et week-ends y sont déjà fixés par la grille. Les onglets **Week-ends** (déjà), **Réanimation**, **Vacances** et **En semaine** ne les **proposent ni ne les remplissent automatiquement** (elles sont retirées de la plage de construction, un bandeau les signale). Leurs comptes sont déjà inclus dans les **Compteurs de référence** (Noël y figure) → pas de double comptage ; le bilan annuel les réintègre via `bilanNoel`.
 
 ### 11. Entrées de l'outil
 
