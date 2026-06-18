@@ -11,13 +11,14 @@ import { supabase } from '../lib/supabase'
  * la redirection vers EnrollMFA.
  */
 export default function Login() {
-  const [etape,     setEtape]    = useState('mdp') // 'mdp' | 'totp'
-  const [email,     setEmail]    = useState('')
-  const [mdp,       setMdp]      = useState('')
-  const [code,      setCode]     = useState('')
-  const [factorId,  setFactorId] = useState(null)
-  const [erreur,    setErreur]   = useState(null)
-  const [charge,    setCharge]   = useState(false)
+  const [etape,       setEtape]       = useState('mdp') // 'mdp' | 'totp' | 'oubli'
+  const [email,       setEmail]       = useState('')
+  const [mdp,         setMdp]         = useState('')
+  const [code,        setCode]        = useState('')
+  const [factorId,    setFactorId]    = useState(null)
+  const [erreur,      setErreur]      = useState(null)
+  const [charge,      setCharge]      = useState(false)
+  const [oubliEnvoye, setOubliEnvoye] = useState(false) // étape 'oubli' : e-mail de réinitialisation demandé
 
   // ── Étape 1 : mot de passe ──────────────────────────────────────────
   async function soumettreMdp(e) {
@@ -69,6 +70,23 @@ export default function Login() {
       setErreur('Code incorrect ou expiré. Réessayez.')
       setCode('')
     } finally {
+      setCharge(false)
+    }
+  }
+
+  // ── Étape « oubli » : demander un lien de réinitialisation par e-mail ─
+  async function soumettreOubli(e) {
+    e.preventDefault()
+    setErreur(null)
+    setCharge(true)
+    // Message générique quoi qu'il arrive (anti-énumération : ne jamais révéler si l'e-mail existe).
+    const base = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '')
+    try {
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo: base })
+    } catch {
+      /* on n'expose pas l'erreur (énumération / rate-limit) */
+    } finally {
+      setOubliEnvoye(true)
       setCharge(false)
     }
   }
@@ -132,12 +150,14 @@ export default function Login() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-primary)', marginBottom: 12 }}>SARM</div>
           <div style={s.titre}>
-            {etape === 'mdp' ? 'Connexion' : 'Vérification 2FA'}
+            {etape === 'mdp' ? 'Connexion' : etape === 'oubli' ? 'Mot de passe oublié' : 'Vérification 2FA'}
           </div>
           <div style={s.sousTitre}>
             {etape === 'mdp'
               ? 'Accès réservé — connexion sur invitation seulement'
-              : 'Entrez le code à 6 chiffres de votre application d\'authentification'}
+              : etape === 'oubli'
+                ? 'Saisissez votre adresse e-mail : nous vous enverrons un lien pour choisir un nouveau mot de passe'
+                : 'Entrez le code à 6 chiffres de votre application d\'authentification'}
           </div>
         </div>
 
@@ -170,7 +190,48 @@ export default function Login() {
             <button type="submit" disabled={charge} style={s.bouton}>
               {charge ? 'Connexion…' : 'Continuer'}
             </button>
+            <button
+              type="button"
+              onClick={() => { setEtape('oubli'); setErreur(null); setOubliEnvoye(false) }}
+              style={{ background: 'none', border: 'none', padding: 0, marginTop: 2, fontSize: 12, color: 'var(--color-text-secondary)', textDecoration: 'underline', cursor: 'pointer', alignSelf: 'center' }}
+            >
+              Mot de passe oublié ?
+            </button>
           </form>
+        ) : etape === 'oubli' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {oubliEnvoye ? (
+              <div style={{ fontSize: 13, color: 'var(--color-success)', background: 'var(--color-success-light)', borderRadius: 'var(--radius-md)', padding: '10px 12px', lineHeight: 1.5 }}>
+                Si un compte existe pour cette adresse, un e-mail de réinitialisation vient d'être envoyé.
+                Pensez à vérifier vos courriers indésirables (spam).
+              </div>
+            ) : (
+              <form onSubmit={soumettreOubli} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label style={s.label}>Adresse e-mail</label>
+                  <input
+                    type="email"
+                    required
+                    autoFocus
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    style={s.input}
+                    placeholder="vous@exemple.fr"
+                  />
+                </div>
+                <button type="submit" disabled={charge} style={s.bouton}>
+                  {charge ? 'Envoi…' : 'Envoyer le lien de réinitialisation'}
+                </button>
+              </form>
+            )}
+            <button
+              type="button"
+              onClick={() => { setEtape('mdp'); setErreur(null); setOubliEnvoye(false) }}
+              style={{ ...s.bouton, background: 'transparent', color: 'var(--color-text-secondary)', border: '0.5px solid var(--color-border)' }}
+            >
+              ← Retour à la connexion
+            </button>
+          </div>
         ) : (
           <form onSubmit={soumettreTotp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>

@@ -6,6 +6,7 @@ import { peutQuitter } from './utils/gardeNavigation'
 import Login from './auth/Login'
 import EnrollMFA from './auth/EnrollMFA'
 import AcceptInvitation from './auth/AcceptInvitation'
+import ResetPassword from './auth/ResetPassword'
 import Sidebar from './components/Sidebar'
 import VueGlobale from './pages/VueGlobale'
 import ChiffreAffaires from './pages/ChiffreAffaires'
@@ -25,7 +26,7 @@ import PlanningConstruction from './pages/PlanningConstruction'
 import './index.css'
 
 export default function App() {
-  const { session, profile, aal, nextAal, loading } = useAuth()
+  const { session, profile, aal, nextAal, loading, recovery } = useAuth()
   const [page, setPage] = useState('vue-globale')
   const [masque, setMasque] = useState(() => localStorage.getItem('masque') === '1')
   const [sombre, setSombre] = useState(() => localStorage.getItem('theme') === 'sombre')
@@ -57,9 +58,10 @@ export default function App() {
   //   1. Chargement initial → écran neutre
   //   2. Lien d'invitation → AcceptInvitation (avant vérif session)
   //   3. Pas de session → Login
-  //   4. Session AAL1 sans facteur TOTP (nextAal='aal1') → EnrollMFA obligatoire
-  //   5. Session AAL1 avec facteur enrôlé (nextAal='aal2') → Login (étape code)
-  //   6. Session AAL2 → dashboard (ci-dessous)
+  //   4. Retour d'un lien « mot de passe oublié » → ResetPassword (avant tout routage AAL/2FA)
+  //   5. Session AAL1 sans facteur TOTP (nextAal='aal1') → EnrollMFA obligatoire
+  //   6. Session AAL1 avec facteur enrôlé (nextAal='aal2') → Login (étape code)
+  //   7. Session AAL2 → dashboard (ci-dessous)
 
   if (loading) {
     return (
@@ -84,6 +86,12 @@ export default function App() {
 
   if (!session) {
     return <Login />
+  }
+
+  // Retour d'un lien « mot de passe oublié » : afficher l'écran nouveau mot de passe
+  // AVANT le routage AAL (sinon la session AAL1 + TOTP enrôlé enverrait sur l'écran code 2FA).
+  if (recovery) {
+    return <ResetPassword />
   }
 
   // Session présente mais pas encore AAL2

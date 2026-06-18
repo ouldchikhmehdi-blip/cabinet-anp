@@ -10,7 +10,15 @@ import { supabase } from '../lib/supabase'
  *   aal      — niveau d'assurance courant : 'aal1' | 'aal2' | null
  *   nextAal  — niveau requis selon les facteurs enrôlés
  *   loading  — true tant que l'état initial n'est pas connu
+ *   recovery — true quand l'utilisateur revient d'un lien « mot de passe oublié »
+ *              (doit afficher l'écran « nouveau mot de passe » avant tout routage AAL/2FA)
  */
+
+// Détection synchrone du retour d'un lien de récupération (hash #type=recovery), AVANT le premier rendu :
+// gagne la course contre onAuthStateChange (qui ne s'abonne qu'après le montage).
+function hashIndiqueRecovery() {
+  return typeof window !== 'undefined' && window.location.hash.includes('type=recovery')
+}
 
 const AuthContext = createContext(null)
 
@@ -19,6 +27,7 @@ export function AuthProvider({ children }) {
   const [profile,  setProfile]  = useState(null)
   const [aal,      setAal]      = useState(null)
   const [nextAal,  setNextAal]  = useState(null)
+  const [recovery, setRecovery] = useState(hashIndiqueRecovery)
 
   // Charge le profil depuis la table profiles
   async function fetchProfile(userId) {
@@ -48,9 +57,10 @@ export function AuthProvider({ children }) {
       }
     })
 
-    // Abonnement aux changements d'état auth (login, logout, refresh)
+    // Abonnement aux changements d'état auth (login, logout, refresh, récupération de mot de passe)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, s) => {
+      (event, s) => {
+        if (event === 'PASSWORD_RECOVERY') setRecovery(true)
         setSession(s ?? null)
         if (s) {
           fetchProfile(s.user.id)
@@ -59,6 +69,7 @@ export function AuthProvider({ children }) {
           setProfile(null)
           setAal(null)
           setNextAal(null)
+          setRecovery(false) // déconnexion (ex. après réinitialisation) → fin de l'état récupération
         }
       }
     )
@@ -69,7 +80,7 @@ export function AuthProvider({ children }) {
   const loading = session === undefined
 
   return (
-    <AuthContext.Provider value={{ session, profile, aal, nextAal, loading }}>
+    <AuthContext.Provider value={{ session, profile, aal, nextAal, loading, recovery }}>
       {children}
     </AuthContext.Provider>
   )

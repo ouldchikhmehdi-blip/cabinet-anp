@@ -6,6 +6,7 @@
 - **2FA TOTP obligatoire** : code 6 chiffres via Google Authenticator, Authy, ou toute app TOTP. Requis pour chaque compte, à la création et à chaque connexion.
 - **Sessions sécurisées** : JWT signés par Supabase, renouvellement automatique, révocation immédiate sur désactivation.
 - **Liens d'invitation** : token 256 bits, haché en base, expiration 48h, usage unique, envoi via Resend.
+- **Mot de passe oublié (libre-service)** : depuis l'écran de connexion, l'associé demande un lien de réinitialisation par e-mail (envoi **natif Supabase**, voir plus bas), clique le lien, définit un nouveau mot de passe, puis se reconnecte (mot de passe + son code 2FA habituel). Aucune intervention admin.
 - **Couche serveur** : les opérations sensibles (inviter, promouvoir, révoquer) passent par des fonctions Vercel `/api` avec la clé `service_role` — jamais exposée dans le front.
 - **Rôle en base** : champ `role` (`admin` / `user`) dans la table `profiles`, prêt pour les permissions fines à l'étape suivante.
 
@@ -28,7 +29,22 @@ Dans le dashboard Supabase → **Authentication → Providers** :
 
 Dans **Authentication → URL Configuration** :
 - **Site URL** : `https://sarm-dashboard.vercel.app` (ou `http://localhost:5173` en dev).
-- **Redirect URLs** : ajouter `https://sarm-dashboard.vercel.app/**` et `http://localhost:5173/**` (le suffixe `/**` autorise les sous-pages, ex. le lien d'invitation `…/?invite=…`).
+- **Redirect URLs** : ajouter `https://sarm-dashboard.vercel.app/**` et `http://localhost:5173/**` (le suffixe `/**` autorise les sous-pages, ex. le lien d'invitation `…/?invite=…` et le retour du lien de réinitialisation `…#type=recovery`).
+
+> ⚠️ Ne PAS activer une éventuelle option « Require MFA / re-authentication for password change » : le flux « mot de passe oublié » modifie le mot de passe depuis une session de récupération AAL1. (Désactivée par défaut.)
+
+---
+
+## Mot de passe oublié (réinitialisation en libre-service)
+
+Flux **100 % natif Supabase, côté front** (aucune fonction serveur, aucune table) :
+
+1. Écran de connexion → **« Mot de passe oublié ? »** → l'associé saisit son e-mail → `supabase.auth.resetPasswordForEmail(email, { redirectTo })`. Message **générique** affiché quoi qu'il arrive (anti-énumération + rappel « vérifiez vos spams »).
+2. L'e-mail contient un lien de récupération. Au clic, `detectSessionInUrl: true` ([src/lib/supabase.js](src/lib/supabase.js)) capture le hash `#type=recovery` → session de récupération + événement `PASSWORD_RECOVERY`.
+3. [AuthContext](src/auth/AuthContext.jsx) expose alors `recovery: true` (détecté en synchrone depuis le hash **et** via l'événement). [App.jsx](src/App.jsx) affiche [ResetPassword](src/auth/ResetPassword.jsx) **avant** tout routage AAL/2FA → `supabase.auth.updateUser({ password })`.
+4. Succès → `signOut()` → retour au login. L'associé se reconnecte avec son **nouveau** mot de passe + son code TOTP **habituel** (la 2FA n'est pas réinitialisée).
+
+**Envoi de l'e-mail** : service SMTP **par défaut de Supabase** (expéditeur générique, peut tomber en spam), **limité à ~2 e-mails/heure au niveau du projet**. Acceptable pour 8 associés occasionnels. Pour lever la limite et soigner l'expéditeur → configurer un **SMTP custom** (Authentication → Emails → SMTP Settings) **sans aucun changement de code**. Le texte de l'e-mail se personnalise dans Authentication → Email Templates → *Reset Password*.
 
 ---
 

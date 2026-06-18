@@ -14,6 +14,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnon, {
   auth: {
     persistSession:      true,   // session conservée dans localStorage
     autoRefreshToken:    true,   // renouvellement silencieux du token
-    detectSessionInUrl:  false,  // on ne gère pas les redirections OAuth
+    detectSessionInUrl:  true,   // nécessaire pour capturer le lien de récupération de mot de passe (hash #type=recovery)
   },
 })
