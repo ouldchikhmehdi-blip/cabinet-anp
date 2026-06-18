@@ -160,3 +160,44 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   }
   return resultat
 }
+
+// Convertit les PRÉFÉRENCES de vacances scolaires en semaines ISO concrètes à injecter dans
+// `souhaitParAssocie` (sinon le souhait scolaire n'est jamais positionné — cf. PLANNING.md §8).
+//   blocs : { fevrier:[], paques:[], toussaint:[] } triés croissant (cf. blocsVacancesScolaires).
+//   prefParAssocie : { ini: { periode:'fevrier'|'paques'|null, sem:'s1'|'s2'|'indifferent'|null,
+//                             tousSouhaitee:bool, tousSem:'s1'|'s2'|'indifferent'|null } }
+//   « s1 » → 1ʳᵉ semaine du bloc ; « s2 » → 2ᵉ (repli sur la 1ʳᵉ si le bloc n'a qu'une semaine) ;
+//   « indifferent » → UNE seule semaine, répartie pour ÉQUILIBRER la couverture entre 1ʳᵉ et 2ᵉ
+//   (déterministe : ordre de ASSOCIES, égalité → 1ʳᵉ ; aucun Math.random/Date.now).
+// → { ini: number[] } (un associé peut cumuler une période scolaire ET la Toussaint).
+export function semainesSouhaitScolaire(blocs, prefParAssocie = {}) {
+  const out = {}
+  const ajouter = (ini, sem) => { if (sem != null) (out[ini] ??= []).push(sem) }
+
+  // Place tous les associés d'une période ; `choixDe` renvoie 's1'|'s2'|'indifferent'|null.
+  const placerPeriode = (bloc, choixDe) => {
+    if (!Array.isArray(bloc) || bloc.length === 0) return
+    const b0 = bloc[0]
+    const b1 = bloc[1] ?? bloc[0]
+    let cnt0 = 0, cnt1 = 0
+    const indiff = []
+    for (const ini of ASSOCIES) {
+      const sem = choixDe(prefParAssocie[ini])
+      if (sem === 's1') { ajouter(ini, b0); cnt0++ }
+      else if (sem === 's2') { ajouter(ini, b1); if (b1 === b0) cnt0++; else cnt1++ }
+      else if (sem === 'indifferent') indiff.push(ini)
+    }
+    // « peu importe » : on équilibre 1ʳᵉ/2ᵉ semaine (la moins chargée d'abord).
+    for (const ini of indiff) {
+      if (cnt0 <= cnt1) { ajouter(ini, b0); cnt0++ }
+      else { ajouter(ini, b1); cnt1++ }
+    }
+  }
+
+  placerPeriode(blocs?.fevrier, p => (p?.periode === 'fevrier' ? p.sem : null))
+  placerPeriode(blocs?.paques, p => (p?.periode === 'paques' ? p.sem : null))
+  placerPeriode(blocs?.toussaint, p => (p?.tousSouhaitee === true ? (p.tousSem ?? 'indifferent') : null))
+
+  for (const ini of Object.keys(out)) out[ini] = [...new Set(out[ini])].sort((a, b) => a - b)
+  return out
+}

@@ -165,6 +165,47 @@ export function blocToussaint(annee, vacancesScolaires = []) {
   return bloc
 }
 
+// ── Regroupement des semaines de vacances scolaires par période (février / Pâques / Toussaint) ──
+// `vacancesScolaires` = liste plate de n° ISO (toutes périodes mêlées, saisie par le faiseur).
+// On isole les blocs février et Pâques en excluant l'été (plus long segment) et la Toussaint,
+// puis en ne gardant que les semaines dont le LUNDI tombe en février/mars/avril (exclut la queue
+// de Noël en janvier). On découpe en segments contigus et on classe chaque segment selon le mois
+// du lundi de sa 1ʳᵉ semaine (février → fevrier ; mars/avril → paques). Toussaint = blocToussaint.
+// Chaque tableau est trié croissant ([0] = 1ʳᵉ semaine, [1] = 2ᵉ) et peut être vide.
+// → { fevrier: number[], paques: number[], toussaint: number[] }
+export function blocsVacancesScolaires(annee, vacancesScolaires = []) {
+  const toussaint = [...blocToussaint(annee, vacancesScolaires)].sort((a, b) => a - b)
+  const tousSet = new Set(toussaint)
+  const ete = blocEteVacancesScolaires(vacancesScolaires)
+  const eteSet = new Set(ete?.semaines ?? [])
+  const candidats = [...new Set(vacancesScolaires)]
+    .filter(n => Number.isInteger(n) && !tousSet.has(n) && !eteSet.has(n))
+    .filter(n => {
+      const mois = lundiDeSemaineISO(annee, n).getUTCMonth() // 1 = février, 2 = mars, 3 = avril
+      return mois >= 1 && mois <= 3
+    })
+    .sort((a, b) => a - b)
+
+  const fevrier = [], paques = []
+  const classer = (segment) => {
+    if (!segment.length) return
+    const mois = lundiDeSemaineISO(annee, segment[0]).getUTCMonth()
+    ;(mois === 1 ? fevrier : paques).push(...segment) // février → fevrier ; mars/avril → paques
+  }
+  let seg = []
+  for (let i = 0; i < candidats.length; i++) {
+    if (i > 0 && candidats[i] === candidats[i - 1] + 1) seg.push(candidats[i])
+    else { classer(seg); seg = [candidats[i]] }
+  }
+  classer(seg)
+
+  return {
+    fevrier: fevrier.sort((a, b) => a - b),
+    paques: paques.sort((a, b) => a - b),
+    toussaint,
+  }
+}
+
 // ── Vacances scolaires (indicatif, À CONFIRMER selon la zone de la clinique) ──
 // Les numéros de semaine ISO sont approximatifs et doivent être validés.
 export const VACANCES_SCOLAIRES_2026 = {

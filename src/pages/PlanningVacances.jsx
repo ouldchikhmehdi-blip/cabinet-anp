@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint, premiereSemainePlanning } from '../utils/calendrier'
+import { ANNEES, semainesDansPlage, formatJJMM, moisAnneeFR, blocToussaint, premiereSemainePlanning, blocsVacancesScolaires } from '../utils/calendrier'
 import { ANNEE_DEFAUT, normaliser, scoreDemande } from '../utils/desiderata'
 import { ASSOCIES } from '../data/associes'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales, idRecueilPlusRecent } from '../utils/desiderataApi'
@@ -11,7 +11,7 @@ import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint, sauverToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
-import { proposerVacances, analyserSemaine } from '../utils/vacances'
+import { proposerVacances, analyserSemaine, semainesSouhaitScolaire } from '../utils/vacances'
 import { cleEcartVacances } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
@@ -90,21 +90,48 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   // Souhaits de congé écartés par le faiseur (clé 'INI|VAC|<sem>') — base calendrier.
   const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
 
+  // Blocs de vacances scolaires (février / Pâques / Toussaint) dérivés des VRAIES semaines
+  // saisies par le faiseur (base calendrier) — source unique pour mapper 1ʳᵉ/2ᵉ/peu importe.
+  const blocsScolaires = useMemo(
+    () => blocsVacancesScolaires(annee, calendrier?.vacancesScolaires ?? []),
+    [annee, calendrier]
+  )
+
   // Souhaits / refus par associé : { ini: Set(numsSemaine) }.
   // Les souhaits écartés par le faiseur sont retirés (non proposés, non comptés comme souhait).
+  // Les PRÉFÉRENCES de vacances scolaires (février/Pâques/Toussaint + 1ʳᵉ/2ᵉ/peu importe) sont
+  // converties en semaines ISO concrètes et fusionnées aux souhaits (cf. PLANNING.md §8).
   const { souhaitParAssocie, refusParAssocie } = useMemo(() => {
     const parUser = {}
     for (const p of profils) parUser[p.id] = p.initiales
+    // Préférences scolaires → semaines concrètes (peu importe équilibré entre 1ʳᵉ et 2ᵉ).
+    const prefParAssocie = {}
+    for (const row of desideratas) {
+      const ini = parUser[row.user_id]
+      if (!ini) continue
+      const d = normaliser(row.data)
+      prefParAssocie[ini] = {
+        periode: d.preferenceVacancesScolaires ?? null,
+        sem: d.prefVacancesSemaine ?? null,
+        tousSouhaitee: d.toussaintSouhaitee === true,
+        tousSem: d.toussaintSemaine ?? null,
+      }
+    }
+    const scolairesParAssocie = semainesSouhaitScolaire(blocsScolaires, prefParAssocie)
+
     const souhait = {}, refus = {}
     for (const row of desideratas) {
       const ini = parUser[row.user_id]
       if (!ini) continue
       const d = normaliser(row.data)
-      souhait[ini] = new Set((d.vacancesSouhaitees ?? []).filter(n => !ecartesSet.has(cleEcartVacances(ini, n))))
+      souhait[ini] = new Set([
+        ...(d.vacancesSouhaitees ?? []).filter(n => !ecartesSet.has(cleEcartVacances(ini, n))),
+        ...(scolairesParAssocie[ini] ?? []).filter(n => !ecartesSet.has(cleEcartVacances(ini, n))),
+      ])
       refus[ini] = new Set(d.vacancesRefusees ?? [])
     }
     return { souhaitParAssocie: souhait, refusParAssocie: refus }
-  }, [desideratas, profils, ecartesSet])
+  }, [desideratas, profils, ecartesSet, blocsScolaires])
 
   // Desiderata complets (normalisés) par associé — pour le panneau récap des souhaits.
   const desiderataParAssocie = useMemo(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { semainesDansPlage, weekendsDansPlage, bornesPlage, VACANCES_SCOLAIRES_2026, blocEteVacancesScolaires } from '../utils/calendrier'
+import { semainesDansPlage, weekendsDansPlage, bornesPlage, blocsVacancesScolaires, blocEteVacancesScolaires } from '../utils/calendrier'
 import { desiderataVide, ANNEE_DEFAUT, SOUS_SEMAINES, normaliser } from '../utils/desiderata'
 import { chargerMesDesiderata, sauverMesDesiderata, listerRecueils, idRecueilPlusRecent } from '../utils/desiderataApi'
 import { charger as chargerLocal, sauver as sauverLocal } from '../utils/stockage'
@@ -243,6 +243,7 @@ export default function PlanningDesiderata() {
   function ajouterSouhaitColonne() {
     if (nouvSouhaitSem === '' || nouvSouhaitCol === '') return
     const sem = Number(nouvSouhaitSem)
+    if (semainesScolaires.includes(sem)) return // pas de souhait de colonne pendant les vacances scolaires
     const col = Number(nouvSouhaitCol)
     setData(prev => ({ ...prev, colonnesSouhaitees: { ...(prev.colonnesSouhaitees ?? {}), [sem]: col } }))
     setNouvSouhaitSem(''); setNouvSouhaitCol('')
@@ -334,24 +335,26 @@ export default function PlanningDesiderata() {
 
   const desactive = data.rienASignaler
   const grise = desactive ? { opacity: 0.45, pointerEvents: 'none', filter: 'grayscale(0.4)' } : {}
-  const vacScol = VACANCES_SCOLAIRES_2026
   const prefVac = data.preferenceVacancesScolaires
 
+  // Blocs scolaires dérivés des VRAIES semaines de la Base calendrier (source unique, pas de
+  // constante codée en dur) → détermine quelles périodes proposer et leurs semaines.
+  const blocsScol = blocsVacancesScolaires(annee, semainesScolaires)
   // Une période scolaire n'est proposée que si ses semaines tombent dans le recueil courant.
   const dansPeriode = (sem) => !!recueil && sem.some(w => w >= recueil.semaine_debut && w <= recueil.semaine_fin)
-  const voirFevrier = dansPeriode(vacScol.fevrier.semaines)
-  const voirPaques = dansPeriode(vacScol.paques.semaines)
-  const voirToussaint = dansPeriode(vacScol.toussaint.semaines)
+  const voirFevrier = blocsScol.fevrier.length > 0 && dansPeriode(blocsScol.fevrier)
+  const voirPaques = blocsScol.paques.length > 0 && dansPeriode(blocsScol.paques)
+  const voirToussaint = blocsScol.toussaint.length > 0 && dansPeriode(blocsScol.toussaint)
   const voirPrefScol = voirFevrier || voirPaques
   const voirCarteScol = voirPrefScol || voirToussaint
   const optionsPrefScol = [
-    ...(voirFevrier ? [{ val: 'fevrier', lib: vacScol.fevrier.label }] : []),
-    ...(voirPaques ? [{ val: 'paques', lib: vacScol.paques.label }] : []),
+    ...(voirFevrier ? [{ val: 'fevrier', lib: 'Février (hiver)' }] : []),
+    ...(voirPaques ? [{ val: 'paques', lib: 'Pâques (printemps)' }] : []),
     { val: null, lib: 'Sans préférence' },
   ]
   const titrePrefScol = (voirFevrier && voirPaques)
     ? 'Préférence vacances scolaires : Pâques ou Février'
-    : `Préférence vacances scolaires : ${voirPaques ? vacScol.paques.label : vacScol.fevrier.label}`
+    : `Préférence vacances scolaires : ${voirPaques ? 'Pâques (printemps)' : 'Février (hiver)'}`
 
   // Résumés affichés quand les encarts repliables sont fermés.
   const resumeSemaines = (nums) => (nums?.length ? [...nums].sort((a, b) => a - b).map(n => `S${n}`).join(' · ') : '—')
@@ -513,7 +516,10 @@ export default function PlanningDesiderata() {
 
             {/* Week-ends indisponibles */}
             <SectionRepliable titre="Week-ends indisponibles" resume={resumeSemaines(data.weekendsIndispo)}>
-              <div style={s.aide}>Cochez les week-ends où vous n'êtes pas disponible.</div>
+              <div style={s.aide}>
+                Cochez les week-ends où vous n'êtes pas disponible.
+                {semainesScolaires.length > 0 && ' Les week-ends en vacances scolaires (en bleu) ne sont pas sélectionnables — les congés s\'y gèrent dans « Préférence vacances scolaires ».'}
+              </div>
               <div style={s.noteFerie}>
                 🌉 Vos week-ends indisponibles <strong>accolés à un jour férié</strong> (férié un
                 vendredi ou un lundi) sont <strong>surveillés</strong> : ils forment des « ponts »
@@ -523,6 +529,7 @@ export default function PlanningDesiderata() {
                 weekends={weekends}
                 selection={data.weekendsIndispo}
                 onChange={v => maj('weekendsIndispo', v)}
+                semainesScolaires={semainesScolaires}
               />
             </SectionRepliable>
 
@@ -531,7 +538,10 @@ export default function PlanningDesiderata() {
               titre="Jours off souhaités"
               resume={data.joursOffSouhaites.length ? `${data.joursOffSouhaites.length} jour${data.joursOffSouhaites.length > 1 ? 's' : ''}` : '—'}
             >
-              <div style={s.aide}>Ajoutez les journées précises où vous souhaitez ne pas travailler.</div>
+              <div style={s.aide}>
+                Ajoutez les journées précises où vous souhaitez ne pas travailler.
+                {semainesScolaires.length > 0 && ' Les jours en vacances scolaires (en bleu) ne sont pas sélectionnables — les congés s\'y gèrent dans « Préférence vacances scolaires ».'}
+              </div>
               <div style={s.noteFerie}>
                 🌉 Vos demandes de jours off <strong>autour d'un jour férié</strong> (la veille, le
                 jour même ou le lendemain) sont <strong>surveillées</strong> : elles forment des
@@ -542,6 +552,7 @@ export default function PlanningDesiderata() {
                 onChange={v => maj('joursOffSouhaites', v)}
                 annee={annee}
                 bornes={bornes}
+                semainesScolaires={semainesScolaires}
               />
             </SectionRepliable>
 
@@ -553,7 +564,6 @@ export default function PlanningDesiderata() {
                   <div style={s.titre}>{titrePrefScol}</div>
                   <div style={s.aide}>
                     {voirFevrier && voirPaques ? "On ne peut pas avoir les deux — choisissez l'une ou l'autre." : 'Indiquez votre préférence pour cette période.'}
-                    {vacScol.aConfirmer && ' (dates indicatives, à confirmer)'}
                   </div>
                   <div style={s.radioLigne}>
                     {optionsPrefScol.map(opt => (
@@ -646,6 +656,7 @@ export default function PlanningDesiderata() {
                   Voici la semaine type principale. Seules les colonnes <strong>au choix</strong> sont
                   affichées : Réa, Vacances, Remplaçant et les colonnes avant/après week-end sont gérées
                   automatiquement. Pour les semaines qui comptent pour vous, indiquez la colonne souhaitée (facultatif).
+                  {semainesScolaires.length > 0 && ' Les semaines de vacances scolaires ne sont pas proposées (congés gérés dans « Préférence vacances scolaires »).'}
                 </div>
                 <div style={{ overflowX: 'auto', marginBottom: 14 }}>
                   <TrameGrille
@@ -656,7 +667,7 @@ export default function PlanningDesiderata() {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <select value={nouvSouhaitSem} onChange={e => setNouvSouhaitSem(e.target.value)} style={s.select}>
                     <option value="">Semaine…</option>
-                    {semaines.map(sem => <option key={sem.num} value={sem.num}>{sem.label}</option>)}
+                    {semaines.filter(sem => !semainesScolaires.includes(sem.num)).map(sem => <option key={sem.num} value={sem.num}>{sem.label}</option>)}
                   </select>
                   <select value={nouvSouhaitCol} onChange={e => setNouvSouhaitCol(e.target.value)} style={s.select}>
                     <option value="">Colonne…</option>

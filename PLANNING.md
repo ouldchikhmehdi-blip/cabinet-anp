@@ -168,6 +168,7 @@ Helper : `impactJourOffWE()` dans `src/utils/weekends.js`.
 
 - Le nombre de semaines de vacances est une variable annuelle (distincte été / hors-été).
 - **Exclusivité Pâques / février** : on ne peut pas avoir les deux → choisir l'un ou l'autre (préférence par personne).
+- **Positionnement de la préférence scolaire (en place).** La préférence (`fevrier`/`paques` + `s1`/`s2`/`indifferent`, idem Toussaint) est **convertie en semaine(s) ISO concrète(s)** à partir des **vraies** semaines scolaires de la base calendrier (`calendrier.vacancesScolaires`), regroupées par période via `blocsVacancesScolaires(annee, …)` (`calendrier.js`, réutilise `blocToussaint`) : `s1` → 1ʳᵉ semaine du bloc, `s2` → 2ᵉ, **`indifferent` → UNE semaine, répartie pour équilibrer la couverture entre 1ʳᵉ et 2ᵉ** (déterministe, ordre des associés). Ces semaines sont injectées dans `souhaitParAssocie` (`semainesSouhaitScolaire` dans `vacances.js`) avant `proposerVacances`, et alimentent aussi l'alerte « souhait non réalisé ». **Ne jamais** s'appuyer sur la constante indicative `VACANCES_SCOLAIRES_2026` pour le positionnement (source = base calendrier).
 - **Toussaint** : souvent une personne ne peut pas la prendre ; conditionnel selon les remplaçants trouvés.
 - **Couverture minimale** :
   - chaque semaine : au moins 1 associé en vacances ;
@@ -215,7 +216,8 @@ Le planning d'une année se fait en **trois tiers** : 1er tiers (avant l'été) 
 - semaines où il ne veut surtout PAS de vacances (contrainte négative) ;
 - jours off souhaités — saisis sur un **calendrier multi-mois** (les mois de la période sont empilés, un clic sur un jour l'ajoute/le retire) ;
 - jours où il ne veut pas poser son repos ;
-- préférence Pâques ou février (+ Toussaint souhaitée ou non) — **chaque période scolaire n'est proposée que si ses semaines tombent dans la période du recueil** (sinon masquée, ce qui allège l'écran) ;
+- préférence Pâques ou février (+ Toussaint souhaitée ou non) — **chaque période scolaire n'est proposée que si ses semaines tombent dans la période du recueil** (sinon masquée, ce qui allège l'écran) ; les périodes affichées sont déduites des **vraies** semaines scolaires (base calendrier), pas d'une constante codée en dur ;
+  - **Semaines de vacances scolaires bloquées dans les autres saisies (en place).** Les congés scolaires se gèrent **uniquement** via cette préférence : pendant une semaine de vacances scolaire, l'associé **ne peut pas** sélectionner de **vacances souhaitées/refusées**, de **week-end indisponible**, de **jour off**, ni de **colonne de trame** (semaines retirées/grisées en bleu dans `SelecteurSemaines`, `WeekendsIndispo`, `SelecteurDates` et le sélecteur de colonne de la trame principale) ;
 - week-ends dispo / pas dispo pour astreinte ou garde ;
 - éventuellement, demande d'une colonne particulière de la semaine type (ex. associé prenant des remplaçants qui veut un poste-type précis).
 

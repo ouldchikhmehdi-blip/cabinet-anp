@@ -1,4 +1,4 @@
-import { parseISO, formatISO, formatDateLongueFR, moisAnneeFR, joursFeriesFR } from '../../utils/calendrier'
+import { parseISO, formatISO, formatDateLongueFR, moisAnneeFR, joursFeriesFR, numeroSemaineISO } from '../../utils/calendrier'
 
 /**
  * SelecteurDates — sélection de dates précises via un calendrier multi-mois.
@@ -15,10 +15,13 @@ import { parseISO, formatISO, formatDateLongueFR, moisAnneeFR, joursFeriesFR } f
  *   annee     — number (borne par défaut si `bornes` absent)
  *   bornes    — { min, max } 'YYYY-MM-DD' (optionnel, ex. bornes de période)
  *   accent    — 'primary' (défaut) | 'danger'
+ *   semainesScolaires — number[] : n° ISO des semaines de vacances scolaires ; les jours qui y
+ *                       tombent ne sont PAS sélectionnables (congés gérés dans la Préférence)
  */
 const JOURS_ENTETE = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
-export default function SelecteurDates({ dates, onChange, annee, bornes = null, accent = 'primary' }) {
+export default function SelecteurDates({ dates, onChange, annee, bornes = null, accent = 'primary', semainesScolaires = [] }) {
+  const scolSet = new Set(semainesScolaires)
   const min = bornes?.min ?? `${annee}-01-01`
   const max = bornes?.max ?? `${annee}-12-31`
   const couleur = accent === 'danger' ? 'var(--color-danger)' : 'var(--color-primary)'
@@ -57,18 +60,19 @@ export default function SelecteurDates({ dates, onChange, annee, bornes = null, 
     grilleJours: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 },
     entete: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '2px 0' },
     vide: {},
-    jour: (selectionne, horsPlage, weekend, ferie) => ({
+    jour: (selectionne, horsPlage, weekend, ferie, scolaire) => ({
       fontSize: 12,
       textAlign: 'center',
       padding: '6px 0',
       borderRadius: 'var(--radius-md)',
-      border: `0.5px solid ${selectionne ? couleur : (ferie ? 'var(--color-amber)' : 'transparent')}`,
-      background: selectionne ? couleurFond : (ferie ? 'var(--color-amber-light)' : 'transparent'),
+      border: `0.5px solid ${selectionne ? couleur : scolaire ? '#2D6CB5' : (ferie ? 'var(--color-amber)' : 'transparent')}`,
+      background: selectionne ? couleurFond : scolaire ? '#E3EEF9' : (ferie ? 'var(--color-amber-light)' : 'transparent'),
       color: horsPlage
         ? 'var(--color-text-tertiary)'
-        : (ferie && !selectionne ? 'var(--color-amber)' : (weekend ? 'var(--color-text-tertiary)' : 'var(--color-text)')),
+        : scolaire && !selectionne ? '#2D6CB5'
+          : (ferie && !selectionne ? 'var(--color-amber)' : (weekend ? 'var(--color-text-tertiary)' : 'var(--color-text)')),
       opacity: horsPlage ? 0.35 : (weekend ? 0.5 : 1),
-      cursor: (horsPlage || weekend) ? 'default' : 'pointer',
+      cursor: (horsPlage || weekend || scolaire) ? 'default' : 'pointer',
       fontWeight: selectionne || ferie ? 600 : 400,
       userSelect: 'none',
     }),
@@ -100,20 +104,23 @@ export default function SelecteurDates({ dates, onChange, annee, bornes = null, 
                   const horsPlage = iso < min || iso > max
                   const jourSem = date.getUTCDay()
                   const weekend = jourSem === 0 || jourSem === 6
+                  const scolaire = !horsPlage && !weekend && scolSet.has(numeroSemaineISO(date))
                   const nomFerie = feriesParIso.get(iso) ?? null
                   const selectionne = choisies.has(iso)
                   const title = horsPlage
                     ? 'Hors de la période'
                     : weekend
                       ? 'Week-end — non sélectionnable comme jour off'
-                      : nomFerie
-                        ? `Férié — ${nomFerie}`
-                        : formatDateLongueFR(date)
+                      : scolaire
+                        ? 'Vacances scolaires — congés gérés dans « Préférence vacances scolaires »'
+                        : nomFerie
+                          ? `Férié — ${nomFerie}`
+                          : formatDateLongueFR(date)
                   return (
                     <div
                       key={iso}
-                      style={s.jour(selectionne, horsPlage, weekend, !!nomFerie)}
-                      onClick={(horsPlage || weekend) ? undefined : () => toggle(iso)}
+                      style={s.jour(selectionne, horsPlage, weekend, !!nomFerie, scolaire)}
+                      onClick={(horsPlage || weekend || scolaire) ? undefined : () => toggle(iso)}
                       title={title}
                     >
                       {jour}
