@@ -52,6 +52,7 @@ Fonctionnalités transverses : **filtres par période** et **comparaison année 
 
 ### Hébergement
 - **Vercel** — front + fonctions serverless (`vercel.json`)
+- **Accès MCP Vercel** (Claude Code) : serveur déclaré dans `.mcp.json` (`https://mcp.vercel.com`, OAuth, sans secret committé). Claude peut donc lire/agir sur Vercel (déploiements, logs de build/runtime, projets). Équipe **« SARM's projects »** `team_I6GzlV55DLnD2JuWePgCpOlf` · projet **`sarm-dashboard`** `prj_qiWMciweUPN567QPSXM5wU1ig69v` (le projet actif ; `cabinet-anp` `prj_sya4JWd19z4wIC5zpH1gDSuOtWbV` est l'ancien). L'auth OAuth est locale à la machine (à refaire si la session MCP se déconnecte).
 
 ---
 
