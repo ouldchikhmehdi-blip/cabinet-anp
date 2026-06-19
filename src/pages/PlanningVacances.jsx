@@ -12,6 +12,10 @@ import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint, sauverToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
 import { proposerVacances, optimiserVacances, analyserSemaine, semainesSouhaitScolaire } from '../utils/vacances'
+import { chargerTrames } from '../utils/tramesApi'
+import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
+import { semainesVide } from '../utils/semaines'
+import { capaciteVacances } from '../utils/trames'
 import { cleEcartVacances } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
@@ -46,6 +50,8 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   const [voirNonRealises, setVoirNonRealises] = useState(false) // panneau souhaits de congé non réalisés
   const [ouvertToussaint, setOuvertToussaint] = useState(false) // panneau de collage Toussaint ouvert
   const [messageOpt, setMessageOpt] = useState(null) // retour du bouton « Optimiser » (ex. « déjà optimal »)
+  const [tramesData, setTramesData] = useState(null) // catalogue de trames (pour le choix sur semaines à 2 congés)
+  const [semData, setSemData] = useState(null)       // store « En semaine » (trameParSemaine) — choix partagé
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -67,10 +73,10 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerNoel(annee), chargerToussaint(annee)])
-      .then(([cal, obj, we, vac, noel, tous]) => {
+    Promise.all([chargerCalendrier(annee), chargerObjectifs(annee), chargerWeekends(annee), chargerVacances(annee), chargerNoel(annee), chargerToussaint(annee), chargerTrames(annee), chargerSemaines(annee)])
+      .then(([cal, obj, we, vac, noel, tous, tr, sem]) => {
         if (annule) return
-        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setNoelData(noel); setToussaintData(tous); setData(vac); onStatut?.('vierge')
+        setCalendrier(cal); setObjectifs(obj); setWeekends(we); setNoelData(noel); setToussaintData(tous); setData(vac); setTramesData(tr); setSemData(sem); onStatut?.('vierge')
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
     return () => { annule = true }
@@ -87,6 +93,23 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   }, [recueilId, estFaiseur])
 
   const recueil = useMemo(() => recueils.find(r => r.id === recueilId) ?? null, [recueils, recueilId])
+
+  // Trames à AU MOINS 2 colonnes vacances (proposées sur les semaines à 2 congés) + choix partagé
+  // avec l'étape « En semaine » (même store trameParSemaine).
+  const trames = useMemo(() => tramesData?.trames ?? [], [tramesData])
+  const principaleId = tramesData?.principaleId ?? null
+  const tramesDeuxVac = useMemo(() => trames.filter(t => capaciteVacances(t) >= 2), [trames])
+  const trameParSemaine = useMemo(() => semData?.trameParSemaine ?? {}, [semData])
+
+  // Fixe la trame d'une semaine (à 2 congés) depuis la page Vacances → persistée dans le store partagé.
+  function choisirTrameSemaine(num, trameId) {
+    const base = semData ?? semainesVide()
+    const tps = { ...(base.trameParSemaine ?? {}) }
+    if (!trameId) delete tps[num]; else tps[num] = Number(trameId)
+    const next = { ...base, trameParSemaine: tps }
+    setSemData(next)
+    if (session?.user?.id) sauverSemaines(annee, next, session.user.id).catch(() => setErreur('Enregistrement de la trame impossible.'))
+  }
 
   // Souhaits de congé écartés par le faiseur (clé 'INI|VAC|<sem>') — base calendrier.
   const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
@@ -752,9 +775,25 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
                 <Fragment key={sem.num}>
                   {sep && <div style={s.moisSep}>{moisAnneeFR(jeudi)}</div>}
                   <div style={{ ...s.ligne, ...(estScol ? s.ligneScol : {}) }}>
-                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                       S{sem.num} · {formatJJMM(sem.lundi)} → {formatJJMM(sem.dimanche)}
                       {estScol && <span style={s.badgeScol} title="Semaine de vacances scolaires">📚 scol.</span>}
+                      {inis.length >= 2 && (
+                        <>
+                          <span style={s.badgeScol} title="2 associés en congé : choisissez une trame à 2 colonnes vacances (partagé avec « En semaine »)">👥 2 vac.</span>
+                          {tramesDeuxVac.length > 0 && (
+                            <select
+                              value={trameParSemaine[sem.num] ?? ''}
+                              onChange={e => choisirTrameSemaine(sem.num, e.target.value)}
+                              style={s.selPetit}
+                              title="Trame à 2 colonnes vacances appliquée à cette semaine — choix partagé avec l'étape « En semaine »"
+                            >
+                              <option value="">Trame : auto</option>
+                              {tramesDeuxVac.map(t => <option key={t.id} value={t.id}>{t.nom}{t.id === principaleId ? ' ★' : ''}</option>)}
+                            </select>
+                          )}
+                        </>
+                      )}
                     </span>
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {a.sansVacance && <span style={s.etat('var(--color-danger)')} title="Aucun associé en congé">🔴 vide</span>}

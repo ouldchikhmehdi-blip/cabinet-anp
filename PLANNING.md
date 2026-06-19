@@ -200,6 +200,7 @@ Helper : `impactJourOffWE()` dans `src/utils/weekends.js`.
 - **« Proposer automatiquement » vs « Optimiser »** (étape Vacances).
   - *Proposer* = génération depuis zéro (glouton **déterministe**, respecte les verrous) : un point de départ reproductible (reclic → même résultat).
   - *Optimiser* = **recherche locale** (hill-climbing) sur l'état **courant** (proposition + ajustements manuels), sans tout régénérer. Tente remplacements / échanges / ajouts dans les postes libres pour réduire, **dans cet ordre d'importance** : (1) souhaits non réalisés, (2) déséquilibre entre associés, (3) congés rapprochés. Ne **touche jamais** aux verrous ni aux règles dures (refus, week-end de garde collé, capacité) et **ne diminue jamais** la couverture. **Idempotent** : cliquable plusieurs fois, s'arrête sur l'optimum local (« déjà optimal — rien à améliorer »). Helper `optimiserVacances` (`src/utils/vacances.js`).
+- **Choix de trame anticipé sur la page Vacances (semaines à 2 congés).** Dès qu'une semaine a **≥ 2 associés en congé**, un badge **« 👥 2 vac. »** et un **menu déroulant** apparaissent sur sa ligne, listant **uniquement les trames à 2 colonnes vacances** (`capaciteVacances ≥ 2`, principale ★). Le choix est **partagé avec l'étape « En semaine »** : il est écrit dans le **même** `trameParSemaine` (`planning_semaines`, via `sauverSemaines`) et enregistré aussitôt. But : fixer tôt la bonne trame pour ces semaines. (`PlanningVacances.jsx`.)
 
 ### 9. Été (fonctionnement à part)
 
