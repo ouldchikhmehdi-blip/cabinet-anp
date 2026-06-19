@@ -17,6 +17,7 @@
 import { ASSOCIES } from '../data/associes'
 import { JOURS, colonnesSelectionnables, capaciteVacances } from './trames'
 import { typeDuJour, lundiDeSemaineISO } from './calendrier'
+import { associesEnDouble } from './planningInvariants'
 
 export const VERSION_SEMAINES = 2
 
@@ -706,5 +707,8 @@ export function analyserSemaineColonnes(trame, num, annee, calendrier, affResolu
     }
   }
 
-  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, vendrediAvantVacances, vendrediVeilleWE, multiVacances: (vacanciers?.length ?? 0) > 1 }
+  // Invariante dure : un associé ne doit jamais occuper deux colonnes la même semaine.
+  const enDouble = associesEnDouble(affResolue)
+
+  return { tropProche, souhaitNonSatisfait, souhaitsIgnoresTrame, nonPlaces, colonnesVides, enDouble, vendrediAvantVacances, vendrediVeilleWE, multiVacances: (vacanciers?.length ?? 0) > 1 }
 }

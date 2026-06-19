@@ -393,6 +393,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const a = analyses[num]
       // — Bloquants —
       if (al?.nonPlaces.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — associé(s) non placé(s) : ${al.nonPlaces.join(', ')} (pas assez de colonnes de travail).` })
+      if (al?.enDouble?.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${al.enDouble.join(', ')} affecté(s) à deux colonnes à la fois (incohérence) : à corriger.` })
       if (al?.colonnesVides.length) bloquants.push({ severite: 'amber', semaine: num, message: `S${num} — colonne(s) de travail non pourvue(s) : ${al.colonnesVides.map(c => `C${c + 1}`).join(', ')}.` })
       const nbVac = a?.vacanciers.length ?? 0
       const capVac = capaciteVacances(trameDe(num))
