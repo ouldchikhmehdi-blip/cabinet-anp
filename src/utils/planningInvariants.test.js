@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { associesEnDouble, invariantsSemaine } from './planningInvariants'
+import { associesEnDouble, invariantsSemaine, invariantsWeekends, invariantsRea, invariantsVacances } from './planningInvariants'
 import { ASSOCIES } from '../data/associes'
 
 // Trame minimale : seuls les indices spéciaux comptent ici.
@@ -51,5 +51,51 @@ describe('invariantsSemaine', () => {
     const aff = { 2: 'RC', 0: 'RC' } // RC en congé mais aussi sur la colonne avant-WE
     const v = invariantsSemaine(trame, aff, { vacanciers: ['RC'] })
     expect(v.some(x => x.code === 'vacancierEnTravail' && x.ini === 'RC')).toBe(true)
+  })
+})
+
+describe('invariantsWeekends', () => {
+  it('conforme → []', () => {
+    expect(invariantsWeekends({ 10: 'EH', 11: 'MP' }, {})).toEqual([])
+  })
+  it('associé indisponible placé → violation', () => {
+    const v = invariantsWeekends({ 10: 'EH' }, { indispoParAssocie: { EH: new Set([10]) } })
+    expect(v.some(x => x.code === 'indispo')).toBe(true)
+  })
+  it('garde collée à des vacances (S+1) → violation', () => {
+    const v = invariantsWeekends({ 10: 'MP' }, { vacancesParSemaine: { 11: ['MP'] } })
+    expect(v.some(x => x.code === 'vacancesCollee')).toBe(true)
+  })
+})
+
+describe('invariantsRea', () => {
+  it('conforme → []', () => {
+    expect(invariantsRea({ 10: 'EH' }, { vacancesParSemaine: { 10: ['MP'] } })).toEqual([])
+  })
+  it('réa pour un associé en congé → violation', () => {
+    const v = invariantsRea({ 10: 'EH' }, { vacancesParSemaine: { 10: ['EH'] } })
+    expect(v.some(x => x.code === 'reaEnVacances')).toBe(true)
+  })
+})
+
+describe('invariantsVacances', () => {
+  it('conforme → []', () => {
+    expect(invariantsVacances({ 10: ['EH'], 11: ['MP'] }, {})).toEqual([])
+  })
+  it('congé collé à une garde de week-end (S-1) → violation', () => {
+    const v = invariantsVacances({ 11: ['MP'] }, { weekendAff: { 10: 'MP' } })
+    expect(v.some(x => x.code === 'congeColleGarde')).toBe(true)
+  })
+  it('refus placé → violation', () => {
+    const v = invariantsVacances({ 10: ['EH'] }, { refusParAssocie: { EH: new Set([10]) } })
+    expect(v.some(x => x.code === 'refusPlace')).toBe(true)
+  })
+  it('capacité dépassée → violation', () => {
+    const v = invariantsVacances({ 10: ['EH', 'MP', 'RC'] }, { capacite: () => 2 })
+    expect(v.some(x => x.code === 'capaciteDepassee')).toBe(true)
+  })
+  it('doublon dans une semaine → violation', () => {
+    const v = invariantsVacances({ 10: ['EH', 'EH'] }, {})
+    expect(v.some(x => x.code === 'doublon')).toBe(true)
   })
 })

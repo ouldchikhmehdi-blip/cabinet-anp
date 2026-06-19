@@ -37,3 +37,50 @@ export function invariantsSemaine(trame, affResolue = {}, { vacanciers = [] } = 
   for (const ini of ASSOCIES) if (!places.has(ini) && !enVac.has(ini)) violations.push({ code: 'nonPlace', ini })
   return violations
 }
+
+// ── WEEK-ENDS (proposerWeekends → { num: ini }) ──
+// Règles DURES : l'associé du week-end est disponible (ni indisponible déclaré, ni jour off posé le
+// sam/dim) et n'est pas en vacances la semaine du week-end (S) ni la suivante (S+1) — jamais de garde
+// de week-end collée à des vacances.
+export function invariantsWeekends(affectations = {}, { indispoParAssocie = {}, joursOffWeekendParAssocie = {}, vacancesParSemaine = {} } = {}) {
+  const violations = []
+  for (const [numStr, ini] of Object.entries(affectations)) {
+    if (!ASSOCIES.includes(ini)) continue
+    const num = Number(numStr)
+    if (indispoParAssocie?.[ini]?.has?.(num)) violations.push({ code: 'indispo', ini, num })
+    if (joursOffWeekendParAssocie?.[ini]?.has?.(num)) violations.push({ code: 'jourOffWE', ini, num })
+    if (vacancesParSemaine?.[num]?.includes?.(ini) || vacancesParSemaine?.[num + 1]?.includes?.(ini)) violations.push({ code: 'vacancesCollee', ini, num })
+  }
+  return violations
+}
+
+// ── RÉA (proposerRea → { num: ini }) ──
+// Règle DURE : jamais la réa pour un associé en congé cette semaine (poste exclusif).
+export function invariantsRea(reaParSemaine = {}, { vacancesParSemaine = {} } = {}) {
+  const violations = []
+  for (const [numStr, ini] of Object.entries(reaParSemaine)) {
+    if (!ASSOCIES.includes(ini)) continue
+    const num = Number(numStr)
+    if (vacancesParSemaine?.[num]?.includes?.(ini)) violations.push({ code: 'reaEnVacances', ini, num })
+  }
+  return violations
+}
+
+// ── VACANCES (proposerVacances → { num: [inis] }) ──
+// Règles DURES : jamais un congé collé à un week-end de garde du même associé (S ou S-1) ; jamais un
+// associé ayant REFUSÉ cette semaine ; capacité (postes ouverts) respectée ; pas de doublon par semaine.
+// `capacite(num)` = nombre de postes ouverts (optionnel ; ignoré si non fourni).
+export function invariantsVacances(vacancesParSemaine = {}, { weekendAff = {}, refusParAssocie = {}, capacite = null } = {}) {
+  const violations = []
+  for (const [numStr, inis] of Object.entries(vacancesParSemaine)) {
+    const num = Number(numStr)
+    const liste = (inis ?? []).filter(i => ASSOCIES.includes(i))
+    if (new Set(liste).size !== liste.length) violations.push({ code: 'doublon', num })
+    if (typeof capacite === 'function' && liste.length > capacite(num)) violations.push({ code: 'capaciteDepassee', num, n: liste.length, cap: capacite(num) })
+    for (const ini of liste) {
+      if (weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini) violations.push({ code: 'congeColleGarde', ini, num })
+      if (refusParAssocie?.[ini]?.has?.(num)) violations.push({ code: 'refusPlace', ini, num })
+    }
+  }
+  return violations
+}
