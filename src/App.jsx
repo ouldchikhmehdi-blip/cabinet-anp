@@ -28,7 +28,7 @@ import PlanningAffiche from './pages/PlanningAffiche'
 import './index.css'
 
 export default function App() {
-  const { session, profile, aal, nextAal, loading, recovery } = useAuth()
+  const { session, profile, aal, nextAal, loading, recovery, siegesPrets } = useAuth()
   // Onglet initial : lu depuis l'URL (?page=...) pour permettre l'ouverture
   // d'un onglet précis dans une nouvelle fenêtre (clic du milieu dans la sidebar).
   const [page, setPage] = useState(() => {
@@ -137,6 +137,24 @@ export default function App() {
         >
           Se déconnecter
         </button>
+      </div>
+    )
+  }
+
+  // Liste des associés (initiales) pas encore appliquée à ASSOCIES : attendre avant
+  // d'afficher tout écran qui s'en sert (planning, comptes) — cf. AuthContext.siegesPrets.
+  if (!siegesPrets) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--color-bg)',
+        color: 'var(--color-text-secondary)',
+        fontSize: 14,
+      }}>
+        Chargement…
       </div>
     )
   }

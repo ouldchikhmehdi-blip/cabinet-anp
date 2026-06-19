@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
-import { ASSOCIES } from '../data/associes'
+import { ASSOCIES, appliquerAssocies } from '../data/associes'
 
 /**
  * AdminUsers — gestion des comptes (visible uniquement par les admins).
@@ -16,6 +16,7 @@ export default function AdminUsers() {
   const { session, profile: moi } = useAuth()
   const [profiles,    setProfiles]    = useState([])
   const [invitations, setInvitations] = useState([])
+  const [sieges,      setSieges]      = useState(() => [...ASSOCIES])  // liste ordonnée des associés (initiales)
   const [charge,      setCharge]      = useState(true)
   const [erreur,      setErreur]      = useState(null)
   const [succes,      setSucces]      = useState(null)
@@ -40,12 +41,14 @@ export default function AdminUsers() {
     setCharge(true)
     setErreur(null)
     try {
-      const [{ data: p }, { data: i }] = await Promise.all([
+      const [{ data: p }, { data: i }, { data: s }] = await Promise.all([
         supabase.from('profiles').select('id, email, role, status, initiales, is_faiseur, nom_complet, created_at').order('created_at'),
         supabase.from('invitations').select('id, email, role, expires_at, used_at, created_at').order('created_at', { ascending: false }),
+        supabase.from('planning_associes').select('liste').eq('id', 1).maybeSingle(),
       ])
       setProfiles(p ?? [])
       setInvitations(i ?? [])
+      if (Array.isArray(s?.liste) && s.liste.length) setSieges(s.liste)
     } catch {
       setErreur('Impossible de charger les données.')
     } finally {
@@ -161,6 +164,34 @@ export default function AdminUsers() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
+      flash(data.message)
+      charger()
+    } catch (err) {
+      flash(err.message, true)
+    }
+  }
+
+  // ── Remplacer un associé (changer ses initiales pour le prochain planning) ──
+  async function remplacerAssocie(ancienne) {
+    const saisie = prompt(
+      `Remplacer l'associé « ${ancienne} » par de nouvelles initiales.\n\n` +
+      `Le PROCHAIN planning utilisera ces initiales (les plannings déjà archivés ` +
+      `ne sont pas modifiés). Saisir les nouvelles initiales :`,
+      ''
+    )
+    if (saisie == null) return
+    const nouvelle = saisie.trim().toUpperCase()
+    if (!nouvelle) return
+    if (!confirm(`Confirmer le remplacement « ${ancienne} » → « ${nouvelle} » ?`)) return
+    try {
+      const res = await fetch('/api/planning-remplacer-associe', {
+        method: 'POST', headers,
+        body: JSON.stringify({ ancienne, nouvelle }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      appliquerAssocies(data.liste)  // met à jour ASSOCIES en mémoire (écrans planning à venir)
+      setSieges(data.liste)
       flash(data.message)
       charger()
     } catch (err) {
@@ -378,7 +409,7 @@ export default function AdminUsers() {
                         style={{ ...s.input, padding: '4px 8px', fontSize: 12 }}
                       >
                         <option value="">—</option>
-                        {ASSOCIES.map(a => {
+                        {sieges.map(a => {
                           const prisAilleurs = profiles.some(x => x.id !== p.id && x.initiales === a)
                           return <option key={a} value={a} disabled={prisAilleurs}>{a}</option>
                         })}
@@ -446,6 +477,49 @@ export default function AdminUsers() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Sièges / associés (ordre des colonnes du planning) ── */}
+      <div style={s.section}>
+        <div style={s.titre}>Associés du planning ({sieges.length})</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 12, maxWidth: 720 }}>
+          Liste ordonnée des initiales (= ordre des colonnes du planning). Lors d'un départ
+          (retraite), <strong>remplacez</strong> l'initiale du partant par celle de l'arrivant :
+          le <strong>prochain</strong> planning utilisera la nouvelle initiale, à la même position.
+          Les plannings déjà archivés ne sont pas modifiés. Pensez ensuite à supprimer l'ancien
+          compte et à attribuer la nouvelle initiale au nouveau compte.
+        </div>
+        <div style={s.card}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={s.tr}>
+                <th style={s.th}>#</th>
+                <th style={s.th}>Initiales</th>
+                <th style={s.th}>Compte associé</th>
+                <th style={s.th}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sieges.map((ini, i) => {
+                const titulaire = profiles.find(p => p.initiales === ini)
+                return (
+                  <tr key={ini} style={s.tr}>
+                    <td style={{ ...s.td, color: 'var(--color-text-tertiary)' }}>{i + 1}</td>
+                    <td style={{ ...s.td, fontWeight: 600 }}>{ini}</td>
+                    <td style={{ ...s.td, color: titulaire ? 'var(--color-text)' : 'var(--color-text-tertiary)' }}>
+                      {titulaire ? `${titulaire.nom_complet || titulaire.email}${titulaire.status !== 'active' ? ' (désactivé)' : ''}` : 'Non attribué'}
+                    </td>
+                    <td style={s.td}>
+                      <button style={s.boutonSec} onClick={() => remplacerAssocie(ini)}>
+                        Remplacer
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* ── Invitations en attente ── */}

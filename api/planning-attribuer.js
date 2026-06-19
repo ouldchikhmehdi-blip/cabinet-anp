@@ -1,6 +1,6 @@
 import { supabaseAdmin } from './_lib/supabaseAdmin.js'
 import { requireAdmin, sendError, setCorsHeaders } from './_lib/auth.js'
-import { ASSOCIES } from './_lib/associes.js'
+import { chargerAssocies } from './_lib/associes.js'
 
 /**
  * POST /api/planning-attribuer
@@ -25,8 +25,11 @@ export default async function handler(req, res) {
   const { userId, initiales = null, isFaiseur = false, nomComplet } = body
 
   if (!userId) return sendError(res, 400, 'userId manquant.')
-  if (initiales !== null && !ASSOCIES.includes(initiales)) {
-    return sendError(res, 400, 'Initiales invalides.')
+  if (initiales !== null) {
+    const listeAssocies = await chargerAssocies(supabaseAdmin)
+    if (!listeAssocies.includes(initiales)) {
+      return sendError(res, 400, 'Initiales invalides.')
+    }
   }
   const faiseur = !!isFaiseur
   // Nom complet : mis à jour seulement s'il est fourni dans le body (sinon on ne le touche pas).

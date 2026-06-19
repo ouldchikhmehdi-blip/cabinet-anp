@@ -33,26 +33,24 @@ Le planning se construit en 3 phases dans l'année :
 
 #### Remplacer un associé / changer une initiale
 
-Les **initiales sont l'identifiant unique** d'un associé dans tout le planning (clés des données : week-ends, vacances, réa, colonnes « en semaine », objectifs, compteurs de référence, Noël/Toussaint). Il n'existe pas d'identifiant stable distinct. Changer une initiale est donc une opération rare et encadrée.
+Les **initiales sont l'identifiant unique** d'un associé dans tout le planning (clés des données : week-ends, vacances, réa, colonnes « en semaine », objectifs, compteurs de référence, Noël/Toussaint). Il n'existe pas d'identifiant stable distinct. Le remplacement se fait **depuis l'écran admin**, sans intervention de code ni redéploiement.
 
 **Principe** : le changement ne vaut **que pour le prochain planning**. On **ne migre pas** les données déjà saisies ; les plannings déjà produits sont figés dans les **archives Excel** (bucket `planning-archives`), indépendantes des initiales courantes. Faire le changement **entre deux cycles** (après archivage du cycle terminé), pas en cours de cycle.
 
-**Les 3 seuls points de couplage initiale ↔ code** (à éditer en cas de changement) :
+**Où vit la liste** : la liste ordonnée des associés (= ordre des colonnes) est stockée **en base**, table `planning_associes` (ligne unique `id=1`, colonne `liste` jsonb). Elle est chargée au démarrage de l'app par `src/utils/associesApi.js` → `chargerAssociesDepuisBase()`, qui mute **en place** `ASSOCIES` (`src/data/associes.js`). Le gate `siegesPrets` (`AuthContext` / `App.jsx`) garantit que la liste est appliquée **avant** l'affichage des écrans planning/comptes. Côté serveur, `api/_lib/associes.js` → `chargerAssocies()` lit la même table (repli sur la constante codée si la base est indisponible).
 
-1. `src/data/associes.js` — `ASSOCIES` (liste ordonnée, source de vérité ; pilote l'ordre des colonnes).
-2. `api/_lib/associes.js` — **copie serveur** de la même liste (le serveur ne peut pas importer `src/`). À garder strictement synchrone.
-3. `src/pages/PlanningAffiche.jsx` — `COULEUR_ASSOCIE` (couleur d'affichage par initiale). Sans entrée dédiée, une nouvelle initiale prend une couleur de repli neutre — l'app ne casse pas, mais ajouter sa couleur est recommandé.
+**Procédure (admin, dans « Gestion des comptes »)** :
+
+1. Section **« Associés du planning »** → bouton **« Remplacer »** sur l'initiale du partant → saisir les nouvelles initiales. Appelle `POST /api/planning-remplacer-associe` qui remplace l'initiale **à la même position** dans la liste (ordre des colonnes préservé) et fait suivre un éventuel compte qui la portait encore.
+2. **Supprimer définitivement** l'ancien compte (bouton « Supprimer ») → libère l'attribution.
+3. **Inviter** le nouvel associé, puis lui **attribuer la nouvelle initiale** (colonne « Initiales »).
+4. Démarrer le nouveau cycle : objectifs / compteurs de référence / desiderata se saisissent pour la nouvelle initiale. Le cycle précédent reste figé dans les archives Excel.
+
+**Couleur d'affichage** : `src/pages/PlanningAffiche.jsx` → `COULEUR_ASSOCIE` associe une couleur à chaque initiale (codée). Une initiale **non listée** prend une **couleur de repli neutre** (`COULEUR_DEFAUT`) — l'app ne casse jamais. Pour une couleur dédiée à la nouvelle initiale, l'ajouter dans cette map (seul point qui demande encore une petite édition de code, purement cosmétique et optionnelle).
 
 > Les occurrences d'initiales repérables dans `grilleSemaine.js` / `exportCalendrier.js` sont des **codes couleur ARGB** (`FF…`), pas des initiales : ne pas y toucher.
 
-**Procédure** :
-
-1. Remplacer l'ancienne initiale par la nouvelle **à la même position** dans `src/data/associes.js` **et** `api/_lib/associes.js` (l'ordre des colonnes est préservé).
-2. (Optionnel) Ajouter la couleur de la nouvelle initiale dans `COULEUR_ASSOCIE` (`PlanningAffiche.jsx`).
-3. Déployer (le build relit les fichiers).
-4. Dans **Gestion des comptes** : **Supprimer définitivement** l'ancien compte → libère son initiale (cf. AUTH / `api/delete-user.js`).
-5. Inviter le nouvel associé, puis lui **attribuer la nouvelle initiale** (flux existant `/api/planning-attribuer`).
-6. Démarrer le nouveau cycle : objectifs / compteurs de référence / desiderata se saisissent pour la nouvelle initiale. Le cycle précédent reste figé dans les archives Excel.
+**Pré-requis base** : exécuter une fois `supabase/planning_associes.sql` (table + RLS + valeur initiale) dans Supabase. Tant que ce n'est pas fait, l'app fonctionne sur la liste codée de repli (le remplacement échouera proprement, sans rien casser).
 
 ### 3. Structure de la semaine (rôles garde / astreinte)
 

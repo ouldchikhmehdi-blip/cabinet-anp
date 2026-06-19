@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { chargerAssociesDepuisBase } from '../utils/associesApi'
 
 /**
  * AuthContext — état global d'authentification.
@@ -12,6 +13,10 @@ import { supabase } from '../lib/supabase'
  *   loading  — true tant que l'état initial n'est pas connu
  *   recovery — true quand l'utilisateur revient d'un lien « mot de passe oublié »
  *              (doit afficher l'écran « nouveau mot de passe » avant tout routage AAL/2FA)
+ *   siegesPrets — true une fois la liste des associés (initiales) chargée depuis la base.
+ *              Sert à n'afficher le contenu authentifié (planning, comptes) qu'APRÈS
+ *              avoir appliqué la liste à ASSOCIES : ASSOCIES est muté en place et une
+ *              mutation ne re-rend pas React, donc on attend qu'elle soit faite.
  */
 
 // Détection synchrone du retour d'un lien de récupération (hash #type=recovery), AVANT le premier rendu :
@@ -28,6 +33,7 @@ export function AuthProvider({ children }) {
   const [aal,      setAal]      = useState(null)
   const [nextAal,  setNextAal]  = useState(null)
   const [recovery, setRecovery] = useState(hashIndiqueRecovery)
+  const [siegesPrets, setSiegesPrets] = useState(false)
 
   // Charge le profil depuis la table profiles
   async function fetchProfile(userId) {
@@ -77,10 +83,23 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Charge la liste des associés (initiales) une fois par utilisateur connecté,
+  // AVANT que les écrans planning/comptes ne s'affichent (cf. siegesPrets).
+  // Clé sur l'id utilisateur : ne se relance pas à chaque refresh de token.
+  useEffect(() => {
+    const uid = session?.user?.id
+    // Reset synchrone du gate à la déconnexion (pas de session) — intentionnel.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!uid) { setSiegesPrets(false); return }
+    let annule = false
+    chargerAssociesDepuisBase().finally(() => { if (!annule) setSiegesPrets(true) })
+    return () => { annule = true }
+  }, [session?.user?.id])
+
   const loading = session === undefined
 
   return (
-    <AuthContext.Provider value={{ session, profile, aal, nextAal, loading, recovery }}>
+    <AuthContext.Provider value={{ session, profile, aal, nextAal, loading, recovery, siegesPrets }}>
       {children}
     </AuthContext.Provider>
   )
