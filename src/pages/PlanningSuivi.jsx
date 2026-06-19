@@ -777,6 +777,21 @@ export default function PlanningSuivi() {
             <button type="button" onClick={() => window.print()} style={s.bouton}>
               Imprimer les desiderata des associés
             </button>
+            {!estEteSelection && (
+              <button
+                type="button"
+                onClick={() => {
+                  const url = `${window.location.pathname}?page=planning-affiche&recueil=${encodeURIComponent(recueil.id)}&annee=${annee}`
+                  const w = window.screen?.availWidth || 1280
+                  const h = window.screen?.availHeight || 800
+                  window.open(url, '_blank', `noopener,noreferrer,width=${w},height=${h}`)
+                }}
+                style={s.bouton}
+                title="Ouvre, dans un nouvel onglet plein écran, un calendrier mensuel des desiderata de tous les associés (déplaçable sur un 2ᵉ écran)."
+              >
+                🗓️ Afficher les desiderata (calendrier)
+              </button>
+            )}
             <button
               type="button"
               onClick={() => basculer(recueil)}

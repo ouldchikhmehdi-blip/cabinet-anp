@@ -24,6 +24,7 @@ import MonAgenda from './pages/MonAgenda'
 import PlanningSuivi from './pages/PlanningSuivi'
 import PlanningConstruction from './pages/PlanningConstruction'
 import PlanningParService from './pages/PlanningParService'
+import PlanningAffiche from './pages/PlanningAffiche'
 import './index.css'
 
 export default function App() {
@@ -138,6 +139,12 @@ export default function App() {
         </button>
       </div>
     )
+  }
+
+  // ── Vue PLEIN ÉCRAN (sans sidebar) — calendrier des desiderata, ouvert en nouvel onglet ──
+  // Page contextuelle ouverte depuis « Ouverture du planning » (pas une entrée de navigation).
+  if (page === 'planning-affiche') {
+    return profile?.is_faiseur ? <PlanningAffiche /> : <VueGlobale />
   }
 
   // ── Dashboard (AAL2 confirmé) ─────────────────────────────────────────────
