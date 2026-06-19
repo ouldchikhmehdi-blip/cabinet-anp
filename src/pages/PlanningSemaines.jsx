@@ -21,7 +21,7 @@ import { evenementsAgendaParAssocie } from '../utils/evenementsAgenda'
 import { sauverEvenementsTiers, supprimerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
-  proposerSemaines, ameliorerEspacementSemaines, affectationResolue, analyserSemaineColonnes,
+  proposerSemaines, optimiserSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame, reposJours,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
@@ -648,18 +648,18 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     })
   }
 
-  // 2e passage : recherche locale par échanges pour réduire les gardes rapprochées (équilibre préservé).
+  // 2e passage : recherche locale par échanges (score lexicographique desiderata ≫ équilibre ≫ espacement).
   function ameliorer() {
     if (!recueil || !data) return
     instantane()
     const { trameInfo, gardesInitiales, compteAnneeInitial, fixes, aVenInitial, gVenInitial, recupInitial } = monterEntreesMoteur(data)
-    const { affectations: ameliorees, avant, apres, avantVR, apresVR } = ameliorerEspacementSemaines({
+    const { affectations: ameliorees, souhaits, equilibre, espacement } = optimiserSemaines({
       semainesPlage: semaines, annee, calendrier, trameInfo, contexteAmont,
       desiderata: { colonnesSouhaiteesParAssocie, joursOffDetailParAssocie, veilleWEParSemaine },
       gardesInitiales, compteAnneeInitial, fixes, affectations: data.affectations ?? {},
       aVenInitial, gVenInitial, recupInitial, feriesOffsetsParSemaine,
     })
-    setEspacementInfo({ avant, apres, avantVR, apresVR })
+    setEspacementInfo({ souhaits, equilibre, espacement })
     setEnregistre(false); onStatut?.('modifie')
     setData(prev => {
       const aff = { ...(prev.affectations ?? {}) }
@@ -1067,9 +1067,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
           onClick={ameliorer}
           disabled={!pret || !recueil || !aDesAffectations}
           style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || !recueil || !aDesAffectations) ? 0.5 : 1 }}
-          title="2e passage : échange des colonnes pour réduire les gardes rapprochées, sans dégrader l'équilibre ni toucher aux cases verrouillées"
+          title="2e passage : échange des colonnes pour améliorer, dans l'ordre, les desiderata, l'équilibre des gardes, puis l'espacement — sans toucher aux cases verrouillées. Cliquable plusieurs fois."
         >
-          Améliorer l’espacement
+          Optimiser
         </button>
         <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
           Enregistrer
@@ -1115,11 +1115,12 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
         {enregistre && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>Enregistré ✓</span>}
         {validation?.etat === 'ok' && <span style={{ fontSize: 13, color: 'var(--color-success)', alignSelf: 'center' }}>{validation.message}</span>}
         {espacementInfo && (() => {
-          const ameliore = espacementInfo.apres < espacementInfo.avant || espacementInfo.apresVR < espacementInfo.avantVR
+          const { souhaits, equilibre, espacement } = espacementInfo
+          const ameliore = souhaits.apres < souhaits.avant || equilibre.apres < equilibre.avant || espacement.apres < espacement.avant
           return (
             <span style={{ fontSize: 13, alignSelf: 'center', color: ameliore ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
-              Gardes rapprochées : {espacementInfo.avant} → {espacementInfo.apres} · écart vendredi/récup : {espacementInfo.avantVR} → {espacementInfo.apresVR}
-              {!ameliore ? ' (rien à améliorer sans déséquilibrer)' : ''}
+              Souhaits non satisfaits : {souhaits.avant} → {souhaits.apres} · écart gardes : {equilibre.avant} → {equilibre.apres} · gardes rapprochées : {espacement.avant} → {espacement.apres}
+              {!ameliore ? ' (déjà optimal)' : ''}
             </span>
           )
         })()}

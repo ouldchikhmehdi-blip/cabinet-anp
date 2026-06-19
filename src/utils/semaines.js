@@ -456,14 +456,25 @@ export function proposerSemaines({
   return out
 }
 
-// ── Amélioration de l'ESPACEMENT des gardes (réduire les « gardes rapprochées ») ──
-// Recherche locale DÉTERMINISTE par échanges, à partir d'une proposition existante. « Équilibre d'abord » :
-// un échange n'est retenu que s'il réduit STRICTEMENT le nombre de gardes rapprochées SANS dégrader
-// l'équilibre annuel des gardes de semaine, ni créer de souhait de colonne non satisfait.
-//   Les colonnes spéciales (réa/vacances/avant-après-WE) et les colonnes VERROUILLÉES sont figées.
+// Comparaison lexicographique de deux clés de score (tableaux de même longueur) : a < b ?
+function lexInferieur(a, b) {
+  for (let i = 0; i < a.length; i++) { if (a[i] < b[i]) return true; if (a[i] > b[i]) return false }
+  return false
+}
+
+// ── OPTIMISEUR « En semaine » (recherche locale déterministe par échanges) ──
+// À partir d'une proposition existante, échange les occupants de colonnes (hors spéciales et hors
+// verrous) pour améliorer un SCORE LEXICOGRAPHIQUE, dans l'ordre de priorité :
+//   1) DESIDERATA : souhaits de colonne satisfaits + jours off couverts par le repos de la colonne ;
+//   2) ÉQUILIBRE  : écart max−min des gardes de semaine entre associés ;
+//   3) ESPACEMENT : gardes rapprochées + équilibres A/G vendredi + récup JF.
+// Un échange n'est retenu que si sa 1ʳᵉ composante non nulle est NÉGATIVE (amélioration stricte) →
+// les desiderata priment toujours, l'espacement ne se gagne jamais au prix d'un desideratum.
+// Règle DURE conservée : pas de vendredi-avant-vacances ; pas de doublon d'un associé dans une semaine.
+// Déterministe et IDEMPOTENT (sur un optimum local, renvoie l'état inchangé).
 // Mêmes entrées que proposerSemaines, plus `affectations` (état de départ). Renvoie
-//   { affectations:{<num>:{<col>:ini}}, avant:n, apres:n } (n = nb de couples (semaine, associé) rapprochés).
-export function ameliorerEspacementSemaines({
+//   { affectations, souhaits:{avant,apres}, equilibre:{avant,apres}, espacement:{avant,apres} }.
+export function optimiserSemaines({
   semainesPlage, annee, calendrier, trameInfo, contexteAmont, desiderata = {},
   gardesInitiales = {}, compteAnneeInitial = {}, fixes = {}, affectations = {},
   aVenInitial = {}, gVenInitial = {}, recupInitial = {}, feriesOffsetsParSemaine = {},
@@ -595,16 +606,17 @@ export function ameliorerEspacementSemaines({
     return false
   }
 
-  const avant = penaltyTotale()
-  const ecartVR = () => Math.max(ecartDe(compteAV), ecartDe(compteGV), ecartDe(compteRJ))
-  const avantVR = ecartVR()
+  // Totaux pour le score lexicographique et le rapport avant/après.
+  const souhaitsInsatTotal = () => { let n = 0; for (const c of cells) n += souhaitInsatCell(c.num, c.col, c.occ); return n }
+  const souhaitsAvant = souhaitsInsatTotal()
+  const equilibreAvant = ecartDe(compteAnnee)
+  const espacementAvant = penaltyTotale()
 
   // Règle DURE : un interdit (vacancier de la semaine suivante) ne peut pas occuper une colonne de service vendredi.
   const placementInterdit = (cell, occ) => (cell.av || cell.gv) && weekInfo[cell.num]?.interdits?.has(occ)
 
-  // ── Recherche locale : objectifs = gardes rapprochées + équilibres A/G vendredi + récup JF. Amélioration de
-  // Pareto (n'aggrave aucun objectif, en améliore ≥ 1), SANS dégrader l'équilibre des gardes de semaine ni les
-  // souhaits, et en respectant la règle dure du vendredi-avant-vacances. Déterministe. ──
+  // ── Recherche locale : steepest descent sur le score lexicographique (desiderata ≫ équilibre ≫
+  // espacement), en respectant la règle dure du vendredi-avant-vacances. Déterministe. ──
   const MAX_BALAYAGES = cells.length * 4 + 50
   for (let pass = 0; pass < MAX_BALAYAGES; pass++) {
     let meilleur = null // { A, B, gain, dRepos }
@@ -613,8 +625,8 @@ export function ameliorerEspacementSemaines({
         const A = cells[i], B = cells[j]
         const X = A.occ, Y = B.occ
         if (X === Y) continue
-        // Cellules inertes (aucune contribution) : un échange ne changerait aucun objectif.
-        if (!A.count && !A.av && !A.gv && !A.rj && !B.count && !B.av && !B.gv && !B.rj) continue
+        // (Pas de filtre « cellules inertes » : un échange sans garde peut quand même améliorer un
+        // desideratum — souhait de colonne ou couverture d'un jour off.)
         // Validité : pas de doublon d'un associé dans une semaine (sauf échange intra-semaine).
         if (A.num !== B.num && (occupeSemaine(X, B.num, B.id) || occupeSemaine(Y, A.num, A.id))) continue
         // Règle dure : l'échange ne doit pas créer un vendredi-avant-vacances interdit.
@@ -631,17 +643,18 @@ export function ameliorerEspacementSemaines({
         const reposAfter = reposCouvreCell(A.num, A.col, A.occ) + reposCouvreCell(B.num, B.col, B.occ)
         echanger(A, B) // revert
 
-        // Contraintes dures : ne pas dégrader l'équilibre des gardes de semaine ni les souhaits.
-        if ((eqA - eqB) > 0 || (souhaitAfter - souhaitBefore) > 0) continue
-        // Objectifs (à ne jamais aggraver) : gardes rapprochées, écarts A vendredi / G vendredi / récup JF.
-        const dP = pAfter - pBefore, dAV = avA - avB, dGV = gvA - gvB, dRJ = rjA - rjB
-        if (dP > 0 || dAV > 0 || dGV > 0 || dRJ > 0) continue
-        const gain = -(dP + dAV + dGV + dRJ) // amélioration totale (> 0 requis)
-        if (gain <= 0) continue
-        const dRepos = reposAfter - reposBefore
-        if (!meilleur || gain > meilleur.gain || (gain === meilleur.gain && dRepos > meilleur.dRepos)) {
-          meilleur = { A, B, gain, dRepos }
-        }
+        // Score LEXICOGRAPHIQUE (plus bas = meilleur). On accepte un échange seulement si sa 1ʳᵉ
+        // composante non nulle est NÉGATIVE → priorité stricte desiderata ≫ équilibre ≫ espacement.
+        //   1) desiderata : souhaits de colonne non satisfaits (−) + jours off couverts par le repos (+)
+        //   2) équilibre  : écart max−min des gardes de semaine
+        //   3) espacement : gardes rapprochées + écarts A/G vendredi + récup JF
+        const dDes = (souhaitAfter - souhaitBefore) - (reposAfter - reposBefore)
+        const dEqu = eqA - eqB
+        const dEsp = (pAfter - pBefore) + (avA - avB) + (gvA - gvB) + (rjA - rjB)
+        const cle = [dDes, dEqu, dEsp]
+        const ameliore = cle[0] < 0 || (cle[0] === 0 && cle[1] < 0) || (cle[0] === 0 && cle[1] === 0 && cle[2] < 0)
+        if (!ameliore) continue
+        if (!meilleur || lexInferieur(cle, meilleur.cle)) meilleur = { A, B, cle }
       }
     }
     if (!meilleur) break
@@ -650,7 +663,12 @@ export function ameliorerEspacementSemaines({
 
   // Réécriture des occupants modifiés dans aff (colonnes spéciales/verrouillées inchangées).
   for (const cell of cells) aff[cell.num][cell.col] = cell.occ
-  return { affectations: aff, avant, apres: penaltyTotale(), avantVR, apresVR: ecartVR() }
+  return {
+    affectations: aff,
+    souhaits: { avant: souhaitsAvant, apres: souhaitsInsatTotal() },
+    equilibre: { avant: equilibreAvant, apres: ecartDe(compteAnnee) },
+    espacement: { avant: espacementAvant, apres: penaltyTotale() },
+  }
 }
 
 // Analyse d'une semaine pour les alertes (calque analyserAffectation).

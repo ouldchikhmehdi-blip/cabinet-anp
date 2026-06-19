@@ -324,6 +324,13 @@ Puis, sur cette base :
      Constante `ESPACEMENT_GARDE_JOURS = 7` (`semaines.js`).
    - **Équilibre des gardes de semaine** : à peu près **égal par période** (règle molle) et **égal sur
      l'année entière** (règle dure, à terme) — compteurs « période / année » par associé.
+   - **Bouton « Optimiser » (2ᵉ passage).** Après « Proposer », une **recherche locale par échanges**
+     (`optimiserSemaines`, `semaines.js`) améliore l'affectation selon un **score lexicographique** :
+     **1) desiderata** (souhaits de colonne satisfaits + jours off couverts par le repos) **≫ 2) équilibre**
+     des gardes de semaine **≫ 3) espacement** (gardes rapprochées + A/G vendredi + récup JF). Un échange
+     n'est retenu que si sa 1ʳᵉ composante non nulle s'améliore → l'espacement ne se gagne jamais au prix
+     d'un desideratum. Colonnes spéciales et **verrouillées figées** ; règle dure vendredi-avant-vacances
+     respectée. **Déterministe et idempotent** (cliquable plusieurs fois, s'arrête à l'optimum local).
 
 Chaque étape est un point de contrôle validé avant de continuer.
 
