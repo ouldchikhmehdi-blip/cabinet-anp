@@ -76,6 +76,10 @@ describe('invariantsRea', () => {
     const v = invariantsRea({ 10: 'EH' }, { vacancesParSemaine: { 10: ['EH'] } })
     expect(v.some(x => x.code === 'reaEnVacances')).toBe(true)
   })
+  it('deux semaines de réa d’affilée → violation', () => {
+    const v = invariantsRea({ 10: 'EH', 11: 'EH' }, {})
+    expect(v.some(x => x.code === 'reaConsecutive')).toBe(true)
+  })
 })
 
 describe('invariantsVacances', () => {

@@ -14,7 +14,7 @@ import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
 import { weekendsGardeNoel, vacanciersParSemaineNoel } from '../utils/noel'
 import { JOURS } from '../utils/trames'
-import { proposerWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
+import { proposerWeekends, optimiserWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
 import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleEcart, cleEcartWeekend } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
@@ -53,6 +53,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
+  const [optimInfo, setOptimInfo] = useState(null) // retour du bouton « Optimiser »
 
   // Recueils (périodes) « normales » de l'année + profils.
   useEffect(() => {
@@ -432,6 +433,37 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     })
   }
 
+  // 2e passage : recherche locale (score lexicographique desiderata ≫ équilibre ≫ espacement) ;
+  // règles dures préservées (dispo, jamais collé aux vacances, plafond) + verrous. Noël figé (compté).
+  function optimiser() {
+    if (!recueil || !data) return
+    const debut = recueil.semaine_debut, fin = recueil.semaine_fin
+    const ver = new Set(data.verrous ?? [])
+    const affHorsPlage = { ...weekendsNoel }
+    for (const [num, ini] of Object.entries(data.affectations)) {
+      const n = Number(num)
+      if (n < debut || n > fin) affHorsPlage[n] = ini
+    }
+    const affPlage = {}
+    for (const w of weekends) {
+      if (weekendsNoel[w.num]) continue
+      if (data.affectations[w.num] != null) affPlage[w.num] = data.affectations[w.num]
+    }
+    const fixes = new Set(weekends.map(w => w.num).filter(n => ver.has(n) && affPlage[n] != null))
+    const { affectations: optimisee, desiderata, equilibre, espacement } = optimiserWeekends(weekends, affPlage, {
+      indispoParAssocie, joursOffWeekendParAssocie, vacancesParSemaine, objectifParAssocie: objectifGW,
+      affectationsHorsPlage: affHorsPlage, colonnesSouhaiteesParAssocie, vacancesSouhaiteesParAssocie,
+      pontFerieParAssocie, dejaFait: dejaFaitGW, fixes,
+    })
+    setOptimInfo({ desiderata, equilibre, espacement })
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const aff = { ...prev.affectations }
+      for (const w of weekends) { if (weekendsNoel[w.num]) continue; if (optimisee[w.num] != null) aff[w.num] = optimisee[w.num] }
+      return { ...prev, affectations: aff }
+    })
+  }
+
   async function enregistrer() {
     setErreur(null)
     try {
@@ -548,6 +580,20 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
         <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
           Proposer automatiquement
         </button>
+        <button
+          type="button"
+          onClick={optimiser}
+          disabled={!pret || !recueil}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || !recueil) ? 0.5 : 1 }}
+          title="Améliore la proposition actuelle (desiderata, puis équilibre, puis espacement) sans toucher aux verrous. Cliquable plusieurs fois — utile après avoir modifié les vacances."
+        >
+          Optimiser
+        </button>
+        {optimInfo && (
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>
+            Desiderata : {optimInfo.desiderata.avant} → {optimInfo.desiderata.apres} · écart week-ends : {optimInfo.equilibre.avant} → {optimInfo.equilibre.apres} · rapprochés : {optimInfo.espacement.avant} → {optimInfo.espacement.apres}
+          </span>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
             Enregistrer

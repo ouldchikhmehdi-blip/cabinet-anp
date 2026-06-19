@@ -7,6 +7,7 @@
 // `verrous` = week-ends FORCÉS à la main par le faiseur : « Proposer automatiquement » les préserve.
 // ============================================================
 import { ASSOCIES } from '../data/associes'
+import { optimiserAssignation } from './optimiserAssignation'
 
 export const VERSION_WE = 1
 
@@ -191,4 +192,56 @@ export function proposerWeekends(weekendsPlage, indispoParAssocie, objectifParAs
     compte[choisi] += 1
   }
   return resultat
+}
+
+// ── OPTIMISEUR week-ends (recherche locale, score lexicographique desiderata ≫ équilibre ≫ espacement) ──
+// Part de l'état courant `affPlage` ({ num: ini } de la plage) et l'améliore par réassignations/échanges,
+// en respectant les RÈGLES DURES (associé disponible, jamais collé à des vacances, plafond objectif) et les
+// verrous. Score : 1) desiderata = souhait de colonne contredit + souhait de vacances collé + pont férié
+// cassé ; 2) équilibre = écart max−min des week-ends ; 3) espacement = week-ends rapprochés (< ESPACEMENT_MIN).
+// Renvoie { affectations, desiderata:{avant,apres}, equilibre:{...}, espacement:{...} }.
+export function optimiserWeekends(weekendsPlage, affPlage, {
+  indispoParAssocie = {}, joursOffWeekendParAssocie = {}, vacancesParSemaine = {}, objectifParAssocie = {},
+  affectationsHorsPlage = {}, colonnesSouhaiteesParAssocie = {}, vacancesSouhaiteesParAssocie = {},
+  pontFerieParAssocie = {}, dejaFait = {}, fixes = new Set(),
+} = {}) {
+  const nums = weekendsPlage.map(w => w.num).sort((a, b) => a - b)
+  const horsCompte = {}; for (const ini of ASSOCIES) horsCompte[ini] = 0
+  for (const ini of Object.values(affectationsHorsPlage)) if (horsCompte[ini] != null) horsCompte[ini]++
+  const socle = {}; for (const ini of ASSOCIES) socle[ini] = dejaFait[ini] != null ? dejaFait[ini] : horsCompte[ini]
+
+  const countDe = (etat, ini) => { let n = socle[ini]; for (const num of nums) if (etat[num] === ini) n++; return n }
+  const eligible = (num, ini, etat) => {
+    if (indispoParAssocie?.[ini]?.has(num) || joursOffWeekendParAssocie?.[ini]?.has(num)) return false
+    if (vacancesParSemaine?.[num]?.includes(ini) || vacancesParSemaine?.[num + 1]?.includes(ini)) return false
+    if (objectifParAssocie[ini] != null && countDe(etat, ini) > objectifParAssocie[ini]) return false
+    return true
+  }
+  // Semaines de week-end d'un associé (hors-plage + plage courante) → espacement.
+  const semainesDeIni = (etat, ini) => {
+    const arr = []
+    for (const [num, v] of Object.entries(affectationsHorsPlage)) if (v === ini) arr.push(Number(num))
+    for (const num of nums) if (etat[num] === ini) arr.push(num)
+    return arr
+  }
+  const score = (etat) => {
+    let des = 0, esp = 0
+    const count = {}; for (const ini of ASSOCIES) count[ini] = socle[ini]
+    for (const num of nums) {
+      const ini = etat[num]; if (!ASSOCIES.includes(ini)) continue
+      count[ini]++
+      if (Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])) des++
+      if (vacancesSouhaiteesParAssocie?.[ini]?.has(num) || vacancesSouhaiteesParAssocie?.[ini]?.has(num + 1)) des++
+      if (pontFerieParAssocie?.[ini]?.has(num)) des++
+    }
+    for (const num of nums) {
+      const ini = etat[num]; if (!ASSOCIES.includes(ini)) continue
+      if (semainesDeIni(etat, ini).some(n => n !== num && Math.abs(n - num) < ESPACEMENT_MIN)) esp++
+    }
+    let mn = Infinity, mx = -Infinity
+    for (const ini of ASSOCIES) { if (count[ini] < mn) mn = count[ini]; if (count[ini] > mx) mx = count[ini] }
+    return [des, mx - mn, esp]
+  }
+  const { etat, avant, apres } = optimiserAssignation({ nums, etat0: affPlage, fixes, eligible, score })
+  return { affectations: etat, desiderata: { avant: avant[0], apres: apres[0] }, equilibre: { avant: avant[1], apres: apres[1] }, espacement: { avant: avant[2], apres: apres[2] } }
 }

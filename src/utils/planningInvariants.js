@@ -55,13 +55,15 @@ export function invariantsWeekends(affectations = {}, { indispoParAssocie = {}, 
 }
 
 // ── RÉA (proposerRea → { num: ini }) ──
-// Règle DURE : jamais la réa pour un associé en congé cette semaine (poste exclusif).
+// Règles DURES : jamais la réa pour un associé en congé cette semaine (poste exclusif) ; jamais deux
+// semaines de réa d'affilée pour le même associé.
 export function invariantsRea(reaParSemaine = {}, { vacancesParSemaine = {} } = {}) {
   const violations = []
   for (const [numStr, ini] of Object.entries(reaParSemaine)) {
     if (!ASSOCIES.includes(ini)) continue
     const num = Number(numStr)
     if (vacancesParSemaine?.[num]?.includes?.(ini)) violations.push({ code: 'reaEnVacances', ini, num })
+    if (reaParSemaine[num - 1] === ini) violations.push({ code: 'reaConsecutive', ini, num })
   }
   return violations
 }

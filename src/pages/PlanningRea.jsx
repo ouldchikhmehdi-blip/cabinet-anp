@@ -13,7 +13,7 @@ import { chargerRea, sauverRea } from '../utils/reaApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
-import { proposerRea, analyserRea } from '../utils/rea'
+import { proposerRea, optimiserRea, analyserRea } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
 import PanneauConflits from '../components/planning/PanneauConflits'
@@ -44,6 +44,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   const [erreur, setErreur] = useState(null)
   const [enregistre, setEnregistre] = useState(false)
   const [exportEnCours, setExportEnCours] = useState(false)
+  const [optimInfo, setOptimInfo] = useState(null) // retour du bouton « Optimiser »
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -256,6 +257,31 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     })
   }
 
+  // 2e passage : recherche locale (score lexicographique desiderata ≫ équilibre ≫ espacement) ;
+  // règles dures préservées (pas de vacancier, jamais deux semaines de réa d'affilée, plafond) + verrous.
+  function optimiser() {
+    if (!recueil || !data) return
+    const debut = recueil.semaine_debut, fin = recueil.semaine_fin
+    const ver = new Set(data.verrous ?? [])
+    const reaPlage = {}, reaHorsPlage = {}
+    for (const [num, ini] of Object.entries(data.rea)) {
+      const n = Number(num)
+      if (n < debut || n > fin) reaHorsPlage[n] = ini
+    }
+    for (const s of semaines) if (data.rea[s.num] != null) reaPlage[s.num] = data.rea[s.num]
+    const fixes = new Set(semaines.map(s => s.num).filter(n => ver.has(n) && reaPlage[n] != null))
+    const { rea: optimisee, desiderata, equilibre, espacement } = optimiserRea(semaines, reaPlage, {
+      joursOffParAssocie, weekendAff, objectifRea, reaHorsPlage, vacancesParSemaine, colonnesSouhaiteesParAssocie, dejaFait: dejaFaitRea, fixes,
+    })
+    setOptimInfo({ desiderata, equilibre, espacement })
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => {
+      const rea = { ...prev.rea }
+      for (const s of semaines) if (optimisee[s.num] != null) rea[s.num] = optimisee[s.num]
+      return { ...prev, rea }
+    })
+  }
+
   async function enregistrer() {
     setErreur(null)
     try {
@@ -367,6 +393,20 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
         <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
           Proposer automatiquement
         </button>
+        <button
+          type="button"
+          onClick={optimiser}
+          disabled={!pret || !recueil}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || !recueil) ? 0.5 : 1 }}
+          title="Améliore la proposition actuelle (desiderata, puis équilibre, puis espacement) sans toucher aux verrous. Cliquable plusieurs fois."
+        >
+          Optimiser
+        </button>
+        {optimInfo && (
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>
+            Desiderata : {optimInfo.desiderata.avant} → {optimInfo.desiderata.apres} · écart réa : {optimInfo.equilibre.avant} → {optimInfo.equilibre.apres} · réa collée garde : {optimInfo.espacement.avant} → {optimInfo.espacement.apres}
+          </span>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
             Enregistrer

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { proposerRea } from './rea'
+import { proposerRea, optimiserRea } from './rea'
 import { invariantsRea } from './planningInvariants'
 import { ASSOCIES } from '../data/associes'
 
@@ -32,5 +32,40 @@ describe('proposerRea — règles dures + comportement', () => {
     const weekendAff = { 10: 'MP', 9: 'MP' }
     const res = proposerRea(plage(10, 8), {}, weekendAff, {}, {}, {})
     expect(res[10]).not.toBe('MP')
+  })
+
+  it('RÈGLE DURE : jamais deux semaines de réa d’affilée pour le même associé', () => {
+    const res = proposerRea(plage(10, 12), {}, {}, {}, {}, {})
+    const nums = Object.keys(res).map(Number).sort((a, b) => a - b)
+    for (const n of nums) expect(res[n]).not.toBe(res[n - 1])
+    expect(invariantsRea(res, {})).toEqual([])
+  })
+
+  it('respecte le non-consécutif au bord (réa hors-plage en S9)', () => {
+    const res = proposerRea(plage(10, 6), {}, {}, {}, { 9: 'EH' }, {})
+    expect(res[10]).not.toBe('EH') // EH avait la réa en S9
+  })
+})
+
+describe('optimiserRea — sûreté et priorité', () => {
+  const semaines = plage(10, 8)
+  const ctx = {
+    joursOffParAssocie: {}, weekendAff: { 10: 'MP', 11: 'YC' },
+    vacancesParSemaine: { 12: ['EH'] }, reaHorsPlage: {},
+  }
+
+  it('idempotent et sans violation d’invariante', () => {
+    const base = proposerRea(semaines, ctx.joursOffParAssocie, ctx.weekendAff, {}, {}, ctx.vacancesParSemaine)
+    const o1 = optimiserRea(semaines, base, ctx)
+    const o2 = optimiserRea(semaines, o1.rea, ctx)
+    expect(o2.rea).toEqual(o1.rea)
+    expect(invariantsRea(o1.rea, { vacancesParSemaine: ctx.vacancesParSemaine })).toEqual([])
+  })
+
+  it('ne dégrade jamais les desiderata', () => {
+    const joursOffParAssocie = { EH: new Set([10]), MP: new Set([13]) }
+    const base = proposerRea(semaines, joursOffParAssocie, ctx.weekendAff, {}, {}, ctx.vacancesParSemaine)
+    const r = optimiserRea(semaines, base, { ...ctx, joursOffParAssocie })
+    expect(r.desiderata.apres).toBeLessThanOrEqual(r.desiderata.avant)
   })
 })

@@ -7,6 +7,7 @@
 // `verrous` = semaines de réa FORCÉES à la main : « Proposer automatiquement » les préserve.
 // ============================================================
 import { ASSOCIES } from '../data/associes'
+import { optimiserAssignation } from './optimiserAssignation'
 
 export const VERSION_REA = 1
 
@@ -74,10 +75,16 @@ export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, 
     const sansJourOff = (ini) => !joursOffParAssocie?.[ini]?.has(num)
     const sansGarde = (ini) => weekendAff?.[num] !== ini && weekendAff?.[num - 1] !== ini
     const veutColonne = (ini) => Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])
+    // RÈGLE DURE : jamais deux semaines de réa d'affilée pour le même associé. On exclut donc l'associé
+    // de la semaine précédente (résultat de la plage, ou socle hors-plage au bord gauche) et de la
+    // semaine suivante hors-plage (au bord droit ; en plage, num+1 est attribué plus tard et vérifiera num).
+    const precedent = resultat[num - 1] ?? reaHorsPlage[num - 1]
+    const suivantHors = reaHorsPlage[num + 1]
+    const sansConsecutif = (ini) => ini !== precedent && ini !== suivantHors
 
     // Vacances = poste exclusif → on n'attribue JAMAIS la réa à un associé en congé.
-    // Plafond DUR appliqué à chaque niveau (jamais relâché) ; pool capé vide → semaine laissée vide.
-    const base = ASSOCIES.filter(ini => sousPlafond(ini) && !vacancesParSemaine?.[num]?.includes(ini))
+    // Plafond DUR + non-consécutif appliqués à chaque niveau (jamais relâchés) ; pool vide → semaine vide.
+    const base = ASSOCIES.filter(ini => sousPlafond(ini) && sansConsecutif(ini) && !vacancesParSemaine?.[num]?.includes(ini))
     let candidats = base.filter(ini => sansJourOff(ini) && sansGarde(ini))
     if (candidats.length === 0) candidats = base.filter(sansGarde)   // relâche le jour off (garde le repos)
     if (candidats.length === 0) candidats = base                     // relâche aussi le repos (exception)
@@ -99,4 +106,45 @@ export function proposerRea(semainesPlage, joursOffParAssocie, weekendAff = {}, 
     compte[choisi] += 1
   }
   return resultat
+}
+
+// ── OPTIMISEUR réa (recherche locale, score lexicographique desiderata ≫ équilibre ≫ espacement) ──
+// Part de l'état courant `reaPlage` ({ num: ini } de la plage) et l'améliore par réassignations/échanges,
+// en respectant les RÈGLES DURES (pas de vacancier, pas deux semaines d'affilée, plafond objectif) et les
+// verrous. Score : 1) desiderata = jours off + souhaits de colonne contredits ; 2) équilibre = écart
+// max−min des semaines de réa ; 3) espacement = réa accolée à une garde de week-end (S ou S-1).
+// Renvoie { rea, desiderata:{avant,apres}, equilibre:{...}, espacement:{...} }.
+export function optimiserRea(semainesPlage, reaPlage, {
+  joursOffParAssocie = {}, weekendAff = {}, objectifRea = {}, reaHorsPlage = {},
+  vacancesParSemaine = {}, colonnesSouhaiteesParAssocie = {}, dejaFait = {}, fixes = new Set(),
+} = {}) {
+  const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
+  const horsCompte = {}; for (const ini of ASSOCIES) horsCompte[ini] = 0
+  for (const ini of Object.values(reaHorsPlage)) if (horsCompte[ini] != null) horsCompte[ini]++
+  const socle = {}; for (const ini of ASSOCIES) socle[ini] = dejaFait[ini] != null ? dejaFait[ini] : horsCompte[ini]
+
+  const countDe = (etat, ini) => { let n = socle[ini]; for (const num of nums) if (etat[num] === ini) n++; return n }
+  const eligible = (num, ini, etat) => {
+    if (vacancesParSemaine?.[num]?.includes(ini)) return false
+    if (objectifRea[ini] != null && countDe(etat, ini) > objectifRea[ini]) return false
+    const av = etat[num - 1] ?? reaHorsPlage[num - 1]
+    const ap = etat[num + 1] ?? reaHorsPlage[num + 1]
+    return ini !== av && ini !== ap // jamais deux semaines de réa d'affilée
+  }
+  const score = (etat) => {
+    let des = 0, esp = 0
+    const count = {}; for (const ini of ASSOCIES) count[ini] = socle[ini]
+    for (const num of nums) {
+      const ini = etat[num]; if (!ASSOCIES.includes(ini)) continue
+      count[ini]++
+      if (joursOffParAssocie?.[ini]?.has(num)) des++
+      if (Number.isInteger(colonnesSouhaiteesParAssocie?.[ini]?.[num])) des++
+      if (weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini) esp++
+    }
+    let mn = Infinity, mx = -Infinity
+    for (const ini of ASSOCIES) { if (count[ini] < mn) mn = count[ini]; if (count[ini] > mx) mx = count[ini] }
+    return [des, mx - mn, esp]
+  }
+  const { etat, avant, apres } = optimiserAssignation({ nums, etat0: reaPlage, fixes, eligible, score })
+  return { rea: etat, desiderata: { avant: avant[0], apres: apres[0] }, equilibre: { avant: avant[1], apres: apres[1] }, espacement: { avant: avant[2], apres: apres[2] } }
 }

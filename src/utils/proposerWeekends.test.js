@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { proposerWeekends } from './weekends'
+import { proposerWeekends, optimiserWeekends } from './weekends'
 import { invariantsWeekends } from './planningInvariants'
 import { ASSOCIES } from '../data/associes'
 
@@ -39,5 +39,29 @@ describe('proposerWeekends — règles dures + comportement', () => {
     // EH a déjà le week-end 9 (hors-plage) → il ne doit pas reprendre le 10 (espacement < 4).
     const res = proposerWeekends(plage(10, 4), {}, {}, { 9: 'EH' }, {}, {})
     expect(res[10]).not.toBe('EH')
+  })
+})
+
+describe('optimiserWeekends — sûreté et priorité', () => {
+  const weekends = plage(10, 8)
+
+  it('idempotent et sans violation d’invariante', () => {
+    const indispoParAssocie = { EH: new Set([10]) }
+    const vacancesParSemaine = { 12: ['MP'] }
+    const base = proposerWeekends(weekends, indispoParAssocie, {}, {}, vacancesParSemaine, {})
+    const o1 = optimiserWeekends(weekends, base, { indispoParAssocie, vacancesParSemaine })
+    const o2 = optimiserWeekends(weekends, o1.affectations, { indispoParAssocie, vacancesParSemaine })
+    expect(o2.affectations).toEqual(o1.affectations)
+    expect(invariantsWeekends(o1.affectations, { indispoParAssocie, vacancesParSemaine })).toEqual([])
+  })
+
+  it('ne dégrade jamais les desiderata et préserve un verrou', () => {
+    const colonnesSouhaiteesParAssocie = { EH: { 10: 2 }, MP: { 11: 3 } }
+    const base = proposerWeekends(weekends, {}, {}, {}, {}, {})
+    const fixes = new Set([10])
+    const verrouIni = base[10]
+    const r = optimiserWeekends(weekends, base, { colonnesSouhaiteesParAssocie, fixes })
+    expect(r.desiderata.apres).toBeLessThanOrEqual(r.desiderata.avant)
+    expect(r.affectations[10]).toBe(verrouIni) // le week-end verrouillé n'a pas bougé
   })
 })
