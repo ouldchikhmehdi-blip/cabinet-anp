@@ -195,6 +195,9 @@ Helper : `impactJourOffWE()` dans `src/utils/weekends.js`.
   - chaque semaine : au moins 1 associé en vacances ;
   - en vacances scolaires : presque toujours au moins 2 ;
   - l'été : davantage.
+- **« Proposer automatiquement » vs « Optimiser »** (étape Vacances).
+  - *Proposer* = génération depuis zéro (glouton **déterministe**, respecte les verrous) : un point de départ reproductible (reclic → même résultat).
+  - *Optimiser* = **recherche locale** (hill-climbing) sur l'état **courant** (proposition + ajustements manuels), sans tout régénérer. Tente remplacements / échanges / ajouts dans les postes libres pour réduire, **dans cet ordre d'importance** : (1) souhaits non réalisés, (2) déséquilibre entre associés, (3) congés rapprochés. Ne **touche jamais** aux verrous ni aux règles dures (refus, week-end de garde collé, capacité) et **ne diminue jamais** la couverture. **Idempotent** : cliquable plusieurs fois, s'arrête sur l'optimum local (« déjà optimal — rien à améliorer »). Helper `optimiserVacances` (`src/utils/vacances.js`).
 
 ### 9. Été (fonctionnement à part)
 

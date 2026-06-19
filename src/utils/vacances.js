@@ -161,6 +161,113 @@ export function proposerVacances(semainesPlage, souhaitParAssocie, refusParAssoc
   return resultat
 }
 
+// Optimisation par RECHERCHE LOCALE (hill-climbing déterministe) de l'affectation des congés sur la
+// plage : part de l'état COURANT et tente des remplacements / échanges / ajouts (jamais sur un verrou,
+// jamais une suppression) pour réduire un score LEXICOGRAPHIQUE. Priorités, du + au - important :
+//   1) souhaits de congé non réalisés   2) déséquilibre entre associés   3) congés rapprochés.
+// Règles DURES préservées : jamais un refus, jamais collé à un week-end de garde, capacité respectée,
+// couverture jamais diminuée (aucune suppression). Déterministe (aucun Math.random/Date.now) et
+// IDEMPOTENTE : sur un optimum local elle renvoie l'état inchangé.
+// Mêmes entrées que proposerVacances + `affectationPlage` = { num: [inis] } actuel (borné à la plage).
+// Renvoie { num: [inis] } pour la plage.
+export function optimiserVacances(semainesPlage, affectationPlage = {}, souhaitParAssocie = {}, refusParAssocie = {}, scolairesSet = new Set(), vacancesHorsPlage = {}, weekendAff = {}, placesParSemaine = {}, verrousParSemaine = {}, toussaintSet = new Set()) {
+  const nums = semainesPlage.map(s => s.num).sort((a, b) => a - b)
+  const cap = (num) => placesParSemaine?.[num] ?? (toussaintSet?.has(num) ? 3 : scolairesSet?.has(num) ? 2 : 1)
+  const refus = (num, ini) => !!refusParAssocie?.[ini]?.has(num)
+  const gardeCollee = (num, ini) => weekendAff?.[num] === ini || weekendAff?.[num - 1] === ini
+  const eligible = (num, ini) => !refus(num, ini) && !gardeCollee(num, ini)
+  const verrou = (num, ini) => (verrousParSemaine?.[num] ?? []).includes(ini)
+
+  // État de travail, borné à la plage (les congés hors-plage sont fixes).
+  const etat = {}
+  for (const num of nums) etat[num] = [...(affectationPlage?.[num] ?? [])].filter(Boolean)
+
+  // Contributions hors-plage (constantes) au comptage (équilibre) et aux semaines (espacement).
+  const horsCount = {}; const horsWeeks = {}
+  for (const ini of ASSOCIES) { horsCount[ini] = 0; horsWeeks[ini] = [] }
+  for (const [num, inis] of Object.entries(vacancesHorsPlage)) {
+    for (const ini of (inis ?? [])) if (horsCount[ini] != null) { horsCount[ini]++; horsWeeks[ini].push(Number(num)) }
+  }
+
+  // Score lexicographique (poids décroissants : souhaits ≫ équilibre ≫ rapprochés).
+  const score = () => {
+    const count = {}; const weeksPlage = {}
+    for (const ini of ASSOCIES) { count[ini] = horsCount[ini]; weeksPlage[ini] = [] }
+    for (const num of nums) for (const ini of etat[num]) { count[ini]++; weeksPlage[ini].push(num) }
+    // 1) souhaits non réalisés mais RÉALISABLES (éligibles) sur la plage.
+    let souhNon = 0
+    for (const num of nums) for (const ini of ASSOCIES) {
+      if (souhaitParAssocie?.[ini]?.has(num) && !etat[num].includes(ini) && eligible(num, ini)) souhNon++
+    }
+    // 2) déséquilibre = variance des compteurs par associé.
+    let total = 0; for (const ini of ASSOCIES) total += count[ini]
+    const moy = total / ASSOCIES.length
+    let varc = 0; for (const ini of ASSOCIES) { const d = count[ini] - moy; varc += d * d }
+    // 3) congés rapprochés (autre congé du même associé à < ESPACEMENT_VAC_MIN, hors-plage compris).
+    let rappr = 0
+    for (const num of nums) for (const ini of etat[num]) {
+      const proche = horsWeeks[ini].some(w => Math.abs(w - num) < ESPACEMENT_VAC_MIN)
+        || weeksPlage[ini].some(w => w !== num && Math.abs(w - num) < ESPACEMENT_VAC_MIN)
+      if (proche) rappr++
+    }
+    return souhNon * 1e6 + varc * 1e3 + rappr
+  }
+
+  const enleve = (num, ini) => { const a = etat[num]; const i = a.indexOf(ini); if (i >= 0) a.splice(i, 1) }
+  const ajoute = (num, ini) => { etat[num].push(ini) }
+
+  const MAX_IT = 500 // garde-fou : le score décroît STRICTEMENT à chaque pas, donc on converge avant.
+  for (let it = 0; it < MAX_IT; it++) {
+    let meilleurScore = score()
+    let meilleurMove = null
+    const evalueEtMemo = (move) => { const s = score(); if (s < meilleurScore - 1e-9) { meilleurScore = s; meilleurMove = move } }
+
+    // A) REMPLACER A (non verrouillé) par B éligible (coverage inchangée).
+    for (const num of nums) for (const A of [...etat[num]]) {
+      if (verrou(num, A)) continue
+      for (const B of ASSOCIES) {
+        if (B === A || etat[num].includes(B) || !eligible(num, B)) continue
+        enleve(num, A); ajoute(num, B)
+        evalueEtMemo({ type: 'rep', num, A, B })
+        enleve(num, B); ajoute(num, A)
+      }
+    }
+    // B) ÉCHANGER A@n1 ↔ B@n2 (deux non verrouillés ; coverage inchangée).
+    for (let i = 0; i < nums.length; i++) for (let j = i + 1; j < nums.length; j++) {
+      const n1 = nums[i], n2 = nums[j]
+      for (const A of [...etat[n1]]) {
+        if (verrou(n1, A)) continue
+        for (const B of [...etat[n2]]) {
+          if (verrou(n2, B) || B === A || etat[n2].includes(A) || etat[n1].includes(B)) continue
+          if (!eligible(n2, A) || !eligible(n1, B)) continue
+          enleve(n1, A); ajoute(n1, B); enleve(n2, B); ajoute(n2, A)
+          evalueEtMemo({ type: 'swap', n1, n2, A, B })
+          enleve(n1, B); ajoute(n1, A); enleve(n2, A); ajoute(n2, B)
+        }
+      }
+    }
+    // C) AJOUTER B dans un poste libre (jamais au-delà de la capacité ouverte → ne crée pas de poste).
+    for (const num of nums) {
+      if (etat[num].length >= cap(num)) continue
+      for (const B of ASSOCIES) {
+        if (etat[num].includes(B) || !eligible(num, B)) continue
+        ajoute(num, B)
+        evalueEtMemo({ type: 'add', num, B })
+        enleve(num, B)
+      }
+    }
+
+    if (!meilleurMove) break // optimum local atteint
+    const m = meilleurMove
+    if (m.type === 'rep') { enleve(m.num, m.A); ajoute(m.num, m.B) }
+    else if (m.type === 'swap') { enleve(m.n1, m.A); ajoute(m.n1, m.B); enleve(m.n2, m.B); ajoute(m.n2, m.A) }
+    else ajoute(m.num, m.B)
+  }
+
+  for (const num of nums) etat[num].sort((a, b) => ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b))
+  return etat
+}
+
 // Convertit les PRÉFÉRENCES de vacances scolaires en semaines ISO concrètes à injecter dans
 // `souhaitParAssocie` (sinon le souhait scolaire n'est jamais positionné — cf. PLANNING.md §8).
 //   blocs : { fevrier:[], paques:[], toussaint:[] } triés croissant (cf. blocsVacancesScolaires).

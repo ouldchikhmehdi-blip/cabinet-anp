@@ -11,7 +11,7 @@ import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint, sauverToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
-import { proposerVacances, analyserSemaine, semainesSouhaitScolaire } from '../utils/vacances'
+import { proposerVacances, optimiserVacances, analyserSemaine, semainesSouhaitScolaire } from '../utils/vacances'
 import { cleEcartVacances } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
@@ -45,6 +45,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   const [exportEnCours, setExportEnCours] = useState(false)
   const [voirNonRealises, setVoirNonRealises] = useState(false) // panneau souhaits de congé non réalisés
   const [ouvertToussaint, setOuvertToussaint] = useState(false) // panneau de collage Toussaint ouvert
+  const [messageOpt, setMessageOpt] = useState(null) // retour du bouton « Optimiser » (ex. « déjà optimal »)
 
   // Recueils « normaux » + profils.
   useEffect(() => {
@@ -342,7 +343,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
 
   function proposer() {
     if (!recueil) return
-    setEnregistre(false); onStatut?.('modifie')
+    setEnregistre(false); onStatut?.('modifie'); setMessageOpt(null)
     setData(prev => {
       const debut = recueil.semaine_debut, fin = recueil.semaine_fin
       const horsPlage = {}
@@ -352,6 +353,35 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
       }
       const proposees = proposerVacances(semaines, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, colonnesSouhaiteesParAssocie, prev.places ?? {}, prev.verrous ?? {}, toussaintSet, demandeParAssocie)
       return { ...prev, vacances: { ...horsPlage, ...proposees } }
+    })
+  }
+
+  // « Optimiser » : recherche locale sur l'état COURANT (sans tout régénérer). Réduit, par ordre
+  // d'importance, les souhaits non réalisés, le déséquilibre, puis les congés rapprochés — sans toucher
+  // aux verrous ni aux règles dures. Idempotent : reclic après l'optimum → « rien à améliorer ».
+  function optimiser() {
+    if (!recueil) return
+    const debut = recueil.semaine_debut, fin = recueil.semaine_fin
+    const horsPlage = {}, dansPlage = {}
+    for (const [num, inis] of Object.entries(vacances)) {
+      const n = Number(num)
+      if (n < debut || n > fin) horsPlage[n] = inis; else dansPlage[n] = inis
+    }
+    const optimisees = optimiserVacances(semaines, dansPlage, souhaitParAssocie, refusParAssocie, scolairesSet, horsPlage, weekendAff, places, verrous, toussaintSet)
+    const aChange = semaines.some(s => {
+      const av = (dansPlage[s.num] ?? []).slice().sort()
+      const ap = (optimisees[s.num] ?? []).slice().sort()
+      return av.length !== ap.length || av.some((x, i) => x !== ap[i])
+    })
+    if (!aChange) { setMessageOpt('Déjà optimal — rien à améliorer.'); return }
+    setEnregistre(false); onStatut?.('modifie'); setMessageOpt('Proposition améliorée ✓')
+    setData(prev => {
+      const v = { ...prev.vacances }
+      for (const s of semaines) {
+        const arr = optimisees[s.num] ?? []
+        if (arr.length) v[s.num] = arr; else delete v[s.num]
+      }
+      return { ...prev, vacances: v }
     })
   }
 
@@ -532,6 +562,18 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
         <button type="button" onClick={proposer} disabled={!pret || !recueil} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: (!pret || !recueil) ? 0.5 : 1 }}>
           Proposer automatiquement
         </button>
+        <button
+          type="button"
+          onClick={optimiser}
+          disabled={!pret || !recueil}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', opacity: (!pret || !recueil) ? 0.5 : 1 }}
+          title="Cherche à améliorer la proposition actuelle (souhaits, puis équilibre, puis congés rapprochés) sans toucher aux verrous. Cliquez plusieurs fois : ça s'arrête quand il n'y a plus de gain."
+        >
+          Optimiser
+        </button>
+        {messageOpt && (
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>{messageOpt}</span>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button type="button" onClick={enregistrer} disabled={!pret} style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, opacity: !pret ? 0.5 : 1 }}>
             Enregistrer
