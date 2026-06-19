@@ -397,6 +397,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       const nbVac = a?.vacanciers.length ?? 0
       const capVac = capaciteVacances(trameDe(num))
       if (nbVac > capVac) bloquants.push({ severite: 'amber', semaine: num, message: `S${num} — ${nbVac} associés en vacances mais la trame n'a que ${capVac} colonne(s) vacances : placez le(s) congé(s) en trop à la main ou choisissez une autre trame.` })
+      // Cas inverse : trame surdimensionnée (plus de colonnes vacances que de vacanciers) → une colonne
+      // vacances reste inutilisée et un associé finit non placé. On signale la trame inadaptée (l'auto choisit
+      // déjà la bonne ; ce cas vient surtout d'un choix manuel). Couverture min ≥ 1 vacancier/sem → pas de faux positif.
+      if (capVac > nbVac) bloquants.push({ severite: 'amber', semaine: num, message: `S${num} — trame « ${trameDe(num)?.nom ?? '?'} » : ${capVac} colonnes vacances pour ${nbVac} vacancier(s) — trame non adaptée (choisir une trame à ${nbVac} colonne(s) vacances).` })
       const enVac = new Set(contexteAmont.vacances[num] ?? [])
       const incoherents = new Set()
       if (enVac.has(contexteAmont.weekendAff[num])) incoherents.add(contexteAmont.weekendAff[num])

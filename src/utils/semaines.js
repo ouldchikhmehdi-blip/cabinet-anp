@@ -97,11 +97,21 @@ export function colonnesSpeciales(trame, num, { rea = {}, vacances = {}, weekend
   // (ex. week-end attribué à un vacancier). On ignore alors l'occupant dérivé → la colonne sera pourvue
   // par le moteur (colonnesAPourvoir) et l'incohérence amont est signalée par une alerte.
   const enVacances = new Set(vacances[num] ?? [])
-  const placerTravail = (col, ini) => { if (col != null && ini && !enVacances.has(ini)) map[col] = ini }
+  // Un associé n'occupe QU'UNE colonne : s'il cumule deux rôles spéciaux (ex. réa ET garde de week-end,
+  // ou deux week-ends consécutifs avant-WE = après-WE), on ne le place qu'une fois — la colonne de travail
+  // ainsi LIBÉRÉE reste vide ici et sera repourvue par le moteur (colonnesAPourvoir) pour un autre associé,
+  // au lieu d'être perdue (sinon un associé surnuméraire finit « non placé »). Priorité : réa > avant-WE > après-WE.
+  const dejaPlace = new Set()
+  const placerTravail = (col, ini) => {
+    if (col != null && ini && !enVacances.has(ini) && !dejaPlace.has(ini)) { map[col] = ini; dejaPlace.add(ini) }
+  }
   placerTravail(trame?.rea, rea[num])
   // Pairage vacancier ↔ colonne vacances : le i-ᵉ congé de la semaine va sur la i-ᵉ colonne vacances.
   if (Array.isArray(trame?.vacances) && vacances[num]?.length) {
-    trame.vacances.forEach((col, i) => { if (vacances[num][i] != null) map[col] = vacances[num][i] })
+    trame.vacances.forEach((col, i) => {
+      const ini = vacances[num][i]
+      if (ini != null && !dejaPlace.has(ini)) { map[col] = ini; dejaPlace.add(ini) }
+    })
   }
   placerTravail(trame?.avantWE, weekendAff[num])
   placerTravail(trame?.apresWE, weekendAff[num - 1])

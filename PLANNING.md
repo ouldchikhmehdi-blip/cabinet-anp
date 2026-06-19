@@ -295,6 +295,16 @@ Puis, sur cette base :
      les **jours off** via le **repos-levier** (placer sur une colonne dont le repos post-garde/astreinte
      tombe sur le jour off demandé), puis l'**équilibre des gardes** et l'**espacement**. Attribuer une
      colonne attribue d'emblée **sa garde/astreinte et son repos**. Modèle/algorithme : `src/utils/semaines.js`.
+   - **Un associé n'occupe qu'UNE colonne (anti-doublon).** Quand un associé cumule deux rôles spéciaux
+     (ex. **réa ET garde de week-end**, ou deux week-ends consécutifs où avant-WE = après-WE), il n'est
+     placé qu'une fois — **priorité réa > avant-WE > après-WE** ; la colonne de travail ainsi **libérée**
+     est repourvue par le moteur pour un autre associé (sinon elle serait perdue et un associé surnuméraire
+     finirait « non placé » à tort). `colonnesSpeciales` (`semaines.js`) dé-doublonne via `dejaPlace`.
+   - **Alerte « trame non adaptée ».** Si la trame de la semaine a **plus de colonnes vacances que de
+     vacanciers** (ex. trame à 2 colonnes vacances forcée alors qu'il n'y a qu'1 congé), une colonne vacances
+     reste inutilisée et un associé ne peut être placé : l'outil lève une alerte invitant à choisir une trame
+     à autant de colonnes vacances que de vacanciers. La sélection **automatique** choisit déjà la bonne
+     (1 colonne vacances ↔ 1 vacancier, 2 ↔ 2) ; le cas vient surtout d'un choix manuel.
    - **Veille de week-end indisponible (RÈGLE DURE).** Un associé qui a coché un week-end indisponible avec
      l'option « + vendredi » (`weekendsVeilleIndispo`) **ne peut pas** occuper, la semaine de ce week-end, une
      **colonne de service le vendredi** (garde **ou** astreinte) : l'outil lui réserve d'office une colonne
