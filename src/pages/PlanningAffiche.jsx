@@ -18,8 +18,8 @@ import TrameGrille from '../components/planning/TrameGrille'
 // Report à la bonne date : week-ends indispo (+ veille vendredi), jours off, souhaits de colonne
 // (lun→ven), vacances souhaitées / non souhaitées / scolaires. Chaque associé et chaque calque sont
 // activables/désactivables. Repères TOUJOURS affichés : jours fériés (couleur + libellé) et
-// surbrillance période scolaire. Panneaux à ouvrir au besoin : trame principale et résumé des
-// vacances scolaires (badge bleu). Lecture seule.
+// surbrillance période scolaire. Panneaux à ouvrir au besoin : chaque trame (semaine type) par son
+// nom — principale en tête (★) — et résumé des vacances scolaires (badge bleu). Lecture seule.
 // ============================================================
 
 const JOUR_MS = 24 * 60 * 60 * 1000
@@ -44,8 +44,8 @@ const CALQUES = [
   { id: 'joursOff', label: 'Jours off' },
   { id: 'colonnes', label: 'Souhaits de colonne' },
   { id: 'vacSouhait', label: 'Vacances souhaitées' },
-  { id: 'vacRefus', label: 'Vacances non souhaitées' },
   { id: 'vacScol', label: 'Vacances scolaires (souhaits)' },
+  { id: 'vacRefus', label: 'Vacances non souhaitées' },
 ]
 const CALQUES_TOUS = Object.fromEntries(CALQUES.map(c => [c.id, true]))
 const CALQUES_AUCUN = Object.fromEntries(CALQUES.map(c => [c.id, false]))
@@ -54,7 +54,7 @@ const CALQUES_AUCUN = Object.fromEntries(CALQUES.map(c => [c.id, false]))
 function glyphe(e) {
   switch (e.kind) {
     case 'we': return 'WE'
-    case 'veille': return 'ven'
+    case 'veille': return '∅ G/A'
     case 'off': return 'off'
     case 'col': return `C${e.col + 1}`
     case 'vacSouhait': return 'vac'
@@ -88,7 +88,8 @@ export default function PlanningAffiche() {
   const [recueil, setRecueil] = useState(null)
   const [desiderataParAssocie, setDesiderataParAssocie] = useState({})
   const [vacancesScolaires, setVacancesScolaires] = useState([])
-  const [tramePrincipale, setTramePrincipale] = useState(null)
+  const [trames, setTrames] = useState([])
+  const [principaleId, setPrincipaleId] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(null)
 
@@ -96,14 +97,14 @@ export default function PlanningAffiche() {
   const [moisIndex, setMoisIndex] = useState(0)
   const [associesVisibles, setAssociesVisibles] = useState(() => new Set(ASSOCIES))
   const [calques, setCalques] = useState(() => ({ ...CALQUES_TOUS }))
-  const [voirTrame, setVoirTrame] = useState(false)
+  const [trameVisibleId, setTrameVisibleId] = useState(null)
   const [voirRecapScolaire, setVoirRecapScolaire] = useState(false)
 
   // ── Chargement ──
   useEffect(() => {
     let annule = false
     Promise.all([listerRecueils(annee), chargerTousDesiderata(recueilId), chargerProfilsAvecInitiales(), chargerCalendrier(annee), chargerTrames(annee)])
-      .then(([recueils, desideratas, profils, calendrier, trames]) => {
+      .then(([recueils, desideratas, profils, calendrier, tramesData]) => {
         if (annule) return
         const r = recueils.find(x => x.id === recueilId) ?? null
         setRecueil(r)
@@ -116,7 +117,8 @@ export default function PlanningAffiche() {
         }
         setDesiderataParAssocie(map)
         setVacancesScolaires(calendrier?.vacancesScolaires ?? [])
-        setTramePrincipale(trames?.trames?.find(t => t.id === trames.principaleId) ?? null)
+        setTrames(tramesData?.trames ?? [])
+        setPrincipaleId(tramesData?.principaleId ?? null)
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les desiderata de cette période.') })
       .finally(() => { if (!annule) setChargement(false) })
@@ -223,8 +225,17 @@ export default function PlanningAffiche() {
   })
   const toggleCalque = (id) => setCalques(prev => ({ ...prev, [id]: !prev[id] }))
 
-  // Associé unique sélectionné → son texte libre (commentaire) au-dessus des calques.
+  // Associé unique sélectionné → son texte libre (commentaire) affiché à côté du titre.
   const seulAssocie = associesVisibles.size === 1 ? [...associesVisibles][0] : null
+
+  // Trames ouvrables dans le panneau : principale en tête, puis les autres ; chacune affichable d'un clic.
+  const tramesAffichees = useMemo(() => {
+    const p = trames.find(t => t.id === principaleId)
+    const autres = trames.filter(t => t.id !== principaleId)
+    return p ? [p, ...autres] : autres
+  }, [trames, principaleId])
+  const nomTrame = (t, i) => (t.nom?.trim() || `Trame ${i + 1}`)
+  const trameVisible = tramesAffichees.find(t => t.id === trameVisibleId) ?? null
 
   // ── Styles ──
   const s = {
@@ -246,12 +257,13 @@ export default function PlanningAffiche() {
       fontWeight: actif ? 600 : 400,
     }),
     libre: (ini) => ({
-      display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12, padding: '8px 12px',
+      display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 12px',
       borderRadius: 'var(--radius-md)', border: `1px solid ${coul(ini)}`,
-      background: coul(ini) + '14',
+      background: coul(ini) + '14', flex: '1 1 280px', minWidth: 0,
     }),
-    libreIni: (ini) => ({ fontSize: 13, fontWeight: 700, color: coul(ini) }),
-    libreTxt: { fontSize: 13, color: 'var(--color-text)' },
+    libreIni: (ini) => ({ fontSize: 13, fontWeight: 700, color: coul(ini), whiteSpace: 'nowrap' }),
+    // Une seule ligne (ellipsis) pour ne pas faire varier la hauteur de la barre ; texte complet en infobulle.
+    libreTxt: { fontSize: 13, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     libreVide: { fontSize: 12, color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
     controles: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 },
     groupe: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
@@ -314,9 +326,18 @@ export default function PlanningAffiche() {
     <div style={s.page}>
       <div style={s.barre}>
         <div>
-          <div style={s.titre}>🗓️ Desiderata — {recueil.nom}</div>
+          <div style={s.titre}>🗓️ Vue desiderata — {recueil.nom}</div>
           <div style={s.sousTitre}>{annee} · S{recueil.semaine_debut} → S{recueil.semaine_fin}</div>
         </div>
+        {/* Texte libre de l'associé seul sélectionné : à côté du titre, pour ne pas décaler les contrôles. */}
+        {seulAssocie && (
+          <div style={s.libre(seulAssocie)}>
+            <span style={s.libreIni(seulAssocie)}>{seulAssocie} — texte libre :</span>
+            {(desiderataParAssocie[seulAssocie]?.commentaire ?? '').trim()
+              ? <span style={s.libreTxt} title={desiderataParAssocie[seulAssocie].commentaire}>{desiderataParAssocie[seulAssocie].commentaire}</span>
+              : <span style={s.libreVide}>aucun commentaire</span>}
+          </div>
+        )}
       </div>
 
       {/* Navigation mensuelle : flèches ‹ › collées aux badges (saut direct à un mois) */}
@@ -329,16 +350,6 @@ export default function PlanningAffiche() {
           </span>
         ))}
       </div>
-
-      {/* Texte libre de l'associé quand il est seul sélectionné (présent sur tous les mois) */}
-      {seulAssocie && (
-        <div style={s.libre(seulAssocie)}>
-          <span style={s.libreIni(seulAssocie)}>{seulAssocie} — texte libre :</span>
-          {(desiderataParAssocie[seulAssocie]?.commentaire ?? '').trim()
-            ? <span style={s.libreTxt}>{desiderataParAssocie[seulAssocie].commentaire}</span>
-            : <span style={s.libreVide}>aucun commentaire</span>}
-        </div>
-      )}
 
       <div style={s.controles}>
         <div style={s.groupe}>
@@ -358,17 +369,26 @@ export default function PlanningAffiche() {
         </div>
         <div style={s.groupe}>
           <span style={s.legendeTitre}>Panneaux</span>
-          <span style={s.chip(voirTrame)} onClick={() => setVoirTrame(v => !v)} title="Afficher la trame principale (pour lire les souhaits de colonne)">Trame principale</span>
+          {tramesAffichees.map((t, i) => (
+            <span
+              key={t.id ?? i}
+              style={s.chip(trameVisibleId === t.id)}
+              onClick={() => setTrameVisibleId(id => (id === t.id ? null : t.id))}
+              title={t.id === principaleId ? 'Trame principale (semaine type)' : 'Afficher cette trame (semaine type)'}
+            >
+              {t.id === principaleId ? '★ ' : ''}{nomTrame(t, i)}
+            </span>
+          ))}
           <span style={s.chipBleu(voirRecapScolaire)} onClick={() => setVoirRecapScolaire(v => !v)} title="Résumé des souhaits de vacances scolaires de tous les associés">📚 Résumé vac. scolaires</span>
         </div>
       </div>
 
-      {voirTrame && (
+      {trameVisible && (
         <div style={s.panneau}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Trame principale</div>
-          {tramePrincipale
-            ? <TrameGrille colonnes={tramePrincipale.colonnes} roles={tramePrincipale} />
-            : <div style={s.sousTitre}>Aucune trame principale définie pour {annee}.</div>}
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            {trameVisible.id === principaleId ? '★ ' : ''}{trameVisible.nom?.trim() || 'Trame'}{trameVisible.id === principaleId ? ' (principale)' : ''}
+          </div>
+          <TrameGrille colonnes={trameVisible.colonnes} roles={trameVisible} />
         </div>
       )}
 
