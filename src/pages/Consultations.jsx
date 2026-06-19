@@ -222,7 +222,10 @@ export default function Consultations() {
           <LegendAnnees years={years} accent="#1D9E75" type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={dataBar}>
+          {/* key = sélection d'années : force Recharts à reconstruire ses séries dans l'ordre des
+              enfants (croissant) au lieu de garder l'ordre de montage (sinon une année ajoutée
+              s'empile à droite hors chronologie — bug d'ordre des barres groupées). */}
+          <BarChart key={years.join('-')} data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
             <XAxis dataKey="mois" tick={TICK} />
             <YAxis tick={TICK} />
@@ -434,7 +437,7 @@ export default function Consultations() {
               <LegendAnnees years={years} accent={aColor} type="bar" />
             </div>
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={aBar}>
+              <BarChart key={years.join('-')} data={aBar}>
                 <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
                 <XAxis dataKey="mois" tick={TICK} />
                 <YAxis tick={TICK} />

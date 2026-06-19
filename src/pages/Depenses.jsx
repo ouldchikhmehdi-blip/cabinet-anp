@@ -222,7 +222,7 @@ export default function Depenses() {
           <LegendAnnees years={years} accent={selected.couleur} type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={dataBar}>
+          <BarChart key={years.join('-')} data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />

@@ -111,7 +111,7 @@ export default function RemplacantsIADE() {
           <LegendAnnees years={years} type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={dataBar}>
+          <BarChart key={years.join('-')} data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
