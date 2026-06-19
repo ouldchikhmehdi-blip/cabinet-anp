@@ -146,6 +146,28 @@ export default function AdminUsers() {
     }
   }
 
+  // ── Supprimer définitivement ──────────────────────────────────────
+  async function supprimer(userId, email) {
+    if (!confirm(
+      `Supprimer DÉFINITIVEMENT le compte de ${email} ?\n\n` +
+      `Cette action est irréversible : le compte, ses invitations et son ` +
+      `éventuelle initiale d'associé seront libérés. Les plannings déjà ` +
+      `archivés ne sont pas affectés.`
+    )) return
+    try {
+      const res = await fetch('/api/delete-user', {
+        method: 'POST', headers,
+        body: JSON.stringify({ userId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      flash(data.message)
+      charger()
+    } catch (err) {
+      flash(err.message, true)
+    }
+  }
+
   // ── Styles ────────────────────────────────────────────────────────
   const s = {
     section: { marginBottom: 32 },
@@ -182,6 +204,16 @@ export default function AdminUsers() {
       border: '0.5px solid var(--color-danger)',
       background: 'transparent',
       color: 'var(--color-danger)',
+      cursor: 'pointer',
+      whiteSpace: 'nowrap',
+    },
+    boutonDangerFort: {
+      fontSize: 12,
+      padding: '3px 10px',
+      borderRadius: 6,
+      border: '0.5px solid var(--color-danger)',
+      background: 'var(--color-danger)',
+      color: '#fff',
       cursor: 'pointer',
       whiteSpace: 'nowrap',
     },
@@ -383,19 +415,26 @@ export default function AdminUsers() {
                     </td>
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{fmtDate(p.created_at)}</td>
                     <td style={s.td}>
-                      {p.id !== moi?.id && p.status === 'active' && (
+                      {p.id !== moi?.id && (
                         <div style={{ display: 'flex', gap: 6 }}>
-                          {p.role === 'user' ? (
-                            <button style={s.boutonSec} onClick={() => changerRole(p.id, 'admin')}>
-                              Promouvoir admin
-                            </button>
-                          ) : (
-                            <button style={s.boutonSec} onClick={() => changerRole(p.id, 'user')}>
-                              Rétrograder
-                            </button>
+                          {p.status === 'active' && (
+                            <>
+                              {p.role === 'user' ? (
+                                <button style={s.boutonSec} onClick={() => changerRole(p.id, 'admin')}>
+                                  Promouvoir admin
+                                </button>
+                              ) : (
+                                <button style={s.boutonSec} onClick={() => changerRole(p.id, 'user')}>
+                                  Rétrograder
+                                </button>
+                              )}
+                              <button style={s.boutonDanger} onClick={() => revoquer(p.id, p.email)}>
+                                Révoquer
+                              </button>
+                            </>
                           )}
-                          <button style={s.boutonDanger} onClick={() => revoquer(p.id, p.email)}>
-                            Révoquer
+                          <button style={s.boutonDangerFort} onClick={() => supprimer(p.id, p.email)}>
+                            Supprimer
                           </button>
                         </div>
                       )}
