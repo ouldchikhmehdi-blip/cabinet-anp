@@ -53,23 +53,27 @@ export default async function handler(req, res) {
   const nouvelleListe = liste.slice()
   nouvelleListe[idx] = nouv
 
-  // 1. Mettre à jour la liste de référence (singleton id=1)
+  // Ordre important (deux écritures sans transaction) : on fait suivre le compte
+  // AVANT de toucher la liste, et de façon BLOQUANTE, pour ne jamais laisser la liste
+  // et profiles.initiales désynchronisés. En cas d'échec ici, la liste n'est pas modifiée ;
+  // un nouvel essai converge (le compte porte déjà la nouvelle initiale → no-op).
+  // 1. Faire suivre un éventuel compte portant encore l'ancienne initiale (correction de saisie).
+  const { error: profErr } = await supabaseAdmin
+    .from('profiles')
+    .update({ initiales: nouv })
+    .eq('initiales', anc)
+  if (profErr) {
+    console.error('Erreur update profil porteur:', profErr)
+    return sendError(res, 500, 'Erreur lors de la mise à jour du compte associé. Aucune modification appliquée.')
+  }
+
+  // 2. Mettre à jour la liste de référence (singleton id=1)
   const { error: upErr } = await supabaseAdmin
     .from('planning_associes')
     .upsert({ id: 1, liste: nouvelleListe, updated_by: appelant.id }, { onConflict: 'id' })
   if (upErr) {
     console.error('Erreur upsert planning_associes:', upErr)
     return sendError(res, 500, 'Erreur lors de la mise à jour de la liste des associés.')
-  }
-
-  // 2. Si un compte porte encore l'ancienne initiale (correction de saisie), la faire suivre.
-  const { error: profErr } = await supabaseAdmin
-    .from('profiles')
-    .update({ initiales: nouv })
-    .eq('initiales', anc)
-  if (profErr) {
-    // Non bloquant : la liste est déjà à jour. On signale dans les logs.
-    console.warn('Mise à jour profil porteur partielle:', profErr)
   }
 
   return res.status(200).json({
