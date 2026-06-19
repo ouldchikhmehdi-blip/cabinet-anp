@@ -3,13 +3,13 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { DEPENSES, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
+import { DEPENSES, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 
 // Légende des années comparées pour le détail d'une catégorie (accent = couleur de la catégorie).
 function LegendAnnees({ years, accent, type }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      {years.map((y, rang) => (
+      {ordreAffichage(years).map(({ y, rang }) => (
         <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
           {type === 'line'
             ? <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, accent)}` }} />
@@ -227,7 +227,7 @@ export default function Depenses() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-            {years.map((y, rang) => (
+            {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={y} dataKey={y} fill={couleurAnnee(rang, selected.couleur)} radius={[3,3,0,0]} />
             ))}
           </BarChart>
@@ -247,7 +247,7 @@ export default function Depenses() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-            {years.map((y, rang) => (
+            {ordreAffichage(years).map(({ y, rang }) => (
               <Line
                 key={y}
                 type="monotone"

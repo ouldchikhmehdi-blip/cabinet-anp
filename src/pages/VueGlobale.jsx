@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CA, CHARGES, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, RETRO_FIXE, RETRO_VARIABLE, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
+import { CA, CHARGES, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, RETRO_FIXE, RETRO_VARIABLE, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 
 function LegendAnnees({ years, accent }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      {years.map((y, rang) => (
+      {ordreAffichage(years).map(({ y, rang }) => (
         <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, accent)}` }} />
           {y}
@@ -56,7 +56,7 @@ export default function VueGlobale() {
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
-  const renderLignes = (accent) => years.map((y, rang) => (
+  const renderLignes = (accent) => ordreAffichage(years).map(({ y, rang }) => (
     <Line
       key={y}
       type="monotone"

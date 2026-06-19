@@ -250,3 +250,14 @@ export const diffColor = (a, b, invert = false) => {
 const NUANCES_ANNEES = ['#3B82C4', '#C2476B', '#E8912A'] // bleu · framboise · ambre
 export const couleurAnnee = (rang, accent) =>
   rang === 0 ? accent : NUANCES_ANNEES[Math.min(rang - 1, NUANCES_ANNEES.length - 1)]
+
+// Ordre d'AFFICHAGE chronologique des séries d'années (la plus ANCIENNE à gauche → la plus RÉCENTE
+// à droite), pour les barres, courbes et légendes. On conserve le RANG DE RÉCENCE (rang 0 = la plus
+// récente) afin que les couleurs (couleurAnnee) et styles restent attachés à l'année, pas à sa
+// position : la plus récente garde la couleur d'accent, même affichée à droite. `years` reste trié
+// décroissant par ailleurs (years[0] = année principale des KPIs) — on ne touche pas à son ordre.
+// Usage : ordreAffichage(years).map(({ y, rang }) => …)
+export const ordreAffichage = (years) => {
+  const parRecence = [...years].sort((a, b) => b - a) // index 0 = année la plus récente
+  return [...years].sort((a, b) => a - b).map(y => ({ y, rang: parRecence.indexOf(y) }))
+}

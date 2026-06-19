@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { CA, MOIS_COURT, MOIS_LONG, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
+import { CA, MOIS_COURT, MOIS_LONG, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 
 const ACCENT = '#534AB7'
 
@@ -11,7 +11,7 @@ const ACCENT = '#534AB7'
 function LegendAnnees({ years }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      {years.map((y, rang) => (
+      {ordreAffichage(years).map(({ y, rang }) => (
         <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, ACCENT)}` }} />
           {y}
@@ -73,7 +73,7 @@ export default function ChiffreAffaires() {
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
-  const renderLignes = () => years.map((y, rang) => (
+  const renderLignes = () => ordreAffichage(years).map(({ y, rang }) => (
     <Line
       key={y}
       type="monotone"

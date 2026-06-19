@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { SOLDES, ENTREES, SORTIES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
+import { SOLDES, ENTREES, SORTIES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 
 const ACCENT = '#534AB7'
 
 function LegendAnnees({ years }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      {years.map((y, rang) => (
+      {ordreAffichage(years).map(({ y, rang }) => (
         <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
           <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `2px ${rang === 0 ? 'solid' : 'dashed'} ${couleurAnnee(rang, ACCENT)}` }} />
           {y}
@@ -120,7 +120,7 @@ export default function Tresorerie() {
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-            {years.map((y, rang) => (
+            {ordreAffichage(years).map(({ y, rang }) => (
               <Line
                 key={y}
                 type="monotone"

@@ -5,7 +5,7 @@ import KpiCard from '../components/KpiCard'
 import ImportConsultations from '../components/ImportConsultations'
 import GestionPraticiens from '../components/GestionPraticiens'
 import { getConsultData } from '../data/consultations'
-import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee, periodeParDefaut } from '../data/mockData'
+import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -34,7 +34,7 @@ const specMensuel = (sp, year) => {
 function LegendAnnees({ years, accent, type }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      {years.map((y, rang) => (
+      {ordreAffichage(years).map(({ y, rang }) => (
         <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
           {type === 'line'
             ? (
@@ -227,7 +227,7 @@ export default function Consultations() {
             <XAxis dataKey="mois" tick={TICK} />
             <YAxis tick={TICK} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-            {years.map((y, rang) => (
+            {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={y} dataKey={y} fill={couleurAnnee(rang, '#1D9E75')} radius={[3,3,0,0]} />
             ))}
           </BarChart>
@@ -247,7 +247,7 @@ export default function Consultations() {
             <XAxis dataKey="mois" tick={TICK} />
             <YAxis tick={TICK} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-            {years.map((y, rang) => (
+            {ordreAffichage(years).map(({ y, rang }) => (
               <Line
                 key={y}
                 type="monotone"
@@ -439,7 +439,7 @@ export default function Consultations() {
                 <XAxis dataKey="mois" tick={TICK} />
                 <YAxis tick={TICK} />
                 <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-                {years.map((y, rang) => (
+                {ordreAffichage(years).map(({ y, rang }) => (
                   <Bar key={y} dataKey={y} fill={couleurAnnee(rang, aColor)} radius={[3,3,0,0]} />
                 ))}
               </BarChart>
@@ -459,7 +459,7 @@ export default function Consultations() {
                 <XAxis dataKey="mois" tick={TICK} />
                 <YAxis tick={TICK} />
                 <Tooltip contentStyle={tooltipStyle} formatter={v => `${fmtNb(v)} consult.`} />
-                {years.map((y, rang) => (
+                {ordreAffichage(years).map(({ y, rang }) => (
                   <Line
                     key={y}
                     type="monotone"
