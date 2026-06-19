@@ -28,8 +28,8 @@ export default function VueGlobale() {
   const a = Math.max(moisDe, moisA)
   const masque = getMasqueMontants()
 
-  const primary = years[0]
-  const ref = years[1]
+  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
+  const ref = years.at(-2)
   const caDe = (y) => (CA[y] || []).slice(de, a + 1)
   const chDe = (y) => (CHARGES[y] || []).slice(de, a + 1)
 

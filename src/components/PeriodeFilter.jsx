@@ -5,14 +5,15 @@ export default function PeriodeFilter({
   shortcut, setShortcut,
   availableYears = [2024, 2023, 2022]
 }) {
-  // Sélection de 2 à 4 années à comparer ; `years` est conservé trié décroissant
-  // (years[0] = année principale, la plus récente). Min 2, max 4.
+  // Sélection de 2 à 4 années à comparer ; `years` est conservé trié CROISSANT
+  // (la plus ancienne d'abord, la plus récente en dernier → ordre chronologique des
+  // colonnes/courbes). L'année principale des KPIs = la dernière (years.at(-1)). Min 2, max 4.
   const toggleYear = (y) => {
     const on = years.includes(y)
     if (on) {
-      if (years.length > 2) setYears(years.filter(x => x !== y).sort((a, b) => b - a))
+      if (years.length > 2) setYears(years.filter(x => x !== y).sort((a, b) => a - b))
     } else if (years.length < 4) {
-      setYears([...years, y].sort((a, b) => b - a))
+      setYears([...years, y].sort((a, b) => a - b))
     }
   }
   const mois = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']

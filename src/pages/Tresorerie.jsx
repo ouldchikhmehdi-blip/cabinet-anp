@@ -32,8 +32,8 @@ export default function Tresorerie() {
   const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const primary = years[0]
-  const ref = years[1]
+  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
+  const ref = years.at(-2)
   const soldeDe = (y) => (SOLDES[y] || []).slice(de, a + 1)
   const entDe = (y) => (ENTREES[y] || []).slice(de, a + 1)
   const sorDe = (y) => (SORTIES[y] || []).slice(de, a + 1)

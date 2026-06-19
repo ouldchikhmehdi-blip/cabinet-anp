@@ -33,8 +33,8 @@ export default function Retrocessions() {
   const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const primary = years[0]
-  const ref = years[1]
+  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
+  const ref = years.at(-2)
   const fixeDe = (y) => (RETRO_FIXE[y] || []).slice(de, a + 1)
   const varDe = (y) => (RETRO_VARIABLE[y] || []).slice(de, a + 1)
   const totalSerie = (y) => fixeDe(y).map((v, i) => v + (varDe(y)[i] ?? 0))

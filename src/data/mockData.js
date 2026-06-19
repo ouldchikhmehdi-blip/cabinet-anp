@@ -217,9 +217,11 @@ export const MOIS_ACTUEL = 8
 export function periodeParDefaut(availableYears = []) {
   const moisA = Math.max(0, new Date().getMonth() - 1) // mois actuel − 1 (clampé à janvier)
   const an = new Date().getFullYear()
-  const tri = [...new Set(availableYears)].sort((a, b) => b - a)
-  const voulu = [an, an - 1].filter(y => tri.includes(y))
-  const years = voulu.length === 2 ? voulu : tri.slice(0, 2)
+  const tri = [...new Set(availableYears)].sort((a, b) => b - a) // décroissant : pour piocher les 2 plus récentes
+  const recentes = [an, an - 1].filter(y => tri.includes(y))
+  const choisies = recentes.length === 2 ? recentes : tri.slice(0, 2)
+  // `years` est renvoyé trié CROISSANT (ordre chronologique d'affichage) ; la plus récente = years.at(-1).
+  const years = [...choisies].sort((a, b) => a - b)
   // Raccourci correspondant à « janvier → moisA » s'il en existe un, sinon « personnalisé ».
   const shortcut = moisA === 11 ? 'annee' : moisA === 5 ? 's1' : moisA === 2 ? 't1' : 'custom'
   return { moisDe: 0, moisA, years, shortcut }
@@ -254,8 +256,9 @@ export const couleurAnnee = (rang, accent) =>
 // Ordre d'AFFICHAGE chronologique des séries d'années (la plus ANCIENNE à gauche → la plus RÉCENTE
 // à droite), pour les barres, courbes et légendes. On conserve le RANG DE RÉCENCE (rang 0 = la plus
 // récente) afin que les couleurs (couleurAnnee) et styles restent attachés à l'année, pas à sa
-// position : la plus récente garde la couleur d'accent, même affichée à droite. `years` reste trié
-// décroissant par ailleurs (years[0] = année principale des KPIs) — on ne touche pas à son ordre.
+// position : la plus récente garde la couleur d'accent, même affichée à droite.
+// `years` est déjà trié croissant (cf. periodeParDefaut / PeriodeFilter) ; ce helper sécurise l'ordre
+// et fournit en plus le rang de récence pour la couleur.
 // Usage : ordreAffichage(years).map(({ y, rang }) => …)
 export const ordreAffichage = (years) => {
   const parRecence = [...years].sort((a, b) => b - a) // index 0 = année la plus récente

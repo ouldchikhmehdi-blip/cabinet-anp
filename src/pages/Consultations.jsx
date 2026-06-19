@@ -87,8 +87,8 @@ export default function Consultations() {
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
   const labels = MOIS_COURT.slice(de, a + 1)
 
-  const primary = years[0]
-  const ref = years[1]
+  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
+  const ref = years.at(-2)
 
   // ── Niveau global (toutes consultations) ──
   const consultDe = (y) => (CONSULTATIONS[y] || []).slice(de, a + 1)
