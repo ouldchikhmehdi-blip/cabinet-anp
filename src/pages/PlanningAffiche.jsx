@@ -1,24 +1,29 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  lundiDeSemaineISO, formatISO, moisAnneeFR,
+  numeroSemaineISO, lundiDeSemaineISO, formatISO, moisAnneeFR,
   blocsVacancesScolaires, joursFeriesFR,
 } from '../utils/calendrier'
 import { ASSOCIES } from '../data/associes'
 import { normaliser } from '../utils/desiderata'
 import { listerRecueils, chargerTousDesiderata, chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 import { chargerCalendrier } from '../utils/calendrierApi'
+import { chargerTrames } from '../utils/tramesApi'
+import RecapVacancesScolaires from '../components/planning/RecapVacancesScolaires'
+import TrameGrille from '../components/planning/TrameGrille'
 
 // ============================================================
 // PlanningAffiche — vue calendrier mensuelle DYNAMIQUE des desiderata de tous les associés
 // (PLANNING.md « Ouverture du planning »). Ouverte en NOUVEL ONGLET plein écran (sans sidebar)
 // depuis PlanningSuivi, pour les tiers 1 et 3 (pas l'été). Params URL : ?recueil=<id>&annee=<n>.
 // Report à la bonne date : week-ends indispo (+ veille vendredi), jours off, souhaits de colonne
-// (lun→ven), préférences de vacances scolaires + vacances souhaitées/refusées. Chaque associé et
-// chaque calque sont activables/désactivables d'un clic.
+// (lun→ven), vacances souhaitées / non souhaitées / scolaires. Chaque associé et chaque calque sont
+// activables/désactivables. Repères : jours fériés (couleur + libellé), surbrillance période scolaire,
+// trame principale et résumé des vacances scolaires (panneaux à ouvrir au besoin). Lecture seule.
 // ============================================================
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 const JOURS_ENTETE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+const BLEU_SCOLAIRE = '#E3EEF9' // teinte « vacances scolaires » (cohérente avec le bleu des sélecteurs)
 
 // Couleur par associé (8) — distinctes, lisibles en thème CLAIR comme SOMBRE.
 const COULEUR_ASSOCIE = {
@@ -26,13 +31,17 @@ const COULEUR_ASSOCIE = {
   BA: '#8B5CF6', FF: '#0E9AA5', YC: '#D8593A', MOC: '#6B7BD6',
 }
 
-// Calques affichables (chacun activable). L'ordre fixe l'affichage de la barre de contrôle.
+// Calques de desiderata (chacun activable). L'ordre fixe l'affichage de la barre de contrôle.
 const CALQUES = [
   { id: 'weekends', label: 'Week-ends indispo' },
   { id: 'joursOff', label: 'Jours off' },
   { id: 'colonnes', label: 'Souhaits de colonne' },
-  { id: 'vacances', label: 'Vacances scolaires + souhaitées' },
+  { id: 'vacSouhait', label: 'Vacances souhaitées' },
+  { id: 'vacRefus', label: 'Vacances non souhaitées' },
+  { id: 'vacScol', label: 'Vacances scolaires (souhaits)' },
 ]
+const CALQUES_TOUS = Object.fromEntries(CALQUES.map(c => [c.id, true]))
+const CALQUES_AUCUN = Object.fromEntries(CALQUES.map(c => [c.id, false]))
 
 // Libellé court de la catégorie d'une entrée (affiché à côté des initiales).
 function glyphe(e) {
@@ -61,6 +70,9 @@ function titreEntree(e) {
   }
 }
 
+// Libellé court d'un jour férié (« Lundi de Pentecôte » → « Pentecôte »).
+const ferieCourt = (nom) => (nom ?? '').replace(/^Lundi de /, '')
+
 export default function PlanningAffiche() {
   const params = new URLSearchParams(window.location.search)
   const recueilId = params.get('recueil')
@@ -69,19 +81,23 @@ export default function PlanningAffiche() {
   const [recueil, setRecueil] = useState(null)
   const [desiderataParAssocie, setDesiderataParAssocie] = useState({})
   const [vacancesScolaires, setVacancesScolaires] = useState([])
+  const [tramePrincipale, setTramePrincipale] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(null)
 
   // Contrôles dynamiques.
   const [moisIndex, setMoisIndex] = useState(0)
   const [associesVisibles, setAssociesVisibles] = useState(() => new Set(ASSOCIES))
-  const [calques, setCalques] = useState({ weekends: true, joursOff: true, colonnes: true, vacances: true })
+  const [calques, setCalques] = useState(() => ({ ...CALQUES_TOUS }))
+  const [reperes, setReperes] = useState({ feries: true, periodeScolaire: true })
+  const [voirTrame, setVoirTrame] = useState(false)
+  const [voirRecapScolaire, setVoirRecapScolaire] = useState(false)
 
   // ── Chargement ──
   useEffect(() => {
     let annule = false
-    Promise.all([listerRecueils(annee), chargerTousDesiderata(recueilId), chargerProfilsAvecInitiales(), chargerCalendrier(annee)])
-      .then(([recueils, desideratas, profils, calendrier]) => {
+    Promise.all([listerRecueils(annee), chargerTousDesiderata(recueilId), chargerProfilsAvecInitiales(), chargerCalendrier(annee), chargerTrames(annee)])
+      .then(([recueils, desideratas, profils, calendrier, trames]) => {
         if (annule) return
         const r = recueils.find(x => x.id === recueilId) ?? null
         setRecueil(r)
@@ -94,11 +110,14 @@ export default function PlanningAffiche() {
         }
         setDesiderataParAssocie(map)
         setVacancesScolaires(calendrier?.vacancesScolaires ?? [])
+        setTramePrincipale(trames?.trames?.find(t => t.id === trames.principaleId) ?? null)
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les desiderata de cette période.') })
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
   }, [recueilId, annee])
+
+  const scolairesSet = useMemo(() => new Set(vacancesScolaires), [vacancesScolaires])
 
   // ── Report des desiderata à la bonne date : Map<iso, entrée[]> (toutes catégories, tous associés) ──
   const entreesParJour = useMemo(() => {
@@ -132,12 +151,12 @@ export default function PlanningAffiche() {
         const w = Number(sem)
         for (let off = 0; off <= 4; off++) ajouter(isoOffset(w, off), { ini, calque: 'colonnes', kind: 'col', col: Number(col) })
       }
-      // Vacances souhaitées / refusées (lun→dim de la semaine).
-      for (const w of (d.vacancesSouhaitees ?? [])) for (let off = 0; off <= 6; off++) ajouter(isoOffset(w, off), { ini, calque: 'vacances', kind: 'vacSouhait' })
-      for (const w of (d.vacancesRefusees ?? [])) for (let off = 0; off <= 6; off++) ajouter(isoOffset(w, off), { ini, calque: 'vacances', kind: 'vacRefus' })
+      // Vacances souhaitées / non souhaitées (lun→dim de la semaine) — calques distincts.
+      for (const w of (d.vacancesSouhaitees ?? [])) for (let off = 0; off <= 6; off++) ajouter(isoOffset(w, off), { ini, calque: 'vacSouhait', kind: 'vacSouhait' })
+      for (const w of (d.vacancesRefusees ?? [])) for (let off = 0; off <= 6; off++) ajouter(isoOffset(w, off), { ini, calque: 'vacRefus', kind: 'vacRefus' })
       // Préférence vacances scolaires (février / Pâques) + Toussaint (lun→ven).
       const ajoutScol = (periode, weeks) => {
-        for (const w of weeks) for (let off = 0; off <= 4; off++) ajouter(isoOffset(w, off), { ini, calque: 'vacances', kind: 'vacScol', periode })
+        for (const w of weeks) for (let off = 0; off <= 4; off++) ajouter(isoOffset(w, off), { ini, calque: 'vacScol', kind: 'vacScol', periode })
       }
       if (d.preferenceVacancesScolaires === 'fevrier') ajoutScol('fevrier', semainesPref(blocs.fevrier, d.prefVacancesSemaine))
       else if (d.preferenceVacancesScolaires === 'paques') ajoutScol('paques', semainesPref(blocs.paques, d.prefVacancesSemaine))
@@ -146,7 +165,7 @@ export default function PlanningAffiche() {
     return map
   }, [desiderataParAssocie, annee, vacancesScolaires])
 
-  // ── Mois couverts par la période (pour la navigation ‹ ›) ──
+  // ── Mois couverts par la période (pour la navigation ‹ › et les badges) ──
   const mois = useMemo(() => {
     if (!recueil) return []
     const debut = lundiDeSemaineISO(annee, recueil.semaine_debut)
@@ -197,11 +216,15 @@ export default function PlanningAffiche() {
     return s
   })
   const toggleCalque = (id) => setCalques(prev => ({ ...prev, [id]: !prev[id] }))
+  const toggleRepere = (id) => setReperes(prev => ({ ...prev, [id]: !prev[id] }))
+
+  // Associé unique sélectionné → son texte libre (commentaire) au-dessus des calques.
+  const seulAssocie = associesVisibles.size === 1 ? [...associesVisibles][0] : null
 
   // ── Styles ──
   const s = {
     page: { minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-text)', padding: '16px 20px 32px' },
-    barre: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 12 },
+    barre: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 10 },
     titre: { fontSize: 18, fontWeight: 700 },
     sousTitre: { fontSize: 12, color: 'var(--color-text-secondary)' },
     nav: { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' },
@@ -211,9 +234,29 @@ export default function PlanningAffiche() {
       opacity: actif ? 1 : 0.4,
     }),
     moisLabel: { fontSize: 15, fontWeight: 600, minWidth: 150, textAlign: 'center' },
-    controles: { display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-start' },
+    badges: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 },
+    badge: (actif) => ({
+      fontSize: 11, padding: '3px 10px', borderRadius: 999, cursor: 'pointer', userSelect: 'none',
+      border: `0.5px solid ${actif ? 'var(--color-text-tertiary)' : 'var(--color-border)'}`,
+      background: actif ? 'var(--color-text)' : 'var(--color-surface)',
+      color: actif ? 'var(--color-bg)' : 'var(--color-text-secondary)',
+      fontWeight: actif ? 600 : 400,
+    }),
+    libre: (ini) => ({
+      display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12, padding: '8px 12px',
+      borderRadius: 'var(--radius-md)', border: `1px solid ${COULEUR_ASSOCIE[ini]}`,
+      background: COULEUR_ASSOCIE[ini] + '14',
+    }),
+    libreIni: (ini) => ({ fontSize: 13, fontWeight: 700, color: COULEUR_ASSOCIE[ini] }),
+    libreTxt: { fontSize: 13, color: 'var(--color-text)' },
+    libreVide: { fontSize: 12, color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
+    controles: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 },
     groupe: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
-    legendeTitre: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 4, alignSelf: 'center' },
+    legendeTitre: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 4, alignSelf: 'center', minWidth: 64 },
+    mini: {
+      fontSize: 11, padding: '3px 9px', borderRadius: 999, cursor: 'pointer', userSelect: 'none',
+      border: '0.5px dashed var(--color-text-tertiary)', background: 'transparent', color: 'var(--color-text-secondary)',
+    },
     chipAssoc: (ini, actif) => ({
       display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', fontSize: 12, fontWeight: 600,
       borderRadius: 999, cursor: 'pointer', userSelect: 'none',
@@ -222,7 +265,7 @@ export default function PlanningAffiche() {
       color: actif ? COULEUR_ASSOCIE[ini] : 'var(--color-text-tertiary)',
       opacity: actif ? 1 : 0.5,
     }),
-    chipCalque: (actif) => ({
+    chip: (actif) => ({
       display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', fontSize: 12,
       borderRadius: 999, cursor: 'pointer', userSelect: 'none',
       border: '0.5px solid var(--color-border)',
@@ -230,14 +273,19 @@ export default function PlanningAffiche() {
       color: actif ? 'var(--color-bg)' : 'var(--color-text-tertiary)',
       opacity: actif ? 1 : 0.6,
     }),
+    panneau: {
+      background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)', padding: '12px 16px', marginBottom: 14, overflowX: 'auto',
+    },
     grille: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: 'var(--color-border)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' },
     entete: { background: 'var(--color-surface)', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', padding: '6px 0' },
-    cellule: (dansMois, weekend, ferie) => ({
-      background: !dansMois ? 'var(--color-bg)' : ferie ? 'var(--color-amber-light)' : weekend ? 'var(--color-bg)' : 'var(--color-surface)',
-      minHeight: 96, padding: '4px 5px', display: 'flex', flexDirection: 'column', gap: 3,
+    cellule: (dansMois, fond) => ({
+      background: fond, minHeight: 96, padding: '4px 5px', display: 'flex', flexDirection: 'column', gap: 3,
       opacity: dansMois ? 1 : 0.45,
     }),
-    numJour: (weekend) => ({ fontSize: 11, fontWeight: 600, color: weekend ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)', alignSelf: 'flex-end' }),
+    enteteJour: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' },
+    ferieTxt: { fontSize: 9, fontWeight: 700, color: 'var(--color-amber)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70%' },
+    numJour: (weekend) => ({ fontSize: 11, fontWeight: 600, color: weekend ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)' }),
     puce: (ini, refus) => ({
       display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', fontSize: 10.5, fontWeight: 600,
       borderRadius: 6, border: `0.5px solid ${COULEUR_ASSOCIE[ini]}`, background: COULEUR_ASSOCIE[ini] + '22',
@@ -265,32 +313,85 @@ export default function PlanningAffiche() {
         </div>
       </div>
 
+      {/* Badges : saut direct à un mois de la période */}
+      <div style={s.badges}>
+        {mois.map((mm, i) => (
+          <span key={`${mm.y}-${mm.m}`} style={s.badge(i === moisIndex)} onClick={() => setMoisIndex(i)}>
+            {moisAnneeFR(new Date(Date.UTC(mm.y, mm.m, 1)))}
+          </span>
+        ))}
+      </div>
+
+      {/* Texte libre de l'associé quand il est seul sélectionné (présent sur tous les mois) */}
+      {seulAssocie && (
+        <div style={s.libre(seulAssocie)}>
+          <span style={s.libreIni(seulAssocie)}>{seulAssocie} — texte libre :</span>
+          {(desiderataParAssocie[seulAssocie]?.commentaire ?? '').trim()
+            ? <span style={s.libreTxt}>{desiderataParAssocie[seulAssocie].commentaire}</span>
+            : <span style={s.libreVide}>aucun commentaire</span>}
+        </div>
+      )}
+
       <div style={s.controles}>
         <div style={s.groupe}>
           <span style={s.legendeTitre}>Associés</span>
           {ASSOCIES.map(ini => (
             <span key={ini} style={s.chipAssoc(ini, associesVisibles.has(ini))} onClick={() => toggleAssocie(ini)} title="Afficher / masquer cet associé">{ini}</span>
           ))}
+          <span style={s.mini} onClick={() => setAssociesVisibles(new Set(ASSOCIES))}>Tout afficher</span>
+          <span style={s.mini} onClick={() => setAssociesVisibles(new Set())}>Tout masquer</span>
         </div>
         <div style={s.groupe}>
           <span style={s.legendeTitre}>Calques</span>
           {CALQUES.map(c => (
-            <span key={c.id} style={s.chipCalque(calques[c.id])} onClick={() => toggleCalque(c.id)} title="Afficher / masquer ce type de desiderata">{c.label}</span>
+            <span key={c.id} style={s.chip(calques[c.id])} onClick={() => toggleCalque(c.id)} title="Afficher / masquer ce type de desiderata">{c.label}</span>
           ))}
+          <span style={s.mini} onClick={() => setCalques({ ...CALQUES_AUCUN })}>Tout masquer</span>
+        </div>
+        <div style={s.groupe}>
+          <span style={s.legendeTitre}>Repères</span>
+          <span style={s.chip(reperes.feries)} onClick={() => toggleRepere('feries')} title="Colorer les jours fériés et afficher leur nom">Jours fériés</span>
+          <span style={s.chip(reperes.periodeScolaire)} onClick={() => toggleRepere('periodeScolaire')} title="Surligner les semaines de vacances scolaires">Période scolaire</span>
+          <span style={s.chip(voirTrame)} onClick={() => setVoirTrame(v => !v)} title="Afficher la trame principale (pour lire les souhaits de colonne)">Trame principale</span>
+          <span style={s.chip(voirRecapScolaire)} onClick={() => setVoirRecapScolaire(v => !v)} title="Résumé des souhaits de vacances scolaires de tous les associés">Résumé vac. scolaires</span>
         </div>
       </div>
+
+      {voirTrame && (
+        <div style={s.panneau}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Trame principale</div>
+          {tramePrincipale
+            ? <TrameGrille colonnes={tramePrincipale.colonnes} roles={tramePrincipale} />
+            : <div style={s.sousTitre}>Aucune trame principale définie pour {annee}.</div>}
+        </div>
+      )}
+
+      {voirRecapScolaire && (
+        <div style={s.panneau}>
+          <RecapVacancesScolaires desiderataParAssocie={desiderataParAssocie} scolairesSet={scolairesSet} />
+        </div>
+      )}
 
       <div style={s.grille}>
         {JOURS_ENTETE.map((j, i) => <div key={`e${i}`} style={s.entete}>{j}</div>)}
         {semainesGrille.flatMap((ligne) => ligne.map(({ date, iso, dansMois }) => {
           const jourSem = date.getUTCDay()
           const weekend = jourSem === 0 || jourSem === 6
-          const ferie = feriesParIso.has(iso)
+          const ferie = reperes.feries && feriesParIso.has(iso)
+          const scolaire = reperes.periodeScolaire && scolairesSet.has(numeroSemaineISO(date))
+          // Priorité de fond : férié > scolaire > week-end/débordement > normal.
+          const fond = !dansMois ? 'var(--color-bg)'
+            : ferie ? 'var(--color-amber-light)'
+              : scolaire ? BLEU_SCOLAIRE
+                : weekend ? 'var(--color-bg)' : 'var(--color-surface)'
           const entrees = (entreesParJour.get(iso) ?? [])
             .filter(e => associesVisibles.has(e.ini) && calques[e.calque])
           return (
-            <div key={iso} style={s.cellule(dansMois, weekend, ferie)} title={ferie ? feriesParIso.get(iso) : undefined}>
-              <span style={s.numJour(weekend)}>{date.getUTCDate()}</span>
+            <div key={iso} style={s.cellule(dansMois, fond)} title={ferie ? feriesParIso.get(iso) : undefined}>
+              <div style={s.enteteJour}>
+                {dansMois && ferie ? <span style={s.ferieTxt}>{ferieCourt(feriesParIso.get(iso))}</span> : <span />}
+                <span style={s.numJour(weekend)}>{date.getUTCDate()}</span>
+              </div>
               {dansMois && entrees.map((e, k) => (
                 <span key={k} style={s.puce(e.ini, e.kind === 'vacRefus')} title={titreEntree(e)}>
                   {e.ini}<span style={s.glyphe}>{glyphe(e)}</span>
