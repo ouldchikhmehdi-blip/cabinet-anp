@@ -31,6 +31,29 @@ Le planning se construit en 3 phases dans l'année :
 - 8 anesthésistes, désignés par leurs initiales : **EH, MP, RC, FXD, BA, FF, YC, MOC**.
 - Un second groupe d'anesthésie travaille dans la même clinique. Les rôles sont complémentaires : quand notre groupe est de garde, l'autre est d'astreinte, et inversement. Le planning de l'autre groupe n'est pas modélisé.
 
+#### Remplacer un associé / changer une initiale
+
+Les **initiales sont l'identifiant unique** d'un associé dans tout le planning (clés des données : week-ends, vacances, réa, colonnes « en semaine », objectifs, compteurs de référence, Noël/Toussaint). Il n'existe pas d'identifiant stable distinct. Changer une initiale est donc une opération rare et encadrée.
+
+**Principe** : le changement ne vaut **que pour le prochain planning**. On **ne migre pas** les données déjà saisies ; les plannings déjà produits sont figés dans les **archives Excel** (bucket `planning-archives`), indépendantes des initiales courantes. Faire le changement **entre deux cycles** (après archivage du cycle terminé), pas en cours de cycle.
+
+**Les 3 seuls points de couplage initiale ↔ code** (à éditer en cas de changement) :
+
+1. `src/data/associes.js` — `ASSOCIES` (liste ordonnée, source de vérité ; pilote l'ordre des colonnes).
+2. `api/_lib/associes.js` — **copie serveur** de la même liste (le serveur ne peut pas importer `src/`). À garder strictement synchrone.
+3. `src/pages/PlanningAffiche.jsx` — `COULEUR_ASSOCIE` (couleur d'affichage par initiale). Sans entrée dédiée, une nouvelle initiale prend une couleur de repli neutre — l'app ne casse pas, mais ajouter sa couleur est recommandé.
+
+> Les occurrences d'initiales repérables dans `grilleSemaine.js` / `exportCalendrier.js` sont des **codes couleur ARGB** (`FF…`), pas des initiales : ne pas y toucher.
+
+**Procédure** :
+
+1. Remplacer l'ancienne initiale par la nouvelle **à la même position** dans `src/data/associes.js` **et** `api/_lib/associes.js` (l'ordre des colonnes est préservé).
+2. (Optionnel) Ajouter la couleur de la nouvelle initiale dans `COULEUR_ASSOCIE` (`PlanningAffiche.jsx`).
+3. Déployer (le build relit les fichiers).
+4. Dans **Gestion des comptes** : **Supprimer définitivement** l'ancien compte → libère son initiale (cf. AUTH / `api/delete-user.js`).
+5. Inviter le nouvel associé, puis lui **attribuer la nouvelle initiale** (flux existant `/api/planning-attribuer`).
+6. Démarrer le nouveau cycle : objectifs / compteurs de référence / desiderata se saisissent pour la nouvelle initiale. Le cycle précédent reste figé dans les archives Excel.
+
 ### 3. Structure de la semaine (rôles garde / astreinte)
 
 | Jour | Rôle de notre groupe | Type de règle |

@@ -26,10 +26,16 @@ const JOURS_ENTETE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const BLEU_SCOLAIRE = '#E3EEF9' // teinte « vacances scolaires » (cohérente avec le bleu des sélecteurs)
 
 // Couleur par associé (8) — distinctes, lisibles en thème CLAIR comme SOMBRE.
+// ⚠️ Clés = initiales : à mettre à jour lors d'un remplacement d'associé
+//    (cf. PLANNING.md « Remplacer un associé / changer une initiale »).
 const COULEUR_ASSOCIE = {
   EH: '#3B82C4', MP: '#1D9E75', RC: '#E8912A', FXD: '#C2476B',
   BA: '#8B5CF6', FF: '#0E9AA5', YC: '#D8593A', MOC: '#6B7BD6',
 }
+// Couleur de repli : une initiale sans entrée dédiée (ex. nouvel associé pas
+// encore ajouté ci-dessus) reste affichée correctement, jamais « undefined ».
+const COULEUR_DEFAUT = '#64748B'
+const coul = (ini) => COULEUR_ASSOCIE[ini] ?? COULEUR_DEFAUT
 
 // Calques de desiderata (chacun activable). L'ordre fixe l'affichage de la barre de contrôle.
 const CALQUES = [
@@ -244,10 +250,10 @@ export default function PlanningAffiche() {
     }),
     libre: (ini) => ({
       display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12, padding: '8px 12px',
-      borderRadius: 'var(--radius-md)', border: `1px solid ${COULEUR_ASSOCIE[ini]}`,
-      background: COULEUR_ASSOCIE[ini] + '14',
+      borderRadius: 'var(--radius-md)', border: `1px solid ${coul(ini)}`,
+      background: coul(ini) + '14',
     }),
-    libreIni: (ini) => ({ fontSize: 13, fontWeight: 700, color: COULEUR_ASSOCIE[ini] }),
+    libreIni: (ini) => ({ fontSize: 13, fontWeight: 700, color: coul(ini) }),
     libreTxt: { fontSize: 13, color: 'var(--color-text)' },
     libreVide: { fontSize: 12, color: 'var(--color-text-tertiary)', fontStyle: 'italic' },
     controles: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 },
@@ -260,9 +266,9 @@ export default function PlanningAffiche() {
     chipAssoc: (ini, actif) => ({
       display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', fontSize: 12, fontWeight: 600,
       borderRadius: 999, cursor: 'pointer', userSelect: 'none',
-      border: `1px solid ${COULEUR_ASSOCIE[ini]}`,
-      background: actif ? COULEUR_ASSOCIE[ini] + '22' : 'transparent',
-      color: actif ? COULEUR_ASSOCIE[ini] : 'var(--color-text-tertiary)',
+      border: `1px solid ${coul(ini)}`,
+      background: actif ? coul(ini) + '22' : 'transparent',
+      color: actif ? coul(ini) : 'var(--color-text-tertiary)',
       opacity: actif ? 1 : 0.5,
     }),
     chip: (actif) => ({
@@ -288,8 +294,8 @@ export default function PlanningAffiche() {
     numJour: (weekend) => ({ fontSize: 11, fontWeight: 600, color: weekend ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)' }),
     puce: (ini, refus) => ({
       display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', fontSize: 10.5, fontWeight: 600,
-      borderRadius: 6, border: `0.5px solid ${COULEUR_ASSOCIE[ini]}`, background: COULEUR_ASSOCIE[ini] + '22',
-      color: COULEUR_ASSOCIE[ini], lineHeight: 1.5, whiteSpace: 'nowrap',
+      borderRadius: 6, border: `0.5px solid ${coul(ini)}`, background: coul(ini) + '22',
+      color: coul(ini), lineHeight: 1.5, whiteSpace: 'nowrap',
       textDecoration: refus ? 'line-through' : 'none',
     }),
     glyphe: { fontSize: 9, fontWeight: 500, opacity: 0.85 },
