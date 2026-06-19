@@ -41,7 +41,8 @@ export function normaliserPosteCanonique(libelle) {
 //   affectationsLibres : { num: { colIndex: ini } }
 //   nomParIni          : { ini: 'Dr Nom' } (repli sur l'initiale si absent)
 //   feriesIso          : Set d'ISO de jours fériés (pour griser comme les week-ends)
-// Retour : { postes, lignes: [{ iso, dateLabel, estWeekend, estFerie, parPoste: { poste: 'txt' } }] }.
+// Retour : { postes, lignes: [{ iso, dateLabel, estWeekend, estFerie,
+//            parPoste: { poste: { texte, estRemplacant } } }] }. estRemplacant ⇒ affichage en rouge.
 export function construireTableParService({
   semainesPlage = [], annee, trameDe, contexteAmont = {}, affectationsLibres = {}, nomParIni = {}, feriesIso = new Set(),
 }) {
@@ -52,11 +53,11 @@ export function construireTableParService({
     if (!trame) continue
     const affR = affectationResolue(trame, sem.num, contexteAmont, affectationsLibres) // { col: ini }
     const cellules = {}
-    const placer = (jour, poste, nom) => {
+    const placer = (jour, poste, nom, estRemplacant = false) => {
       if (!poste || !nom) return
       const parPoste = (cellules[jour] ??= {})
-      const noms = (parPoste[poste] ??= [])
-      if (!noms.includes(nom)) noms.push(nom)
+      const items = (parPoste[poste] ??= [])
+      if (!items.some(it => it.nom === nom)) items.push({ nom, estRemplacant })
     }
     // Associés (colonnes résolues : libres + spéciales).
     for (const [colStr, ini] of Object.entries(affR)) {
@@ -66,13 +67,14 @@ export function construireTableParService({
       const nom = nomParIni[ini] || ini
       for (const jour of JOURS) placer(jour, normaliserPosteCanonique(col[jour]), nom)
     }
-    // Remplaçants externes (colonnes nommées par le faiseur).
+    // Remplaçants externes : on n'affiche PAS leur nom, on inscrit le mot « Remplaçant » (en rouge,
+    // côté UI/export) dans le poste couvert, quel que soit le remplaçant (1er, 2e…). On ne dépend donc
+    // pas du nom saisi → comble les trous quand un remplaçant couvre un poste sans avoir été nommé.
     for (const r of (trame.remplacants ?? [])) {
       if (r.col == null) continue
       const col = trame.colonnes?.[r.col]
-      const nom = (r.nom ?? '').trim()
-      if (!col || !nom) continue
-      for (const jour of JOURS) placer(jour, normaliserPosteCanonique(col[jour]), nom)
+      if (!col) continue
+      for (const jour of JOURS) placer(jour, normaliserPosteCanonique(col[jour]), 'Remplaçant', true)
     }
     parSemaine[sem.num] = cellules
   }
@@ -89,7 +91,14 @@ export function construireTableParService({
       if (!estWeekend) {
         const cell = parSemaine[sem.num]?.[JOURS[off]] ?? {}
         for (const poste of POSTES_SERVICE) {
-          if (cell[poste]?.length) parPoste[poste] = cell[poste].join(' / ')
+          const items = cell[poste]
+          if (items?.length) {
+            parPoste[poste] = {
+              texte: items.map(it => it.nom).join(' / '),
+              // Cellule en rouge si elle ne contient QUE du remplaçant (poste couvert par un externe).
+              estRemplacant: items.every(it => it.estRemplacant),
+            }
+          }
         }
       }
       lignes.push({ iso, dateLabel: formatDateLongueFR(date), estWeekend, estFerie: feriesIso.has(iso), parPoste })

@@ -186,7 +186,14 @@ export default function PlanningParService() {
                 return (
                   <tr key={lg.iso} style={{ background: grise ? 'var(--color-bg)' : 'transparent' }}>
                     <td style={{ ...s.td, color: grise ? 'var(--color-text-tertiary)' : 'var(--color-text)' }}>{lg.dateLabel}</td>
-                    {table.postes.map(p => <td key={p} style={s.td}>{lg.parPoste?.[p] ?? ''}</td>)}
+                    {table.postes.map(p => {
+                      const cell = lg.parPoste?.[p]
+                      return (
+                        <td key={p} style={{ ...s.td, ...(cell?.estRemplacant ? { color: 'var(--color-danger)', fontWeight: 600 } : null) }}>
+                          {cell?.texte ?? ''}
+                        </td>
+                      )
+                    })}
                   </tr>
                 )
               })}

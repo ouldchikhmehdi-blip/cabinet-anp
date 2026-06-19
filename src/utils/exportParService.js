@@ -49,13 +49,17 @@ export async function exporterParServiceExcel(annee, table, { plageDebut, plageF
 
   // Lignes jour par jour.
   for (const lg of (table?.lignes ?? [])) {
-    const row = ws.addRow([lg.dateLabel, ...postes.map(p => lg.parPoste?.[p] ?? '')])
+    const row = ws.addRow([lg.dateLabel, ...postes.map(p => lg.parPoste?.[p]?.texte ?? '')])
     const grise = lg.estWeekend || lg.estFerie
-    row.eachCell({ includeEmpty: true }, cell => {
-      cell.font = { name: 'Calibri', size: 11 }
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
       cell.alignment = centre
       cell.border = bordures()
       if (grise) cell.fill = solid(ARGB.weekend)
+      // Postes en colonnes 2…N : « Remplaçant » en rouge gras pour ressortir.
+      const poste = postes[col - 2]
+      cell.font = (poste && lg.parPoste?.[poste]?.estRemplacant)
+        ? { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFF0000' } }
+        : { name: 'Calibri', size: 11 }
     })
   }
 

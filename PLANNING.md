@@ -470,7 +470,9 @@ de tableau **par poste** — lignes = jours, colonnes = postes, cellule = le(s) 
   (`normaliserPosteCanonique`, sans accents/casse) : « SARM 1/2 » (le suffixe **VPA** est **toujours retiré**,
   quelle que soit la case) ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/
   « endoscopie » → Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Libellé non reconnu / « VPA » seul →
-  ignoré. Les **remplaçants** nommés des trames apparaissent avec leur nom.
+  ignoré. Les **colonnes remplaçant** des trames remplissent le poste qu'elles couvrent avec le mot
+  **« Remplaçant »** affiché **en rouge** (quel que soit le remplaçant, 1er ou 2e — son nom n'est pas
+  utilisé) : cela comble les postes externes qui resteraient vides sinon.
 - **Noms complets** : champ `nom_complet` par associé, saisi dans l'onglet **Comptes** (à côté des initiales ;
   colonne `profiles.nom_complet`, via `/api/planning-attribuer`). Repli sur l'initiale si non renseigné.
 - **Plage de semaines** sélectionnable (de S… à S…) + **export Excel** (jours × postes ; week-ends/fériés grisés).
