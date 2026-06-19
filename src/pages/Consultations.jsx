@@ -5,7 +5,7 @@ import KpiCard from '../components/KpiCard'
 import ImportConsultations from '../components/ImportConsultations'
 import GestionPraticiens from '../components/GestionPraticiens'
 import { getConsultData } from '../data/consultations'
-import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee } from '../data/mockData'
+import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee, periodeParDefaut } from '../data/mockData'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -60,13 +60,11 @@ export default function Consultations() {
 
   const rafraichir = useCallback(() => setConsultData(getConsultData()), [])
 
-  const [moisDe, setMoisDe] = useState(0)
-  const [moisA, setMoisA] = useState(11)
-  const [years, setYears] = useState(() => {
-    const dispo = [...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])].sort((a, b) => b - a)
-    return [dispo[0], dispo[1]]
-  })
-  const [shortcut, setShortcut] = useState('annee')
+  const def = periodeParDefaut([...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])])
+  const [moisDe, setMoisDe] = useState(def.moisDe)
+  const [moisA, setMoisA] = useState(def.moisA)
+  const [years, setYears] = useState(def.years)
+  const [shortcut, setShortcut] = useState(def.shortcut)
   const [specId, setSpecId] = useState(CONSULT_SPECIALITES[0].id)
   // Sélection de praticiens (multi). Liste vide = « Tous ».
   const [pratSel, setPratSel] = useState([])

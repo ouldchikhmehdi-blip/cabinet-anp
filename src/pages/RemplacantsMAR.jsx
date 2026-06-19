@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { REMPL_MAR, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee } from '../data/mockData'
+import { REMPL_MAR, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
 
 const ACCENT = '#D85A30'
 
@@ -23,10 +23,11 @@ function LegendAnnees({ years, type }) {
 }
 
 export default function RemplacantsMAR() {
-  const [moisDe, setMoisDe] = useState(0)
-  const [moisA, setMoisA] = useState(11)
-  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
-  const [shortcut, setShortcut] = useState('annee')
+  const def = periodeParDefaut(ANNEES)
+  const [moisDe, setMoisDe] = useState(def.moisDe)
+  const [moisA, setMoisA] = useState(def.moisA)
+  const [years, setYears] = useState(def.years)
+  const [shortcut, setShortcut] = useState(def.shortcut)
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)

@@ -209,6 +209,22 @@ export const MOIS_LONG = ['Janvier','Février','Mars','Avril','Mai','Juin','Juil
 
 export const MOIS_ACTUEL = 8
 
+// Présélection par défaut des filtres de période à l'arrivée sur une page (l'utilisateur reste
+// libre de changer ensuite) : mois = janvier → (mois en cours − 1) ; années = [année en cours, n−1]
+// si elles sont disponibles pour la page, sinon les 2 années les plus récentes disponibles (les
+// données fictives s'arrêtant avant l'année en cours, on retombe alors sur les plus récentes).
+// → { moisDe, moisA, years, shortcut }
+export function periodeParDefaut(availableYears = []) {
+  const moisA = Math.max(0, new Date().getMonth() - 1) // mois actuel − 1 (clampé à janvier)
+  const an = new Date().getFullYear()
+  const tri = [...new Set(availableYears)].sort((a, b) => b - a)
+  const voulu = [an, an - 1].filter(y => tri.includes(y))
+  const years = voulu.length === 2 ? voulu : tri.slice(0, 2)
+  // Raccourci correspondant à « janvier → moisA » s'il en existe un, sinon « personnalisé ».
+  const shortcut = moisA === 11 ? 'annee' : moisA === 5 ? 's1' : moisA === 2 ? 't1' : 'custom'
+  return { moisDe: 0, moisA, years, shortcut }
+}
+
 let _masque = false
 export const setMasqueMontants = v => { _masque = v }
 export const getMasqueMontants = () => _masque

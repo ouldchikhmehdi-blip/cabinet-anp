@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CA, CHARGES, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, RETRO_FIXE, RETRO_VARIABLE, MOIS_ACTUEL, getMasqueMontants, couleurAnnee } from '../data/mockData'
+import { CA, CHARGES, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, RETRO_FIXE, RETRO_VARIABLE, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
 
 function LegendAnnees({ years, accent }) {
   return (
@@ -18,10 +18,11 @@ function LegendAnnees({ years, accent }) {
 }
 
 export default function VueGlobale() {
-  const [moisDe, setMoisDe] = useState(0)
-  const [moisA, setMoisA] = useState(11)
-  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
-  const [shortcut, setShortcut] = useState('annee')
+  const def = periodeParDefaut(ANNEES)
+  const [moisDe, setMoisDe] = useState(def.moisDe)
+  const [moisA, setMoisA] = useState(def.moisA)
+  const [years, setYears] = useState(def.years)
+  const [shortcut, setShortcut] = useState(def.shortcut)
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)

@@ -3,7 +3,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { DEPENSES, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants, couleurAnnee } from '../data/mockData'
+import { DEPENSES, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
 
 // Légende des années comparées pour le détail d'une catégorie (accent = couleur de la catégorie).
 function LegendAnnees({ years, accent, type }) {
@@ -22,10 +22,11 @@ function LegendAnnees({ years, accent, type }) {
 }
 
 export default function Depenses() {
-  const [moisDe, setMoisDe] = useState(0)
-  const [moisA, setMoisA] = useState(11)
-  const [years, setYears] = useState([ANNEES[0], ANNEES[1]])
-  const [shortcut, setShortcut] = useState('annee')
+  const def = periodeParDefaut(ANNEES)
+  const [moisDe, setMoisDe] = useState(def.moisDe)
+  const [moisA, setMoisA] = useState(def.moisA)
+  const [years, setYears] = useState(def.years)
+  const [shortcut, setShortcut] = useState(def.shortcut)
   const [selectedId, setSelectedId] = useState(DEPENSES[0].id)
 
   const de = Math.min(moisDe, moisA)

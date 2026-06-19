@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { CA, MOIS_COURT, MOIS_LONG, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee } from '../data/mockData'
+import { CA, MOIS_COURT, MOIS_LONG, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, periodeParDefaut } from '../data/mockData'
 
 const ACCENT = '#534AB7'
 
@@ -22,10 +22,11 @@ function LegendAnnees({ years }) {
 }
 
 export default function ChiffreAffaires() {
-  const [moisDe, setMoisDe] = useState(0)
-  const [moisA, setMoisA] = useState(11)
-  const [years, setYears] = useState([ANNEES[0], ANNEES[1]]) // [2024, 2023] par défaut
-  const [shortcut, setShortcut] = useState('annee')
+  const def = periodeParDefaut(ANNEES)
+  const [moisDe, setMoisDe] = useState(def.moisDe)
+  const [moisA, setMoisA] = useState(def.moisA)
+  const [years, setYears] = useState(def.years)
+  const [shortcut, setShortcut] = useState(def.shortcut)
 
   const de = Math.min(moisDe, moisA)
   const a = Math.max(moisDe, moisA)
