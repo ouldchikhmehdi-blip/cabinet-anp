@@ -82,8 +82,9 @@ function enMatrice(texte) {
 //             parPoste: { <service>: { texte, estRemplacant } } }] }  ← format attendu par l'export.
 //   diag  = { associes:[{header,ini,nom}], remplacants:[{header,nom}], ignorees:[header],
 //             nbJours, avert:[string] }  ← récapitulatif de reconnaissance affiché à l'écran.
-// Options : nomParIni { ini: 'Dr Nom' } (repli sur l'initiale), associes (liste d'initiales).
-export function parserCollageParService(texte, { nomParIni = {}, associes = ASSOCIES } = {}) {
+// Options : nomParIni { ini: 'Dr Nom' } (repli sur l'initiale), associes (liste d'initiales),
+//           remplacantsConnus (noms reconnus dans les cellules, en plus de l'auto « Dr … »).
+export function parserCollageParService(texte, { nomParIni = {}, associes = ASSOCIES, remplacantsConnus = REMPLACANTS_CONNUS } = {}) {
   const vide = { table: { postes: POSTES_SERVICE, lignes: [] }, diag: { associes: [], remplacants: [], ignorees: [], nbJours: 0, avert: [] } }
   const matrice = enMatrice(texte)
   if (matrice.length < 2) return vide // besoin d'au moins l'en-tête + 1 jour
@@ -136,7 +137,7 @@ export function parserCollageParService(texte, { nomParIni = {}, associes = ASSO
     for (const col of colonnes) {
       let nom = col.nom
       if (col.type === 'remplacant') {
-        const nomDetecte = extraireNomRemplacant(ligne[col.c])
+        const nomDetecte = extraireNomRemplacant(ligne[col.c], remplacantsConnus)
         if (nomDetecte) { nomCourantParCol[col.c] = nomDetecte; continue } // annotation : pas un poste
         nom = nomCourantParCol[col.c]
       }

@@ -5,12 +5,14 @@ import { ANNEE_DEFAUT } from '../utils/desiderata'
 import { parserCollageParService } from '../utils/planningParService'
 import { exporterParServiceExcel } from '../utils/exportParService'
 import { chargerProfilsAvecInitiales } from '../utils/desiderataApi'
+import { chargerRemplacants, sauverRemplacants } from '../utils/remplacantsApi'
+import { REMPLACANTS_CONNUS } from '../data/remplacants'
 
 // Onglet « Planning par service » (faiseur) : on COLLE une période du tableur Excel du faiseur
 // (colonnes = personnes, cellules = postes), l'outil reconnaît initiales/remplaçants, propose un
 // aperçu transposé PAR SERVICE et exporte un Excel ordonné par poste. Rien n'est sauvegardé.
 export default function PlanningParService() {
-  const { profile } = useAuth()
+  const { session, profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
   const [annee, setAnnee] = useState(ANNEE_DEFAUT)
@@ -19,12 +21,14 @@ export default function PlanningParService() {
   const [resultat, setResultat] = useState(null) // { table, diag }
   const [erreur, setErreur] = useState(null)
   const [exportEnCours, setExportEnCours] = useState(false)
+  const [remplacantsCustom, setRemplacantsCustom] = useState([]) // noms ajoutés par le faiseur (base)
+  const [nouveauRempl, setNouveauRempl] = useState('')
 
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    chargerProfilsAvecInitiales()
-      .then(ps => { if (!annule) setProfils(ps) })
+    Promise.all([chargerProfilsAvecInitiales(), chargerRemplacants().catch(() => [])])
+      .then(([ps, rempl]) => { if (annule) return; setProfils(ps); setRemplacantsCustom(rempl) })
       .catch(() => { if (!annule) setErreur('Impossible de charger les noms des associés.') })
     return () => { annule = true }
   }, [estFaiseur])
@@ -35,9 +39,51 @@ export default function PlanningParService() {
     return m
   }, [profils])
 
+  // Liste complète des noms reconnus = liste en dur + liste éditable (dédoublonnée, insensible à la casse).
+  const remplacantsConnus = useMemo(() => {
+    const out = []
+    const vus = new Set()
+    for (const nom of [...REMPLACANTS_CONNUS, ...remplacantsCustom]) {
+      const cle = nom.trim().toLowerCase()
+      if (cle && !vus.has(cle)) { vus.add(cle); out.push(nom.trim()) }
+    }
+    return out
+  }, [remplacantsCustom])
+
+  async function persisterRemplacants(liste) {
+    setRemplacantsCustom(liste)
+    // Re-analyse l'aperçu avec la liste à jour (sinon il faudrait recliquer « Analyser »).
+    const merged = []
+    const vus = new Set()
+    for (const nom of [...REMPLACANTS_CONNUS, ...liste]) {
+      const cle = nom.trim().toLowerCase()
+      if (cle && !vus.has(cle)) { vus.add(cle); merged.push(nom.trim()) }
+    }
+    if (resultat) setResultat(parserCollageParService(texte, { nomParIni, remplacantsConnus: merged }))
+    try {
+      await sauverRemplacants(liste, session?.user?.id)
+    } catch {
+      setErreur('Enregistrement de la liste des remplaçants impossible (table planning_remplacants créée ?).')
+    }
+  }
+
+  function ajouterRemplacant() {
+    const nom = nouveauRempl.trim()
+    if (!nom) return
+    if (remplacantsCustom.some(n => n.toLowerCase() === nom.toLowerCase()) || REMPLACANTS_CONNUS.some(n => n.toLowerCase() === nom.toLowerCase())) {
+      setNouveauRempl(''); return
+    }
+    persisterRemplacants([...remplacantsCustom, nom])
+    setNouveauRempl('')
+  }
+
+  function retirerRemplacant(nom) {
+    persisterRemplacants(remplacantsCustom.filter(n => n !== nom))
+  }
+
   function analyser() {
     setErreur(null)
-    const res = parserCollageParService(texte, { nomParIni })
+    const res = parserCollageParService(texte, { nomParIni, remplacantsConnus })
     if (!res.table.lignes.length) {
       setResultat(null)
       setErreur('Rien à analyser : collez un tableau (1ʳᵉ ligne = en-têtes, 1ʳᵉ colonne = dates).')
@@ -96,6 +142,40 @@ export default function PlanningParService() {
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>{erreur}</div>
       )}
+
+      <div style={{ background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Remplaçants connus</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+          Noms reconnus automatiquement dans le collage (accents, majuscules et « Dr/Docteur » ignorés).
+          Tout « Dr … » écrit dans une cellule est aussi détecté.
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          {remplacantsConnus.map(nom => {
+            const enDur = REMPLACANTS_CONNUS.some(n => n.toLowerCase() === nom.toLowerCase())
+            return (
+              <span key={nom} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '3px 10px', borderRadius: 999, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)' }}>
+                {nom}
+                {!enDur && (
+                  <button type="button" onClick={() => retirerRemplacant(nom)} title="Retirer" style={{ border: 'none', background: 'transparent', color: 'var(--color-primary-dark)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                )}
+              </span>
+            )
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            value={nouveauRempl}
+            onChange={e => setNouveauRempl(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ajouterRemplacant() } }}
+            placeholder="Ajouter un remplaçant (ex. Dr Untel)"
+            style={{ ...s.select, minWidth: 240 }}
+          />
+          <button type="button" onClick={ajouterRemplacant} disabled={!nouveauRempl.trim()} style={{ ...s.boutonSecondaire, padding: '6px 14px', opacity: !nouveauRempl.trim() ? 0.5 : 1 }}>
+            Ajouter
+          </button>
+        </div>
+      </div>
 
       <textarea
         value={texte}

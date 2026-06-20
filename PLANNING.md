@@ -512,8 +512,11 @@ tableur Excel** puis **colle** une période (1 à 4 mois) dans l'outil, qui **re
   - **nom du remplaçant** : lu dans une **cellule** de la colonne (ex. dimanche « OK Dr Delbert Aurelie (Ok) »)
     et **reporté vers le bas** sur les postes des jours suivants, jusqu'au prochain nom (`extraireNomRemplacant`).
     Reconnaissance : tout « Dr … » / « Docteur … » (après nettoyage de « OK » et des parenthèses) **plus** une
-    **liste de remplaçants connus** maintenue en dur (`src/data/remplacants.js`, amorcée avec « Dr Delbert Aurelie »),
-    qui rattrape un nom écrit nu. À défaut de nom → **« Remplaçant »**. (L'en-tête peut aussi nommer la colonne.)
+    **liste de remplaçants connus** = liste en dur (`src/data/remplacants.js`, amorcée avec « Dr Delbert Aurelie »)
+    **+ liste éditable par le faiseur** dans l'onglet (zone « Remplaçants connus » : ajout/retrait, persistée en
+    base, table `planning_remplacants` — singleton, faiseur écrit / cf. `remplacantsApi.js`). Le matching ignore
+    accents, casse, ponctuation et « Dr/Docteur ». À défaut de nom → **« Remplaçant »**. (L'en-tête peut aussi
+    nommer la colonne.)
   - cellule → poste canonique via `normaliserPosteCanonique` (sans accents/casse, **VPA toujours retiré**) :
     « SARM 1/2 » ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/« endoscopie » →
     Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Non reconnu / « VPA » seul → ignoré.
