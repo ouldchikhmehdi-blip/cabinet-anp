@@ -11,7 +11,7 @@ import { chargerVacances, sauverVacances } from '../utils/vacancesApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint, sauverToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
-import { proposerVacances, optimiserVacances, analyserSemaine, semainesSouhaitScolaire } from '../utils/vacances'
+import { proposerVacances, optimiserVacances, analyserSemaine, semainesSouhaitScolaire, viderSaufVerrous } from '../utils/vacances'
 import { chargerTrames } from '../utils/tramesApi'
 import { chargerSemaines, sauverSemaines } from '../utils/semainesApi'
 import { semainesVide } from '../utils/semaines'
@@ -408,6 +408,19 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
     })
   }
 
+  // Vider (sauf verrous) : efface le remplissage automatique des congés en conservant les congés
+  // verrouillés ET les capacités voulues (`places`). Recliquer « Proposer automatiquement » ensuite.
+  function viderSaufVerrousAff() {
+    if (!Object.keys(data?.vacances ?? {}).length) return
+    if (!window.confirm(
+      'Vider le remplissage automatique des vacances de cette année ?\n\n' +
+      '• Les congés VERROUILLÉS et les capacités (nombre de postes) sont CONSERVÉS.\n' +
+      '• Recliquez ensuite sur « Proposer automatiquement ».'
+    )) return
+    setEnregistre(false); onStatut?.('modifie'); setMessageOpt(null)
+    setData(prev => viderSaufVerrous(prev))
+  }
+
   // Écarter / réactiver un souhait de congé hors scolaire — persisté dans la base calendrier
   // (clé 'INI|VAC|<sem>'), source partagée avec les autres écartements.
   async function toggleEcart(cle) {
@@ -554,6 +567,7 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
   }
 
   const pret = data !== null && calendrier !== null
+  const aDesAffectations = Object.keys(data?.vacances ?? {}).length > 0
 
   return (
     <div style={{ maxWidth: 1180 }}>
@@ -593,6 +607,15 @@ export default function PlanningVacances({ annee: anneeProp, onChangeAnnee, onSt
           title="Cherche à améliorer la proposition actuelle (souhaits, puis équilibre, puis congés rapprochés) sans toucher aux verrous. Cliquez plusieurs fois : ça s'arrête quand il n'y a plus de gain."
         >
           Optimiser
+        </button>
+        <button
+          type="button"
+          onClick={viderSaufVerrousAff}
+          disabled={!pret || !aDesAffectations}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'var(--color-bg)', color: 'var(--color-danger)', border: '0.5px solid var(--color-danger)', opacity: (!pret || !aDesAffectations) ? 0.5 : 1 }}
+          title="Efface le remplissage automatique des congés en conservant les congés verrouillés et les capacités. Recliquez ensuite sur Proposer automatiquement."
+        >
+          🗑 Vider (sauf verrous)
         </button>
         {messageOpt && (
           <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>{messageOpt}</span>

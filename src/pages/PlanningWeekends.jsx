@@ -14,7 +14,7 @@ import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
 import { weekendsGardeNoel, vacanciersParSemaineNoel } from '../utils/noel'
 import { JOURS } from '../utils/trames'
-import { proposerWeekends, optimiserWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN } from '../utils/weekends'
+import { proposerWeekends, optimiserWeekends, analyserAffectation, impactJourOffWE, ESPACEMENT_MIN, viderSaufVerrous } from '../utils/weekends'
 import { detecterPontsTous, detecterPontsWeekendTous, weekendsAccolesFerie, cleEcart, cleEcartWeekend } from '../utils/ponts'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
@@ -464,6 +464,18 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
     })
   }
 
+  // Vider (sauf verrous) : efface le remplissage automatique en conservant les week-ends verrouillés.
+  function viderSaufVerrousAff() {
+    if (!Object.keys(data?.affectations ?? {}).length) return
+    if (!window.confirm(
+      'Vider le remplissage automatique des week-ends de cette année ?\n\n' +
+      '• Les week-ends VERROUILLÉS sont CONSERVÉS.\n' +
+      '• Recliquez ensuite sur « Proposer automatiquement ».'
+    )) return
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => viderSaufVerrous(prev))
+  }
+
   async function enregistrer() {
     setErreur(null)
     try {
@@ -552,6 +564,7 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
   }
 
   const pret = data !== null && calendrier !== null
+  const aDesAffectations = Object.keys(data?.affectations ?? {}).length > 0
 
   return (
     <div style={{ maxWidth: 820 }}>
@@ -588,6 +601,15 @@ export default function PlanningWeekends({ annee: anneeProp, onChangeAnnee, onSt
           title="Améliore la proposition actuelle (desiderata, puis équilibre, puis espacement) sans toucher aux verrous. Cliquable plusieurs fois — utile après avoir modifié les vacances."
         >
           Optimiser
+        </button>
+        <button
+          type="button"
+          onClick={viderSaufVerrousAff}
+          disabled={!pret || !aDesAffectations}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'var(--color-bg)', color: 'var(--color-danger)', border: '0.5px solid var(--color-danger)', opacity: (!pret || !aDesAffectations) ? 0.5 : 1 }}
+          title="Efface le remplissage automatique en conservant les week-ends verrouillés. Recliquez ensuite sur Proposer automatiquement."
+        >
+          🗑 Vider (sauf verrous)
         </button>
         {optimInfo && (
           <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>

@@ -26,6 +26,16 @@ export function normaliserRea(data) {
   return { v: VERSION_REA, rea, verrous }
 }
 
+// Vide le remplissage automatique en CONSERVANT les semaines de réa verrouillées par le faiseur.
+// Repart d'une donnée normalisée, ne garde que les affectations des semaines verrouillées.
+export function viderSaufVerrous(data) {
+  const d = normaliserRea(data)
+  const ver = (d.verrous ?? []).filter(num => d.rea[num] != null)
+  const rea = {}
+  for (const num of ver) rea[num] = d.rea[num]
+  return normaliserRea({ v: VERSION_REA, rea, verrous: ver })
+}
+
 // Analyse l'affectation réa (ini sur la semaine num) → conflits.
 //   vacances : ini est en congé cette semaine (poste exclusif : jamais réa + vacances)
 //   jourOff  : ini a demandé un jour off pendant cette semaine (desiderata)

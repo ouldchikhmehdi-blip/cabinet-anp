@@ -23,6 +23,7 @@ import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
   proposerSemaines, optimiserSemaines, affectationResolue, analyserSemaineColonnes,
   gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame, reposJours,
+  viderSaufVerrous,
 } from '../utils/semaines'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel, genererClasseurBuffer } from '../utils/exportCalendrier'
@@ -452,18 +453,20 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     setEnregistre(false); onStatut?.('modifie'); setSelEchange(null); setEspacementInfo(null)
   }
 
-  // Effacer tout : vide les affectations « En semaine » (proposition + ajustements) pour repartir de zéro.
-  // Les trames choisies par semaine sont conservées. Annulable via « Retour en arrière ».
-  function effacerTout() {
+  // Vider (sauf verrous) : vide le remplissage automatique « En semaine » (proposition + ajustements)
+  // en CONSERVANT les colonnes verrouillées par le faiseur et les trames choisies par semaine.
+  // Annulable via « Retour en arrière ».
+  function viderSaufVerrousAff() {
     if (!Object.keys(data?.affectations ?? {}).length) return
     if (!window.confirm(
-      'Effacer toutes les affectations « En semaine » de cette année (proposition automatique + ajustements) ?\n\n' +
-      '• Les trames choisies par semaine sont CONSERVÉES.\n' +
+      'Vider le remplissage automatique « En semaine » de cette année (proposition + ajustements) ?\n\n' +
+      '• Les colonnes VERROUILLÉES et les trames choisies sont CONSERVÉES.\n' +
+      '• Recliquez ensuite sur « Proposer ».\n' +
       '• Action annulable avec « Retour en arrière ».'
     )) return
     instantane()
     setEnregistre(false); onStatut?.('modifie'); setSelEchange(null); setEspacementInfo(null)
-    setData(prev => ({ ...prev, affectations: {}, verrous: {} }))
+    setData(prev => viderSaufVerrous(prev))
   }
 
   function majTrameSemaine(num, trameId) {
@@ -1229,16 +1232,16 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             </button>
             <button
               type="button"
-              onClick={effacerTout}
+              onClick={viderSaufVerrousAff}
               disabled={!aDesAffectations}
               style={{
                 padding: '4px 10px', fontSize: 12, borderRadius: 'var(--radius-md)',
                 cursor: aDesAffectations ? 'pointer' : 'default', border: '0.5px solid var(--color-danger)',
                 background: 'var(--color-bg)', color: 'var(--color-danger)', opacity: aDesAffectations ? 1 : 0.5,
               }}
-              title="Efface toutes les affectations En semaine (proposition automatique + ajustements) pour repartir de zéro. Les trames choisies sont conservées. Annulable."
+              title="Efface le remplissage automatique En semaine (proposition + ajustements) en conservant les colonnes verrouillées et les trames choisies. Recliquez ensuite sur Proposer. Annulable."
             >
-              🗑 Effacer tout
+              🗑 Vider (sauf verrous)
             </button>
             {vueContinue && (
               <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

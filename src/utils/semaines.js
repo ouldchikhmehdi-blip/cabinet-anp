@@ -31,6 +31,19 @@ export function semainesVide() {
   return { v: VERSION_SEMAINES, trameParSemaine: {}, affectations: {}, verrous: {} }
 }
 
+// Vide le remplissage automatique en CONSERVANT les colonnes verrouillées par le faiseur.
+// Les trames choisies par semaine (`trameParSemaine`) sont aussi conservées (décision du faiseur).
+export function viderSaufVerrous(data) {
+  const d = normaliserSemaines(data)
+  const affectations = {}
+  for (const [num, cols] of Object.entries(d.verrous)) {
+    const n = Number(num); const src = d.affectations[n] ?? {}; const m = {}
+    for (const col of cols) if (src[col] != null) m[col] = src[col]
+    if (Object.keys(m).length) affectations[n] = m
+  }
+  return normaliserSemaines({ v: VERSION_SEMAINES, trameParSemaine: d.trameParSemaine, affectations, verrous: d.verrous })
+}
+
 // Normalise un data stocké. Tolère l'ancien format v1 (sans affectations/verrous).
 export function normaliserSemaines(data) {
   const srcT = data?.trameParSemaine && typeof data.trameParSemaine === 'object' ? data.trameParSemaine : {}

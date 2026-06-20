@@ -31,6 +31,16 @@ export function normaliserWeekends(data) {
   return { v: VERSION_WE, affectations, verrous }
 }
 
+// Vide le remplissage automatique en CONSERVANT les week-ends verrouillés par le faiseur.
+// Repart d'une donnée normalisée, ne garde que les affectations des semaines verrouillées.
+export function viderSaufVerrous(data) {
+  const d = normaliserWeekends(data)
+  const ver = (d.verrous ?? []).filter(num => d.affectations[num] != null)
+  const affectations = {}
+  for (const num of ver) affectations[num] = d.affectations[num]
+  return normaliserWeekends({ v: VERSION_WE, affectations, verrous: ver })
+}
+
 // Numéros de week-ends (semaines) déjà attribués à `ini`, hors `numExclu`.
 function semainesDe(ini, affectations, numExclu = null) {
   const nums = []

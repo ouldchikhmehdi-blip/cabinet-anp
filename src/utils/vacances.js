@@ -43,6 +43,18 @@ export function normaliserVacances(data) {
   return { v: VERSION_VAC, vacances, places, verrous }
 }
 
+// Vide le remplissage automatique en CONSERVANT les congés verrouillés par le faiseur.
+// Les capacités voulues (`places`) sont aussi conservées (décision du faiseur). Repart d'une
+// donnée normalisée ; normaliserVacances garantit déjà l'invariant verrous ⊆ vacances.
+export function viderSaufVerrous(data) {
+  const d = normaliserVacances(data)
+  const vacances = {}
+  for (const [num, inis] of Object.entries(d.verrous)) {
+    if (inis.length) vacances[Number(num)] = [...inis]
+  }
+  return normaliserVacances({ v: VERSION_VAC, vacances, places: d.places, verrous: d.verrous })
+}
+
 // Analyse une semaine : conflits de couverture / refus / week-end de garde collé.
 //   sansVacance : aucun associé en congé
 //   refus       : associés affectés qui ont refusé cette semaine (desiderata)

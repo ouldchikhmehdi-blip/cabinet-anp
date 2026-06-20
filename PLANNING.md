@@ -334,6 +334,22 @@ Puis, sur cette base :
      n'est retenu que si sa 1ʳᵉ composante non nulle s'améliore → l'espacement ne se gagne jamais au prix
      d'un desideratum. Colonnes spéciales et **verrouillées figées** ; règle dure vendredi-avant-vacances
      respectée. **Déterministe et idempotent** (cliquable plusieurs fois, s'arrête à l'optimum local).
+   - **Bouton « 🗑 Vider (sauf verrous) ».** Présent sur les **4 étapes** (week-ends, réa, vacances, en
+     semaine). Efface tout le **remplissage automatique** (proposition + ajustements) en **conservant
+     uniquement ce qui a été verrouillé par le faiseur**, ainsi que les décisions de cadrage hors
+     affectation : **capacités de congés (`places`)** en Vacances et **trames choisies (`trameParSemaine`)**
+     en Semaine. Permet de **repartir d'un état propre** puis de recliquer « Proposer » — utile quand un
+     forçage ou un sur-remplissage a coincé une étape. Helpers purs `viderSaufVerrous` (un par moteur :
+     `weekends.js` / `rea.js` / `vacances.js` / `semaines.js`), testés (`viderSaufVerrous.test.js`),
+     déterministes. Sur « En semaine », ce bouton **remplace** l'ancien « Effacer tout » (qui effaçait aussi
+     les verrous) et reste **annulable** via « Retour en arrière ».
+   - **Diagnostic « associé non placé » / « colonne non pourvue ».** La cause quasi systématique est un
+     **décalage entre le nombre de vacanciers d'une semaine et le nombre de colonnes vacances de sa trame**
+     (pairage par index dans `colonnesSpeciales`) — typiquement une **trame forcée** (`trameParSemaine`) qui
+     ne colle plus au nombre réel de congés. Ce n'est **pas** dû au choix « indifférent S1/S2 » des congés
+     scolaires (`semainesSouhaitScolaire` place chaque associé sur **une seule** semaine et déduplique). Le
+     décalage est signalé par les alertes **« trame non adaptée »** ; le remède est de re-proposer (au besoin
+     après « Vider (sauf verrous) ») ou de choisir une trame à la bonne capacité.
 
 Chaque étape est un point de contrôle validé avant de continuer.
 

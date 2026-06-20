@@ -13,7 +13,7 @@ import { chargerRea, sauverRea } from '../utils/reaApi'
 import { chargerNoel } from '../utils/noelApi'
 import { chargerToussaint } from '../utils/toussaintApi'
 import { semainesImposeesNoel } from '../utils/noel'
-import { proposerRea, optimiserRea, analyserRea } from '../utils/rea'
+import { proposerRea, optimiserRea, analyserRea, viderSaufVerrous } from '../utils/rea'
 import { exporterCalendrierExcel } from '../utils/exportCalendrier'
 import { compteursAmont } from '../utils/grilleSemaine'
 import PanneauConflits from '../components/planning/PanneauConflits'
@@ -282,6 +282,18 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
     })
   }
 
+  // Vider (sauf verrous) : efface le remplissage automatique en conservant les semaines de réa verrouillées.
+  function viderSaufVerrousAff() {
+    if (!Object.keys(data?.rea ?? {}).length) return
+    if (!window.confirm(
+      'Vider le remplissage automatique de la réanimation de cette année ?\n\n' +
+      '• Les semaines VERROUILLÉES sont CONSERVÉES.\n' +
+      '• Recliquez ensuite sur « Proposer automatiquement ».'
+    )) return
+    setEnregistre(false); onStatut?.('modifie')
+    setData(prev => viderSaufVerrous(prev))
+  }
+
   async function enregistrer() {
     setErreur(null)
     try {
@@ -365,6 +377,7 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
   }
 
   const pret = data !== null && calendrier !== null
+  const aDesAffectations = Object.keys(data?.rea ?? {}).length > 0
 
   return (
     <div style={{ maxWidth: 760 }}>
@@ -401,6 +414,15 @@ export default function PlanningRea({ annee: anneeProp, onChangeAnnee, onStatut,
           title="Améliore la proposition actuelle (desiderata, puis équilibre, puis espacement) sans toucher aux verrous. Cliquable plusieurs fois."
         >
           Optimiser
+        </button>
+        <button
+          type="button"
+          onClick={viderSaufVerrousAff}
+          disabled={!pret || !aDesAffectations}
+          style={{ ...s.bouton, padding: '8px 14px', fontSize: 13, background: 'var(--color-bg)', color: 'var(--color-danger)', border: '0.5px solid var(--color-danger)', opacity: (!pret || !aDesAffectations) ? 0.5 : 1 }}
+          title="Efface le remplissage automatique en conservant les semaines de réa verrouillées. Recliquez ensuite sur Proposer automatiquement."
+        >
+          🗑 Vider (sauf verrous)
         </button>
         {optimInfo && (
           <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', alignSelf: 'center' }}>
