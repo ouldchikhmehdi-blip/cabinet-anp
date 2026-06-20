@@ -497,28 +497,36 @@ Une fois qu'un tiers est **validé** par le faiseur (export Excel archivé, recu
   `src/pages/MonAgenda.jsx`, `src/utils/evenementsAgenda.js`, `src/utils/agendaApi.js`,
   `src/utils/agendaEvenementsApi.js`, `supabase/planning_agenda*.sql`.
 
-### 18 ter. Planning par service (vue/export par poste)
+### 18 ter. Planning par service (copier-coller du tableur → export par poste)
 
-Onglet **faiseur** « Planning par service » : une **autre lecture** du planning saisi (par associé) sous forme
-de tableau **par poste** — lignes = jours, colonnes = postes, cellule = le(s) médecin(s) en **nom complet**.
+Onglet **faiseur** « Planning par service » : le faiseur fabrique le planning des tiers 1+2 dans **son propre
+tableur Excel** puis **colle** une période (1 à 4 mois) dans l'outil, qui **reconnaît** tout, affiche un
+**aperçu par service** et **ré-exporte** un Excel ordonné par poste. **Rien n'est calculé ni sauvegardé** ici
+(découplé du moteur week-ends/réa/vacances/semaines).
 
-- **Source = données existantes** (trames + affectations de semaine). On **transpose** : pour chaque semaine,
-  `affectationResolue` donne la colonne de chaque associé ; `colonne[jour]` donne son libellé de poste, qu'on
-  **normalise** vers un poste canonique.
-- **6 postes canoniques** : SARM 1, SARM 2, Bloc A viscéral, Bloc A NC, Bloc B, USC/Réa. Normalisation
-  (`normaliserPosteCanonique`, sans accents/casse) : « SARM 1/2 » (le suffixe **VPA** est **toujours retiré**,
-  quelle que soit la case) ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/
-  « endoscopie » → Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Libellé non reconnu / « VPA » seul →
-  ignoré. Les **colonnes remplaçant** des trames remplissent le poste qu'elles couvrent avec le mot
-  **« Remplaçant »** affiché **en rouge** (quel que soit le remplaçant, 1er ou 2e — son nom n'est pas
-  utilisé) : cela comble les postes externes qui resteraient vides sinon.
-- **Noms complets** : champ `nom_complet` par associé, saisi dans l'onglet **Comptes** (à côté des initiales ;
-  colonne `profiles.nom_complet`, via `/api/planning-attribuer`). Repli sur l'initiale si non renseigné.
-- **Plage de semaines** sélectionnable (de S… à S…) + **export Excel** (jours × postes ; week-ends/fériés grisés).
-- *Hors v1* : remplacements ponctuels manuscrits (non modélisés) et semaines **Noël/Toussaint** (blocs imposés,
-  autre source) — non dérivés ici.
-- Fichiers : `src/pages/PlanningParService.jsx`, `src/utils/planningParService.js`, `src/utils/exportParService.js`,
-  `src/pages/AdminUsers.jsx`, `api/planning-attribuer.js`, `supabase/planning.sql` (colonne `nom_complet`).
+- **Forme du collage** (tabulé, depuis Excel) : 1ʳᵉ colonne = **dates** (un jour par ligne) ; colonnes suivantes
+  = **personnes**. En-tête de colonne = **initiales d'un associé** (EH, MP…) ou une **colonne remplaçant** ;
+  chaque **cellule** = le **poste** que la personne fait ce jour-là.
+- **Reconnaissance** (`parserCollageParService`, pur) :
+  - en-tête = initiale d'associé (ou nom complet) → **nom complet** affiché ; sinon → **colonne remplaçant** :
+    nom **lu dans l'en-tête** (ex. « Dr Martin »), ou **« Remplaçant »** si en-tête vide/générique (« Remp »…).
+  - cellule → poste canonique via `normaliserPosteCanonique` (sans accents/casse, **VPA toujours retiré**) :
+    « SARM 1/2 » ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/« endoscopie » →
+    Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Non reconnu / « VPA » seul → ignoré.
+  - **transposition** [date × personne → poste] en [date × **service** → personne(s)] ; plusieurs personnes sur
+    un même service un même jour → jointes par « / ». Une cellule **uniquement remplaçant** s'affiche **en rouge**.
+  - **récapitulatif de reconnaissance** affiché (associés reconnus, remplaçants, colonnes ignorées, nombre de
+    jours, avertissements si un en-tête a une colonne sans aucun poste reconnu) — transparence pour le faiseur.
+- **6 postes canoniques** (ordre `POSTES_SERVICE`, inchangé) : SARM 1, SARM 2, Bloc A viscéral, Bloc A NC,
+  Bloc B, USC/Réa. C'est l'ordre des colonnes de l'**aperçu** et de l'**export**.
+- **Noms complets** : champ `nom_complet` par associé, saisi dans l'onglet **Comptes** (colonne
+  `profiles.nom_complet`). Repli sur l'initiale si non renseigné.
+- **Export Excel** (`exporterParServiceExcel`, inchangé) : colonne Date à gauche, 6 services en colonnes,
+  remplaçants en **rouge gras**. Le sélecteur d'année ne sert qu'au **nom de fichier**. Les dates sont reprises
+  **verbatim** du collage (pas de détection week-end/férié : les services sont lun→ven).
+- Fichiers : `src/pages/PlanningParService.jsx`, `src/utils/planningParService.js`
+  (`parserCollageParService` + `normaliserPosteCanonique` + `POSTES_SERVICE`), `src/utils/exportParService.js`,
+  tests `src/utils/planningParService.test.js`.
 
 ### 18. Points encore en suspens
 

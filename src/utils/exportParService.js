@@ -1,7 +1,7 @@
 // ============================================================
 // exportParService.js — export Excel (.xlsx) de la vue « Planning par service » :
 // lignes = jours, colonnes = postes (SARM 1 … USC/Réa), cellules = médecin(s) en nom complet.
-// Construit à partir de la table renvoyée par construireTableParService (planningParService.js).
+// Construit à partir de la table renvoyée par parserCollageParService (planningParService.js).
 // ============================================================
 import ExcelJS from 'exceljs'
 

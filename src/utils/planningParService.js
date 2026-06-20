@@ -1,16 +1,12 @@
 // ============================================================
-// planningParService.js — vue « Planning par service » (PLANNING.md).
-// Transpose le planning saisi (par associé : trames + affectations de semaine) en un tableau
-// PAR POSTE : lignes = jours, colonnes = postes canoniques, cellule = le(s) médecin(s) en NOM COMPLET.
-// Source = données existantes (rien à recoller) ; on lit, pour chaque associé, sa colonne de trame
-// résolue, puis le libellé de poste de chaque jour (colObj[jour]) qu'on NORMALISE vers un poste canonique.
+// planningParService.js — vue « Planning par service » (PLANNING.md §18 ter).
+// Le faiseur COLLE une période de son propre tableur Excel (1ʳᵉ colonne = dates, colonnes suivantes =
+// PERSONNES : en-tête = initiales d'un associé ou colonne remplaçant ; cellule = le POSTE du jour).
+// On reconnaît les initiales (→ noms complets) et les colonnes remplaçant (nom dans l'en-tête, sinon
+// « Remplaçant »), puis on TRANSPOSE en tableau jours × postes (export identique à l'ancien).
 // ============================================================
 import { ASSOCIES } from '../data/associes'
-import { JOURS } from './trames'
-import { affectationResolue } from './semaines'
-import { lundiDeSemaineISO, formatISO, formatDateLongueFR } from './calendrier'
-
-const JOUR_MS = 24 * 60 * 60 * 1000
+import { normaliserCle } from './importConsultations'
 
 // Colonnes (postes) du tableau, dans l'ordre d'affichage.
 export const POSTES_SERVICE = ['SARM 1', 'SARM 2', 'Bloc A viscéral', 'Bloc A NC', 'Bloc B', 'USC/Réa']
@@ -33,76 +29,99 @@ export function normaliserPosteCanonique(libelle) {
   return null
 }
 
-// Construit le tableau jours × postes pour une plage de semaines.
-//   semainesPlage      : [{ num, ... }] (ordre chronologique)
-//   annee              : année ISO
-//   trameDe(num)       : trame résolue | null (cf. resoudreTrame)
-//   contexteAmont      : { rea, vacances, weekendAff }
-//   affectationsLibres : { num: { colIndex: ini } }
-//   nomParIni          : { ini: 'Dr Nom' } (repli sur l'initiale si absent)
-//   feriesIso          : Set d'ISO de jours fériés (pour griser comme les week-ends)
-// Retour : { postes, lignes: [{ iso, dateLabel, estWeekend, estFerie,
-//            parPoste: { poste: { texte, estRemplacant } } }] }. estRemplacant ⇒ affichage en rouge.
-export function construireTableParService({
-  semainesPlage = [], annee, trameDe, contexteAmont = {}, affectationsLibres = {}, nomParIni = {}, feriesIso = new Set(),
-}) {
-  // 1) Pour chaque semaine : cellules[jour][poste] = [noms].
-  const parSemaine = {}
-  for (const sem of semainesPlage) {
-    const trame = trameDe?.(sem.num)
-    if (!trame) continue
-    const affR = affectationResolue(trame, sem.num, contexteAmont, affectationsLibres) // { col: ini }
-    const cellules = {}
-    const placer = (jour, poste, nom, estRemplacant = false) => {
-      if (!poste || !nom) return
-      const parPoste = (cellules[jour] ??= {})
-      const items = (parPoste[poste] ??= [])
-      if (!items.some(it => it.nom === nom)) items.push({ nom, estRemplacant })
-    }
-    // Associés (colonnes résolues : libres + spéciales).
-    for (const [colStr, ini] of Object.entries(affR)) {
-      if (!ASSOCIES.includes(ini)) continue
-      const col = trame.colonnes?.[Number(colStr)]
-      if (!col) continue
+// En-tête de colonne remplaçant « générique » (pas un vrai nom) → on inscrira juste « Remplaçant ».
+function enteteGenerique(header) {
+  return /^remp/.test(nettoie(header).replace(/[^a-z]/g, ''))
+}
+
+// Découpe un texte collé depuis Excel en matrice de cellules (lignes × colonnes), tabulations en séparateur.
+// Les lignes entièrement vides sont retirées.
+function enMatrice(texte) {
+  return (texte ?? '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(l => l.split('\t').map(c => c.trim()))
+    .filter(ligne => ligne.some(c => c !== ''))
+}
+
+// Parse le collage du tableur du faiseur → { table, diag }.
+//   table = { postes: POSTES_SERVICE, lignes: [{ iso, dateLabel, estWeekend:false, estFerie:false,
+//             parPoste: { <service>: { texte, estRemplacant } } }] }  ← format attendu par l'export.
+//   diag  = { associes:[{header,ini,nom}], remplacants:[{header,nom}], ignorees:[header],
+//             nbJours, avert:[string] }  ← récapitulatif de reconnaissance affiché à l'écran.
+// Options : nomParIni { ini: 'Dr Nom' } (repli sur l'initiale), associes (liste d'initiales).
+export function parserCollageParService(texte, { nomParIni = {}, associes = ASSOCIES } = {}) {
+  const vide = { table: { postes: POSTES_SERVICE, lignes: [] }, diag: { associes: [], remplacants: [], ignorees: [], nbJours: 0, avert: [] } }
+  const matrice = enMatrice(texte)
+  if (matrice.length < 2) return vide // besoin d'au moins l'en-tête + 1 jour
+
+  const entetes = matrice[0]
+  const corps = matrice.slice(1)
+  const nbColonnes = matrice.reduce((m, l) => Math.max(m, l.length), 0)
+
+  // Index → initiales d'associé (recherche tolérante : initiale exacte, sinon nom complet).
+  const iniParCle = new Map()
+  for (const ini of associes) iniParCle.set(normaliserCle(ini), ini)
+  const iniParNom = new Map()
+  for (const [ini, nom] of Object.entries(nomParIni)) if (nom) iniParNom.set(normaliserCle(nom), ini)
+
+  // 1) Classement des colonnes (à partir de l'index 1 ; la colonne 0 = dates).
+  const colonnes = [] // { c, type:'associe'|'remplacant', ini?, nom, estRemplacant, header }
+  const diag = { associes: [], remplacants: [], ignorees: [], nbJours: 0, avert: [] }
+  for (let c = 1; c < nbColonnes; c++) {
+    const header = entetes[c] ?? ''
+    const colVide = corps.every(l => !(l[c] ?? '').trim())
+    const cle = normaliserCle(header)
+    const ini = iniParCle.get(cle) ?? iniParNom.get(cle) ?? null
+    if (ini) {
       const nom = nomParIni[ini] || ini
-      for (const jour of JOURS) placer(jour, normaliserPosteCanonique(col[jour]), nom)
+      colonnes.push({ c, type: 'associe', ini, nom, estRemplacant: false, header })
+      diag.associes.push({ header, ini, nom })
+    } else if (!header && colVide) {
+      diag.ignorees.push(header)
+    } else {
+      const nom = (header && !enteteGenerique(header)) ? header : 'Remplaçant'
+      colonnes.push({ c, type: 'remplacant', nom, estRemplacant: true, header })
+      diag.remplacants.push({ header, nom })
     }
-    // Remplaçants externes : on n'affiche PAS leur nom, on inscrit le mot « Remplaçant » (en rouge,
-    // côté UI/export) dans le poste couvert, quel que soit le remplaçant (1er, 2e…). On ne dépend donc
-    // pas du nom saisi → comble les trous quand un remplaçant couvre un poste sans avoir été nommé.
-    for (const r of (trame.remplacants ?? [])) {
-      if (r.col == null) continue
-      const col = trame.colonnes?.[r.col]
-      if (!col) continue
-      for (const jour of JOURS) placer(jour, normaliserPosteCanonique(col[jour]), 'Remplaçant', true)
-    }
-    parSemaine[sem.num] = cellules
   }
 
-  // 2) Lignes jour par jour (7 j/semaine, lun→dim). Postes uniquement en semaine (lun→ven).
+  // 2) Transposition jour par jour : pour chaque ligne, on lit le poste de chaque colonne personne.
   const lignes = []
-  for (const sem of semainesPlage) {
-    const lundi = lundiDeSemaineISO(annee, sem.num)
-    for (let off = 0; off < 7; off++) {
-      const date = new Date(lundi.getTime() + off * JOUR_MS)
-      const iso = formatISO(date)
-      const estWeekend = off >= 5
-      const parPoste = {}
-      if (!estWeekend) {
-        const cell = parSemaine[sem.num]?.[JOURS[off]] ?? {}
-        for (const poste of POSTES_SERVICE) {
-          const items = cell[poste]
-          if (items?.length) {
-            parPoste[poste] = {
-              texte: items.map(it => it.nom).join(' / '),
-              // Cellule en rouge si elle ne contient QUE du remplaçant (poste couvert par un externe).
-              estRemplacant: items.every(it => it.estRemplacant),
-            }
-          }
+  const postesVus = new Set()
+  for (let r = 0; r < corps.length; r++) {
+    const ligne = corps[r]
+    const dateLabel = (ligne[0] ?? '').trim()
+    // parService[poste] = [{ nom, estRemplacant }] (dédoublonné par nom, ordre des colonnes).
+    const parService = {}
+    for (const col of colonnes) {
+      const service = normaliserPosteCanonique(ligne[col.c])
+      if (!service) continue
+      postesVus.add(`${col.c}`)
+      const items = (parService[service] ??= [])
+      if (!items.some(it => it.nom === col.nom)) items.push({ nom: col.nom, estRemplacant: col.estRemplacant })
+    }
+    const parPoste = {}
+    for (const poste of POSTES_SERVICE) {
+      const items = parService[poste]
+      if (items?.length) {
+        parPoste[poste] = {
+          texte: items.map(it => it.nom).join(' / '),
+          estRemplacant: items.every(it => it.estRemplacant),
         }
       }
-      lignes.push({ iso, dateLabel: formatDateLongueFR(date), estWeekend, estFerie: feriesIso.has(iso), parPoste })
+    }
+    lignes.push({ iso: `r${r}`, dateLabel, estWeekend: false, estFerie: false, parPoste })
+  }
+  diag.nbJours = lignes.length
+
+  // 3) Avertissements : colonnes non vides dont aucune cellule n'a donné un poste reconnu.
+  for (const col of colonnes) {
+    if (!postesVus.has(`${col.c}`)) {
+      const colNonVide = corps.some(l => (l[col.c] ?? '').trim())
+      if (colNonVide) diag.avert.push(`Colonne « ${col.header || (col.type === 'remplacant' ? 'Remplaçant' : col.ini)} » : aucun poste reconnu (vérifiez les libellés).`)
     }
   }
-  return { postes: POSTES_SERVICE, lignes }
+
+  return { table: { postes: POSTES_SERVICE, lignes }, diag }
 }

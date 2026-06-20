@@ -1,83 +1,33 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { ANNEES, listerSemaines, semainesDansPlage, premiereSemainePlanning, feriesEnSemaine } from '../utils/calendrier'
+import { ANNEES } from '../utils/calendrier'
 import { ANNEE_DEFAUT } from '../utils/desiderata'
-import { resoudreTrame } from '../utils/semaines'
-import { construireTableParService } from '../utils/planningParService'
+import { parserCollageParService } from '../utils/planningParService'
 import { exporterParServiceExcel } from '../utils/exportParService'
-import { chargerTrames } from '../utils/tramesApi'
-import { chargerSemaines } from '../utils/semainesApi'
-import { chargerRea } from '../utils/reaApi'
-import { chargerVacances } from '../utils/vacancesApi'
-import { chargerWeekends } from '../utils/weekendsApi'
-import { chargerCalendrier } from '../utils/calendrierApi'
 import { chargerProfilsAvecInitiales } from '../utils/desiderataApi'
 
-// Onglet « Planning par service » (faiseur) : relit le planning saisi (trames + affectations) et le
-// transpose en tableau jours × postes (noms complets), exportable sur une plage de semaines choisie.
+// Onglet « Planning par service » (faiseur) : on COLLE une période du tableur Excel du faiseur
+// (colonnes = personnes, cellules = postes), l'outil reconnaît initiales/remplaçants, propose un
+// aperçu transposé PAR SERVICE et exporte un Excel ordonné par poste. Rien n'est sauvegardé.
 export default function PlanningParService() {
   const { profile } = useAuth()
   const estFaiseur = profile?.is_faiseur === true
 
   const [annee, setAnnee] = useState(ANNEE_DEFAUT)
-  const [tramesData, setTramesData] = useState(null)
-  const [semData, setSemData] = useState(null)
-  const [reaData, setReaData] = useState(null)
-  const [vacancesData, setVacancesData] = useState(null)
-  const [weekends, setWeekends] = useState(null)
-  const [calendrier, setCalendrier] = useState(null)
   const [profils, setProfils] = useState([])
-  const [charge, setCharge] = useState(false)
+  const [texte, setTexte] = useState('')
+  const [resultat, setResultat] = useState(null) // { table, diag }
   const [erreur, setErreur] = useState(null)
-  const [semDebut, setSemDebut] = useState(null)
-  const [semFin, setSemFin] = useState(null)
   const [exportEnCours, setExportEnCours] = useState(false)
 
   useEffect(() => {
     if (!estFaiseur) return
     let annule = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- bascule en chargement avant la requête réseau
-    setCharge(true); setErreur(null)
-    Promise.all([
-      chargerTrames(annee), chargerSemaines(annee), chargerRea(annee), chargerVacances(annee),
-      chargerWeekends(annee), chargerCalendrier(annee), chargerProfilsAvecInitiales(),
-    ])
-      .then(([tr, sem, rea, vac, we, cal, ps]) => {
-        if (annule) return
-        setTramesData(tr); setSemData(sem); setReaData(rea); setVacancesData(vac)
-        setWeekends(we); setCalendrier(cal); setProfils(ps)
-      })
-      .catch(() => { if (!annule) setErreur('Impossible de charger les données de planning.') })
-      .finally(() => { if (!annule) setCharge(false) })
+    chargerProfilsAvecInitiales()
+      .then(ps => { if (!annule) setProfils(ps) })
+      .catch(() => { if (!annule) setErreur('Impossible de charger les noms des associés.') })
     return () => { annule = true }
-  }, [annee, estFaiseur])
-
-  // Semaines disponibles (à partir de la 1ʳᵉ semaine de planning, après les vacances de Noël).
-  const debutPlanning = useMemo(() => premiereSemainePlanning(calendrier?.vacancesScolaires ?? []), [calendrier])
-  const semainesAnnee = useMemo(
-    () => listerSemaines(annee).filter(s => s.num >= debutPlanning),
-    [annee, debutPlanning]
-  )
-
-  // Défaut de plage = toute l'année de planning (dérivé, sans effet : null → premières/dernières semaines).
-  const debutEff = semDebut ?? semainesAnnee[0]?.num ?? null
-  const finEff = semFin ?? semainesAnnee[semainesAnnee.length - 1]?.num ?? null
-
-  // Reconstruction du contexte (comme PlanningSemaines) pour résoudre les trames et les affectations.
-  const trames = useMemo(() => tramesData?.trames ?? [], [tramesData])
-  const principaleId = tramesData?.principaleId ?? null
-  const tramesById = useMemo(() => Object.fromEntries(trames.map(t => [t.id, t])), [trames])
-  const trameParSemaine = useMemo(() => semData?.trameParSemaine ?? {}, [semData])
-  const affectationsLibres = useMemo(() => semData?.affectations ?? {}, [semData])
-  const vacancesParSemaine = useMemo(() => vacancesData?.vacances ?? {}, [vacancesData])
-  const contexteAmont = useMemo(() => ({
-    rea: reaData?.rea ?? {}, vacances: vacancesData?.vacances ?? {}, weekendAff: weekends?.affectations ?? {},
-  }), [reaData, vacancesData, weekends])
-  const trameDe = useCallback((num) => resoudreTrame({
-    trames, tramesById, principaleId,
-    choisiId: trameParSemaine[num] ?? null,
-    nbVacanciers: (vacancesParSemaine[num] ?? []).length,
-  }).trame, [trames, tramesById, principaleId, trameParSemaine, vacancesParSemaine])
+  }, [estFaiseur])
 
   const nomParIni = useMemo(() => {
     const m = {}
@@ -85,27 +35,26 @@ export default function PlanningParService() {
     return m
   }, [profils])
 
-  const feriesIso = useMemo(() => {
-    const set = new Set()
-    for (const arr of Object.values(feriesEnSemaine(annee))) for (const f of arr) set.add(f.iso)
-    return set
-  }, [annee])
+  function analyser() {
+    setErreur(null)
+    const res = parserCollageParService(texte, { nomParIni })
+    if (!res.table.lignes.length) {
+      setResultat(null)
+      setErreur('Rien à analyser : collez un tableau (1ʳᵉ ligne = en-têtes, 1ʳᵉ colonne = dates).')
+      return
+    }
+    setResultat(res)
+  }
 
-  const semainesPlage = useMemo(() => {
-    if (debutEff == null || finEff == null) return []
-    return semainesDansPlage(annee, Math.min(debutEff, finEff), Math.max(debutEff, finEff))
-  }, [annee, debutEff, finEff])
-
-  const table = useMemo(() => {
-    if (!calendrier || !semainesPlage.length) return { postes: [], lignes: [] }
-    return construireTableParService({ semainesPlage, annee, trameDe, contexteAmont, affectationsLibres, nomParIni, feriesIso })
-  }, [calendrier, semainesPlage, annee, trameDe, contexteAmont, affectationsLibres, nomParIni, feriesIso])
+  function effacer() {
+    setTexte(''); setResultat(null); setErreur(null)
+  }
 
   async function exporter() {
-    if (!table.lignes.length) return
+    if (!resultat?.table.lignes.length) return
     setExportEnCours(true)
     try {
-      await exporterParServiceExcel(annee, table, { plageDebut: Math.min(debutEff, finEff), plageFin: Math.max(debutEff, finEff) })
+      await exporterParServiceExcel(annee, resultat.table)
     } catch {
       setErreur('Export impossible.')
     } finally {
@@ -116,6 +65,7 @@ export default function PlanningParService() {
   const s = {
     select: { padding: '6px 10px', fontSize: 13, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', color: 'var(--color-text)' },
     bouton: { padding: '9px 16px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
+    boutonSecondaire: { padding: '9px 16px', background: 'transparent', color: 'var(--color-primary)', border: '0.5px solid var(--color-primary)', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer' },
     th: { padding: '6px 10px', fontSize: 12, fontWeight: 600, textAlign: 'left', borderBottom: '0.5px solid var(--color-border)', position: 'sticky', top: 0, background: 'var(--color-surface)' },
     td: { padding: '5px 10px', fontSize: 12.5, borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' },
   }
@@ -131,47 +81,75 @@ export default function PlanningParService() {
     )
   }
 
+  const table = resultat?.table
+  const diag = resultat?.diag
+
   return (
     <div style={{ maxWidth: 1100 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>Planning par service</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20 }}>
-        Vue par poste (SARM 1, SARM 2, Bloc A viscéral, Bloc A NC, Bloc B, USC/Réa), reconstituée à partir du
-        planning saisi. Choisissez une plage de semaines puis exportez.
+        Collez une période de votre tableur (1ʳᵉ colonne = dates, colonnes suivantes = associés et remplaçants,
+        cellules = le poste du jour). L'outil reconnaît les initiales et les remplaçants, puis transpose la vue
+        par service (SARM 1, SARM 2, Bloc A viscéral, Bloc A NC, Bloc B, USC/Réa) et l'exporte en Excel.
       </p>
 
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>{erreur}</div>
       )}
 
+      <textarea
+        value={texte}
+        onChange={e => setTexte(e.target.value)}
+        placeholder={'Collez ici depuis Excel (Ctrl+V).\nExemple :\nDate\tEH\tMP\tRC\tDr Martin\nLun 07/01\tSARM 1\tViscéral\tBloc B\tSARM 2'}
+        rows={8}
+        style={{
+          width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'monospace', fontSize: 12.5,
+          padding: 12, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+          background: 'var(--color-bg)', color: 'var(--color-text)', marginBottom: 12,
+        }}
+      />
+
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
+        <button type="button" onClick={analyser} disabled={!texte.trim()} style={{ ...s.bouton, opacity: !texte.trim() ? 0.5 : 1 }}>
+          Analyser
+        </button>
+        <button type="button" onClick={effacer} disabled={!texte && !resultat} style={{ ...s.boutonSecondaire, opacity: (!texte && !resultat) ? 0.5 : 1 }}>
+          Effacer
+        </button>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-          Année
-          <select value={annee} onChange={e => { setAnnee(Number(e.target.value)); setSemDebut(null); setSemFin(null) }} style={s.select}>
+          Année (nom de fichier)
+          <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.select}>
             {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-          De la semaine
-          <select value={debutEff ?? ''} onChange={e => setSemDebut(Number(e.target.value))} style={s.select} disabled={!semainesAnnee.length}>
-            {semainesAnnee.map(sem => <option key={sem.num} value={sem.num}>S{sem.num}</option>)}
-          </select>
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-          à la semaine
-          <select value={finEff ?? ''} onChange={e => setSemFin(Number(e.target.value))} style={s.select} disabled={!semainesAnnee.length}>
-            {semainesAnnee.map(sem => <option key={sem.num} value={sem.num}>S{sem.num}</option>)}
-          </select>
-        </label>
-        <button type="button" onClick={exporter} disabled={charge || exportEnCours || !table.lignes.length} style={{ ...s.bouton, opacity: (charge || exportEnCours || !table.lignes.length) ? 0.5 : 1 }}>
+        <button type="button" onClick={exporter} disabled={exportEnCours || !table?.lignes.length} style={{ ...s.bouton, opacity: (exportEnCours || !table?.lignes.length) ? 0.5 : 1 }}>
           {exportEnCours ? 'Export…' : '⬇ Exporter Excel'}
         </button>
       </div>
 
-      {charge ? (
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Chargement…</div>
-      ) : !table.lignes.length ? (
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Aucune donnée pour cette plage.</div>
-      ) : (
+      {diag && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 20, lineHeight: 1.6 }}>
+          <div><strong>{diag.nbJours}</strong> jour(s) analysé(s).</div>
+          <div>
+            <strong>Associés reconnus :</strong>{' '}
+            {diag.associes.length ? diag.associes.map(a => `${a.ini} → ${a.nom}`).join(' · ') : '—'}
+          </div>
+          <div>
+            <strong>Remplaçants :</strong>{' '}
+            {diag.remplacants.length ? diag.remplacants.map(r => r.nom).join(' · ') : '—'}
+          </div>
+          {diag.ignorees.length > 0 && (
+            <div><strong>Colonnes ignorées :</strong> {diag.ignorees.length} (vides)</div>
+          )}
+          {diag.avert.length > 0 && (
+            <div style={{ color: 'var(--color-danger)', marginTop: 6 }}>
+              {diag.avert.map((a, i) => <div key={i}>⚠ {a}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {table?.lignes.length > 0 && (
         <div style={{ overflow: 'auto', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', maxHeight: '70vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -181,22 +159,19 @@ export default function PlanningParService() {
               </tr>
             </thead>
             <tbody>
-              {table.lignes.map(lg => {
-                const grise = lg.estWeekend || lg.estFerie
-                return (
-                  <tr key={lg.iso} style={{ background: grise ? 'var(--color-bg)' : 'transparent' }}>
-                    <td style={{ ...s.td, color: grise ? 'var(--color-text-tertiary)' : 'var(--color-text)' }}>{lg.dateLabel}</td>
-                    {table.postes.map(p => {
-                      const cell = lg.parPoste?.[p]
-                      return (
-                        <td key={p} style={{ ...s.td, ...(cell?.estRemplacant ? { color: 'var(--color-danger)', fontWeight: 600 } : null) }}>
-                          {cell?.texte ?? ''}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
+              {table.lignes.map(lg => (
+                <tr key={lg.iso}>
+                  <td style={s.td}>{lg.dateLabel}</td>
+                  {table.postes.map(p => {
+                    const cell = lg.parPoste?.[p]
+                    return (
+                      <td key={p} style={{ ...s.td, ...(cell?.estRemplacant ? { color: 'var(--color-danger)', fontWeight: 600 } : null) }}>
+                        {cell?.texte ?? ''}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
