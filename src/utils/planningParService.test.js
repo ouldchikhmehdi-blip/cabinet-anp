@@ -16,6 +16,24 @@ describe('normaliserPosteCanonique', () => {
     expect(normaliserPosteCanonique('VPA')).toBeNull()
     expect(normaliserPosteCanonique('OFF')).toBeNull()
   })
+
+  it('tolère les suffixes de salle collés au code', () => {
+    expect(normaliserPosteCanonique('NC4')).toBe('Bloc A NC')
+    expect(normaliserPosteCanonique('NC6')).toBe('Bloc A NC')
+    expect(normaliserPosteCanonique('NC A')).toBe('Bloc A NC')
+    expect(normaliserPosteCanonique('NC G 2')).toBe('Bloc A NC')
+    expect(normaliserPosteCanonique('NC A2')).toBe('Bloc A NC')
+    expect(normaliserPosteCanonique('NC+VPA')).toBe('Bloc A NC')
+    expect(normaliserPosteCanonique('Réa3')).toBe('USC/Réa')
+    expect(normaliserPosteCanonique('SARM1')).toBe('SARM 1')
+    expect(normaliserPosteCanonique('SARM 2 VPA')).toBe('SARM 2')
+    expect(normaliserPosteCanonique('Viscerale CPRE')).toBe('Bloc A viscéral')
+    // Codes hors service du jour : non reconnus.
+    expect(normaliserPosteCanonique('3')).toBeNull()
+    expect(normaliserPosteCanonique('Cs')).toBeNull()
+    expect(normaliserPosteCanonique('G3')).toBeNull()
+    expect(normaliserPosteCanonique('A3')).toBeNull()
+  })
 })
 
 describe('parserCollageParService', () => {

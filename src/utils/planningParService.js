@@ -17,15 +17,17 @@ function nettoie(s) {
 
 // Libellé de poste (texte libre des trames) → poste canonique, ou null si vide / « VPA » seul / non reconnu.
 // « VPA » (visite pré-anesthésique) est TOUJOURS retiré, quelle que soit la case.
+// Tolérant aux suffixes de salle/groupe COLLÉS au code (« NC4 », « Réa3 », « NC G 2 », « SARM1 »…) :
+// on exige un début de mot avant le code, mais pas de fin de mot après (un chiffre/lettre peut suivre).
 export function normaliserPosteCanonique(libelle) {
   const t = nettoie(libelle).replace(/\bvpa\b/g, ' ').replace(/\s+/g, ' ').trim()
   if (!t) return null
-  if (/\bsarm\s*1\b/.test(t)) return 'SARM 1'
-  if (/\bsarm\s*2\b/.test(t)) return 'SARM 2'
-  if (/visc/.test(t)) return 'Bloc A viscéral'              // viscéral, viscéral A, viscéral + CPE
-  if (/\bnc\b/.test(t) || /neuro/.test(t)) return 'Bloc A NC' // NC, neuro, neurochirurgie
+  if (/\bsarm\s*1/.test(t)) return 'SARM 1'                  // SARM 1, SARM1, SARM 1 VPA
+  if (/\bsarm\s*2/.test(t)) return 'SARM 2'                  // SARM 2, SARM 2 VPA
+  if (/visc/.test(t)) return 'Bloc A viscéral'              // viscéral, viscérale CPRE…
+  if (/\bnc/.test(t) || /neuro/.test(t)) return 'Bloc A NC'  // NC, NC4, NC A, NC G 2, neuro
   if (/bloc\s*b/.test(t) || /endosc/.test(t)) return 'Bloc B' // bloc B, endoscopie
-  if (/\brea\b/.test(t) || /reanim/.test(t) || /\busc\b/.test(t)) return 'USC/Réa' // réa, réanimation, USC
+  if (/\brea/.test(t) || /reanim/.test(t) || /usc/.test(t)) return 'USC/Réa' // réa, réa3, réanimation, USC
   return null
 }
 
