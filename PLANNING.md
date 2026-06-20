@@ -508,8 +508,12 @@ tableur Excel** puis **colle** une période (1 à 4 mois) dans l'outil, qui **re
   = **personnes**. En-tête de colonne = **initiales d'un associé** (EH, MP…) ou une **colonne remplaçant** ;
   chaque **cellule** = le **poste** que la personne fait ce jour-là.
 - **Reconnaissance** (`parserCollageParService`, pur) :
-  - en-tête = initiale d'associé (ou nom complet) → **nom complet** affiché ; sinon → **colonne remplaçant** :
-    nom **lu dans l'en-tête** (ex. « Dr Martin »), ou **« Remplaçant »** si en-tête vide/générique (« Remp »…).
+  - en-tête = initiale d'associé (ou nom complet) → **nom complet** affiché ; sinon → **colonne remplaçant**.
+  - **nom du remplaçant** : lu dans une **cellule** de la colonne (ex. dimanche « OK Dr Delbert Aurelie (Ok) »)
+    et **reporté vers le bas** sur les postes des jours suivants, jusqu'au prochain nom (`extraireNomRemplacant`).
+    Reconnaissance : tout « Dr … » / « Docteur … » (après nettoyage de « OK » et des parenthèses) **plus** une
+    **liste de remplaçants connus** maintenue en dur (`src/data/remplacants.js`, amorcée avec « Dr Delbert Aurelie »),
+    qui rattrape un nom écrit nu. À défaut de nom → **« Remplaçant »**. (L'en-tête peut aussi nommer la colonne.)
   - cellule → poste canonique via `normaliserPosteCanonique` (sans accents/casse, **VPA toujours retiré**) :
     « SARM 1/2 » ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/« endoscopie » →
     Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Non reconnu / « VPA » seul → ignoré.

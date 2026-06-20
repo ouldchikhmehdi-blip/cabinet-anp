@@ -1,7 +1,7 @@
 // Tests du parseur de collage « Planning par service » : transpose [date × personne → poste]
 // en [date × service → personne(s)], reconnaît initiales et colonnes remplaçant.
 import { describe, it, expect } from 'vitest'
-import { parserCollageParService, normaliserPosteCanonique, POSTES_SERVICE } from './planningParService'
+import { parserCollageParService, normaliserPosteCanonique, extraireNomRemplacant, POSTES_SERVICE } from './planningParService'
 
 const NOMS = { EH: 'Dr E. H', MP: 'Dr M. P', RC: 'Dr R. C' }
 
@@ -110,5 +110,60 @@ describe('parserCollageParService', () => {
   it('collage vide ou en-tête seule → aucune ligne', () => {
     expect(parserCollageParService('', {}).table.lignes).toEqual([])
     expect(parserCollageParService('Date\tEH', {}).table.lignes).toEqual([])
+  })
+})
+
+describe('extraireNomRemplacant', () => {
+  it('nettoie « OK … (Ok) » et garde « Dr Nom »', () => {
+    expect(extraireNomRemplacant('OK Dr Delbert Aurelie (Ok)')).toBe('Dr Delbert Aurelie')
+    expect(extraireNomRemplacant('Dr Martin')).toBe('Dr Martin')
+  })
+  it('reconnaît un nom connu écrit nu (sans « Dr »)', () => {
+    expect(extraireNomRemplacant('Delbert Aurelie')).toBe('Dr Delbert Aurelie')
+  })
+  it('un poste ou un texte sans nom → null', () => {
+    expect(extraireNomRemplacant('SARM2')).toBeNull()
+    expect(extraireNomRemplacant('NC4')).toBeNull()
+    expect(extraireNomRemplacant('')).toBeNull()
+  })
+})
+
+describe('parserCollageParService — report du nom de remplaçant (carry-forward)', () => {
+  it('un nom en cellule s\'applique aux postes des jours suivants de la colonne (cas du 12 mai)', () => {
+    const texte = [
+      'Date\tMP\tRemp',
+      'dimanche 10 mai\t\tOK Dr Delbert Aurelie (Ok)',
+      'lundi 11 mai\tNC\tEndoscopie',
+      'mardi 12 mai\tSARM1\tSARM2',
+    ].join('\n')
+    const { table, diag } = parserCollageParService(texte, { nomParIni: NOMS })
+    // La cellule-nom du dimanche n'est pas placée comme poste.
+    expect(table.lignes[0].parPoste).toEqual({})
+    // lundi : Endoscopie (Bloc B) et mardi : SARM2 → portent le nom reporté.
+    expect(table.lignes[1].parPoste['Bloc B'].texte).toBe('Dr Delbert Aurelie')
+    expect(table.lignes[1].parPoste['Bloc B'].estRemplacant).toBe(true)
+    expect(table.lignes[2].parPoste['SARM 2'].texte).toBe('Dr Delbert Aurelie')
+    expect(table.lignes[2].parPoste['SARM 2'].estRemplacant).toBe(true)
+    expect(diag.remplacants.map(r => r.nom)).toContain('Dr Delbert Aurelie')
+  })
+
+  it('un nouveau nom plus bas remplace le précédent', () => {
+    const texte = [
+      'Date\tRemp',
+      'S1\tDr Delbert Aurelie',
+      'S1 lun\tSARM2',
+      'S2\tDr Martin',
+      'S2 lun\tNC',
+    ].join('\n')
+    const { table } = parserCollageParService(texte, {})
+    expect(table.lignes[1].parPoste['SARM 2'].texte).toBe('Dr Delbert Aurelie')
+    expect(table.lignes[3].parPoste['Bloc A NC'].texte).toBe('Dr Martin')
+  })
+
+  it('sans aucun nom : reste « Remplaçant » (non-régression)', () => {
+    const texte = ['Date\tRemp', 'lun\tSARM2'].join('\n')
+    const { table } = parserCollageParService(texte, {})
+    expect(table.lignes[0].parPoste['SARM 2'].texte).toBe('Remplaçant')
+    expect(table.lignes[0].parPoste['SARM 2'].estRemplacant).toBe(true)
   })
 })

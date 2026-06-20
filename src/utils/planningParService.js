@@ -7,6 +7,7 @@
 // ============================================================
 import { ASSOCIES } from '../data/associes'
 import { normaliserCle } from './importConsultations'
+import { REMPLACANTS_CONNUS } from '../data/remplacants'
 
 // Colonnes (postes) du tableau, dans l'ordre d'affichage.
 export const POSTES_SERVICE = ['SARM 1', 'SARM 2', 'Bloc A viscéral', 'Bloc A NC', 'Bloc B', 'USC/Réa']
@@ -34,6 +35,36 @@ export function normaliserPosteCanonique(libelle) {
 // En-tête de colonne remplaçant « générique » (pas un vrai nom) → on inscrira juste « Remplaçant ».
 function enteteGenerique(header) {
   return /^remp/.test(nettoie(header).replace(/[^a-z]/g, ''))
+}
+
+// Nettoie une cellule pour en extraire un nom : retire les parenthèses « (Ok) » et les tokens « OK ».
+function nettoyerNom(cellule) {
+  return (cellule ?? '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\bok\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Forme normalisée d'un nom (minuscule, sans accents/ponctuation) pour comparaison.
+function normNom(s) {
+  return nettoie(s).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// Cellule → nom d'affichage du remplaçant, ou null si ce n'est pas un nom.
+// Reconnaît un nom CONNU (REMPLACANTS_CONNUS) même écrit nu (sans « Dr »), sinon tout « Dr … » / « Docteur … ».
+// Appelée AVANT normaliserPosteCanonique pour les colonnes remplaçant (un nom n'est jamais pris pour un poste).
+export function extraireNomRemplacant(cellule, connus = REMPLACANTS_CONNUS) {
+  const brut = nettoyerNom(cellule)
+  if (!brut) return null
+  const norm = normNom(brut)
+  const sansTitre = norm.replace(/\b(dr|docteur)\b/g, '').replace(/\s+/g, ' ').trim()
+  for (const nom of connus) {
+    const cle = normNom(nom).replace(/\b(dr|docteur)\b/g, '').replace(/\s+/g, ' ').trim()
+    if (cle && sansTitre.includes(cle)) return nom // nom canonique de la liste
+  }
+  if (/\b(dr|docteur)\b/.test(norm)) return brut
+  return null
 }
 
 // Découpe un texte collé depuis Excel en matrice de cellules (lignes × colonnes), tabulations en séparateur.
@@ -82,13 +113,19 @@ export function parserCollageParService(texte, { nomParIni = {}, associes = ASSO
     } else if (!header && colVide) {
       diag.ignorees.push(header)
     } else {
+      // Nom initial = en-tête s'il est nommé, sinon « Remplaçant » (peut être remplacé par un nom lu
+      // dans une cellule plus haut dans la colonne — cf. report ci-dessous).
       const nom = (header && !enteteGenerique(header)) ? header : 'Remplaçant'
       colonnes.push({ c, type: 'remplacant', nom, estRemplacant: true, header })
-      diag.remplacants.push({ header, nom })
     }
   }
 
   // 2) Transposition jour par jour : pour chaque ligne, on lit le poste de chaque colonne personne.
+  // Pour les colonnes remplaçant, le NOM courant est REPORTÉ vers le bas : un nom lu dans une cellule
+  // (ex. dimanche « OK Dr Delbert Aurelie (Ok) ») vaut pour les jours suivants jusqu'au prochain nom.
+  const nomCourantParCol = {}
+  for (const col of colonnes) if (col.type === 'remplacant') nomCourantParCol[col.c] = col.nom
+  const nomsRempl = new Set()
   const lignes = []
   const postesVus = new Set()
   for (let r = 0; r < corps.length; r++) {
@@ -97,11 +134,18 @@ export function parserCollageParService(texte, { nomParIni = {}, associes = ASSO
     // parService[poste] = [{ nom, estRemplacant }] (dédoublonné par nom, ordre des colonnes).
     const parService = {}
     for (const col of colonnes) {
+      let nom = col.nom
+      if (col.type === 'remplacant') {
+        const nomDetecte = extraireNomRemplacant(ligne[col.c])
+        if (nomDetecte) { nomCourantParCol[col.c] = nomDetecte; continue } // annotation : pas un poste
+        nom = nomCourantParCol[col.c]
+      }
       const service = normaliserPosteCanonique(ligne[col.c])
       if (!service) continue
       postesVus.add(`${col.c}`)
+      if (col.type === 'remplacant') nomsRempl.add(nom)
       const items = (parService[service] ??= [])
-      if (!items.some(it => it.nom === col.nom)) items.push({ nom: col.nom, estRemplacant: col.estRemplacant })
+      if (!items.some(it => it.nom === nom)) items.push({ nom, estRemplacant: col.estRemplacant })
     }
     const parPoste = {}
     for (const poste of POSTES_SERVICE) {
@@ -116,6 +160,7 @@ export function parserCollageParService(texte, { nomParIni = {}, associes = ASSO
     lignes.push({ iso: `r${r}`, dateLabel, estWeekend: false, estFerie: false, parPoste })
   }
   diag.nbJours = lignes.length
+  diag.remplacants = [...nomsRempl].map(nom => ({ nom }))
 
   // 3) Avertissements : colonnes non vides dont aucune cellule n'a donné un poste reconnu.
   for (const col of colonnes) {
