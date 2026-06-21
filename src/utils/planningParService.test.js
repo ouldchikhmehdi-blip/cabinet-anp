@@ -121,6 +121,14 @@ describe('extraireNomRemplacant', () => {
   it('reconnaît un nom connu écrit nu (sans « Dr »)', () => {
     expect(extraireNomRemplacant('Delbert Aurelie')).toBe('Dr Delbert Aurelie')
   })
+  it('nom connu : renvoie le nom SEUL malgré les mots parasites et l\'ordre', () => {
+    expect(extraireNomRemplacant('OK Dr Delbert Aurelie fait')).toBe('Dr Delbert Aurelie')
+    expect(extraireNomRemplacant('Aurelie Delbert')).toBe('Dr Delbert Aurelie')
+    expect(extraireNomRemplacant('fait DELBERT aurélie ok')).toBe('Dr Delbert Aurelie')
+  })
+  it('repli générique : « Dr X » nettoyé de « fait »', () => {
+    expect(extraireNomRemplacant('Dr Untel fait')).toBe('Dr Untel')
+  })
   it('un poste ou un texte sans nom → null', () => {
     expect(extraireNomRemplacant('SARM2')).toBeNull()
     expect(extraireNomRemplacant('NC4')).toBeNull()

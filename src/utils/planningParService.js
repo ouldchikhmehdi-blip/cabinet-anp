@@ -37,11 +37,11 @@ function enteteGenerique(header) {
   return /^remp/.test(nettoie(header).replace(/[^a-z]/g, ''))
 }
 
-// Nettoie une cellule pour en extraire un nom : retire les parenthèses « (Ok) » et les tokens « OK ».
+// Nettoie une cellule pour en extraire un nom : retire les parenthèses « (Ok) » et les annotations (OK, fait).
 function nettoyerNom(cellule) {
   return (cellule ?? '')
     .replace(/\([^)]*\)/g, ' ')
-    .replace(/\bok\b/gi, ' ')
+    .replace(/\b(ok|fait)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -52,16 +52,18 @@ function normNom(s) {
 }
 
 // Cellule → nom d'affichage du remplaçant, ou null si ce n'est pas un nom.
-// Reconnaît un nom CONNU (REMPLACANTS_CONNUS) même écrit nu (sans « Dr »), sinon tout « Dr … » / « Docteur … ».
-// Appelée AVANT normaliserPosteCanonique pour les colonnes remplaçant (un nom n'est jamais pris pour un poste).
+// Si la cellule contient TOUS les mots d'un nom CONNU (REMPLACANTS_CONNUS), on renvoie CE nom canonique
+// SEUL — peu importe l'ordre des mots et les mots autour (OK, fait, dates…). Sinon, repli sur tout
+// « Dr … » / « Docteur … » (texte nettoyé). Appelée AVANT normaliserPosteCanonique (un nom n'est jamais un poste).
 export function extraireNomRemplacant(cellule, connus = REMPLACANTS_CONNUS) {
   const brut = nettoyerNom(cellule)
   if (!brut) return null
   const norm = normNom(brut)
   const sansTitre = norm.replace(/\b(dr|docteur)\b/g, '').replace(/\s+/g, ' ').trim()
+  const motsCellule = new Set(sansTitre.split(' ').filter(Boolean))
   for (const nom of connus) {
-    const cle = normNom(nom).replace(/\b(dr|docteur)\b/g, '').replace(/\s+/g, ' ').trim()
-    if (cle && sansTitre.includes(cle)) return nom // nom canonique de la liste
+    const motsNom = normNom(nom).replace(/\b(dr|docteur)\b/g, '').split(' ').filter(Boolean)
+    if (motsNom.length && motsNom.every(m => motsCellule.has(m))) return nom // nom canonique SEUL
   }
   if (/\b(dr|docteur)\b/.test(norm)) return brut
   return null
