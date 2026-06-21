@@ -30,9 +30,14 @@ describe('normaliserPosteCanonique', () => {
     expect(normaliserPosteCanonique('Viscerale CPRE')).toBe('Bloc A viscéral')
     // Codes hors service du jour : non reconnus.
     expect(normaliserPosteCanonique('3')).toBeNull()
-    expect(normaliserPosteCanonique('Cs')).toBeNull()
     expect(normaliserPosteCanonique('G3')).toBeNull()
     expect(normaliserPosteCanonique('A3')).toBeNull()
+  })
+
+  it('« Cs » (consultation) → SARM 1', () => {
+    expect(normaliserPosteCanonique('Cs')).toBe('SARM 1')
+    expect(normaliserPosteCanonique('CS')).toBe('SARM 1')
+    expect(normaliserPosteCanonique('C S')).toBe('SARM 1')
   })
 })
 

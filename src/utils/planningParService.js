@@ -25,6 +25,7 @@ export function normaliserPosteCanonique(libelle) {
   if (!t) return null
   if (/\bsarm\s*1/.test(t)) return 'SARM 1'                  // SARM 1, SARM1, SARM 1 VPA
   if (/\bsarm\s*2/.test(t)) return 'SARM 2'                  // SARM 2, SARM 2 VPA
+  if (/\bc\s*s\b/.test(t)) return 'SARM 1'                   // « Cs » = consultation (souvent SARM 1, le vendredi)
   if (/visc/.test(t)) return 'Bloc A viscéral'              // viscéral, viscérale CPRE…
   if (/\bnc/.test(t) || /neuro/.test(t)) return 'Bloc A NC'  // NC, NC4, NC A, NC G 2, neuro
   if (/bloc\s*b/.test(t) || /endosc/.test(t)) return 'Bloc B' // bloc B, endoscopie

@@ -518,8 +518,9 @@ tableur Excel** puis **colle** une période (1 à 4 mois) dans l'outil, qui **re
     accents, casse, ponctuation et « Dr/Docteur ». À défaut de nom → **« Remplaçant »**. (L'en-tête peut aussi
     nommer la colonne.)
   - cellule → poste canonique via `normaliserPosteCanonique` (sans accents/casse, **VPA toujours retiré**) :
-    « SARM 1/2 » ; « visc… » → Bloc A viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/« endoscopie » →
-    Bloc B ; « réa »/« réanimation »/« USC » → USC/Réa. Non reconnu / « VPA » seul → ignoré.
+    « SARM 1/2 » ; **« Cs »/« C S »** (consultation, souvent le vendredi) → **SARM 1** ; « visc… » → Bloc A
+    viscéral ; « NC »/« neuro » → Bloc A NC ; « bloc b »/« endoscopie » → Bloc B ; « réa »/« réanimation »/
+    « USC » → USC/Réa. Suffixes de salle collés tolérés (NC4, Réa3…). Non reconnu / « VPA » seul → ignoré.
   - **transposition** [date × personne → poste] en [date × **service** → personne(s)] ; plusieurs personnes sur
     un même service un même jour → jointes par « / ». Une cellule **uniquement remplaçant** s'affiche **en rouge**.
   - **récapitulatif de reconnaissance** affiché (associés reconnus, remplaçants, colonnes ignorées, nombre de
