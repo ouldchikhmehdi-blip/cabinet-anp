@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { proposerSemaines, affectationResolue } from './semaines'
-import { invariantsSemaine } from './planningInvariants'
+import { invariantsSemaine, associesEnDouble } from './planningInvariants'
 import { ASSOCIES } from '../data/associes'
 
 // Moteur d'attribution « En semaine » testé via ses INVARIANTES (tout le monde placé, aucun doublon,
@@ -101,5 +101,38 @@ describe('proposerSemaines / affectationResolue — verrou périmé (vacancier v
     expect(out[10][1]).toBe('MOC')
     const aff = affectationResolue(t, 10, ctx, out)
     expect(invariantsSemaine(t, aff, { vacanciers: ['RC', 'FXD'] })).toEqual([])
+  })
+})
+
+describe('affectationResolue — échange impliquant une colonne spéciale (override)', () => {
+  // spec : avantWE C0=EH, vac C2=RC, C3=FXD, réa C4=YC, apresWE C8=FF.
+  const ctx = { rea: { 10: 'YC' }, vacances: { 10: ['RC', 'FXD'] }, weekendAff: { 10: 'EH', 9: 'FF' } }
+
+  it('échange travail ↔ après-WE : aucun associé ne disparaît', () => {
+    const t = trame2()
+    // Échange FF (après-WE C8) ↔ MOC (travail C1) : MOC en C8, FF en C1 (écrits dans les affectations).
+    const aff = affectationResolue(t, 10, ctx, { 10: { 8: 'MOC', 1: 'FF' } })
+    expect(aff[1]).toBe('FF')
+    expect(aff[8]).toBe('MOC')
+    expect(Object.values(aff)).toContain('FF')
+    expect(Object.values(aff)).toContain('MOC')
+    expect(associesEnDouble(aff)).toEqual([])
+  })
+
+  it('override par un travailleur déplace l’occupant dérivé, qui réapparaît sur sa nouvelle colonne (cas FF/C8)', () => {
+    const t = trame2()
+    // Un échange a mis MOC en après-WE C8 et FF en C6 (travail) : FF NE disparaît PAS, il est en C6.
+    const aff = affectationResolue(t, 10, ctx, { 10: { 8: 'MOC', 6: 'FF' } })
+    expect(aff[6]).toBe('FF')
+    expect(aff[8]).toBe('MOC')
+    expect(associesEnDouble(aff)).toEqual([])
+  })
+
+  it('override PÉRIMÉ (vacancier) ne déloge pas l’occupant dérivé de la colonne spéciale', () => {
+    const t = trame2()
+    // RC (vacancier) verrouillé sur la réa C4 : YC (réa dérivé) reste, RC ignoré.
+    const aff = affectationResolue(t, 10, ctx, { 10: { 4: 'RC' } })
+    expect(aff[4]).toBe('YC')
+    expect(associesEnDouble(aff)).toEqual([])
   })
 })

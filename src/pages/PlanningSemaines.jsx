@@ -1274,17 +1274,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
             >
               🗑 Vider (sauf verrous)
             </button>
-            {vueContinue && (
-              <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                ⇄ Cliquez deux en-têtes d'associés d'une même semaine pour les échanger.
-                {selEchange && (
-                  <>
-                    <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sélection : {selEchange.ini} (S{selEchange.num})</span>
-                    <button type="button" onClick={() => setSelEchange(null)} style={{ ...s.lienApercu, color: 'var(--color-danger)' }}>Annuler la sélection</button>
-                  </>
-                )}
-              </span>
-            )}
+            <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              ⇄ Cliquez deux en-têtes d'associés (les initiales en haut de colonne) d'une même semaine pour les échanger.
+              {selEchange && (
+                <>
+                  <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Sélection : {selEchange.ini} (S{selEchange.num})</span>
+                  <button type="button" onClick={() => setSelEchange(null)} style={{ ...s.lienApercu, color: 'var(--color-danger)' }}>Annuler la sélection</button>
+                </>
+              )}
+            </span>
           </div>
 
           <div style={s.carte}>
@@ -1429,10 +1427,10 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         remplacantsSemaine={remplacantsSemaine}
                         nbRemplForce={nbRemplMax}
                         compact={vueContinue}
-                        onSelectColonne={vueContinue ? (ini) => clicEnteteColonne(sem.num, ini) : undefined}
-                        iniSelectionne={vueContinue && selEchange?.num === sem.num ? selEchange.ini : null}
-                        iniVerrouilles={vueContinue ? verrouParSemaine[sem.num]?.inis : null}
-                        onToggleVerrou={vueContinue ? (ini) => { const col = verrouParSemaine[sem.num]?.colParIni[ini]; if (col != null) basculerVerrouColonne(sem.num, col) } : undefined}
+                        onSelectColonne={(ini) => clicEnteteColonne(sem.num, ini)}
+                        iniSelectionne={selEchange?.num === sem.num ? selEchange.ini : null}
+                        iniVerrouilles={verrouParSemaine[sem.num]?.inis}
+                        onToggleVerrou={(ini) => { const col = verrouParSemaine[sem.num]?.colParIni[ini]; if (col != null) basculerVerrouColonne(sem.num, col) }}
                       />
                       {!vueContinue && (<>
                       <div style={s.colonnesEdit}>

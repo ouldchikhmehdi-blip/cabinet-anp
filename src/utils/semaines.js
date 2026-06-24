@@ -138,10 +138,23 @@ export function colonnesSpeciales(trame, num, { rea = {}, vacances = {}, weekend
 // PÉRIMÉ (ex. associé verrouillé en colonne de travail alors qu'il est en congé) est ignoré, sa colonne
 // reste vide (pas de doublon) — elle sera repourvue au prochain « Proposer ».
 export function affectationResolue(trame, num, contexteAmont, affectationsLibres = {}) {
-  const map = colonnesSpeciales(trame, num, contexteAmont)
+  const spec = colonnesSpeciales(trame, num, contexteAmont)
+  const libres = affectationsLibres[num] ?? {}
+  const enVac = new Set(contexteAmont?.vacances?.[num] ?? [])
+  // Un override VALIDE = une affectation libre dont l'associé n'est pas vacancier (un vacancier reste en
+  // congé, jamais sur une colonne de travail/spéciale) : seul un override valide remplace l'occupant dérivé.
+  const overrideValide = (ini) => ini != null && !enVac.has(ini)
+  const map = {}
+  // 1) Colonnes spéciales — SAUF si une affectation libre VALIDE override la colonne (échange manuel) :
+  //    on laisse alors l'override gagner (sinon l'occupant dérivé reprend la main et l'échange « disparaît »).
+  //    L'occupant dérivé déplacé est replacé en 2) sur sa nouvelle colonne. Un override PÉRIMÉ (vacancier)
+  //    ne déloge PAS l'occupant dérivé (la colonne spéciale garde son occupant).
+  for (const [col, ini] of Object.entries(spec)) if (!overrideValide(libres[col])) map[col] = ini
+  // 2) Affectations libres valides, sans doublon : un verrou PÉRIMÉ (vacancier ou associé déjà placé) est
+  //    ignoré, sa colonne reste vide (repourvue au prochain « Proposer »).
   const occupes = new Set(Object.values(map))
-  for (const [col, ini] of Object.entries(affectationsLibres[num] ?? {})) {
-    if (ini == null || occupes.has(ini)) continue
+  for (const [col, ini] of Object.entries(libres)) {
+    if (!overrideValide(ini) || occupes.has(ini)) continue
     map[col] = ini
     occupes.add(ini)
   }
