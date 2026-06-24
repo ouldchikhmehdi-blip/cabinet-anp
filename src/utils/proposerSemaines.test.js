@@ -136,3 +136,26 @@ describe('affectationResolue — échange impliquant une colonne spéciale (over
     expect(associesEnDouble(aff)).toEqual([])
   })
 })
+
+describe('proposerSemaines — jour off non écarté = contrainte forte (Phase OFF)', () => {
+  // 6 colonnes de travail (0..5) + réa (6) + vacances (7). Seule la C1 a un repos le mardi.
+  function trameOff() {
+    const plein = { lun: 'T', mar: 'T', mer: 'T', jeu: 'T', ven: 'T' }
+    const reposMar = { lun: 'T', mar: '', mer: 'T', jeu: 'T', ven: 'T' }
+    const cols = [{ ...plein }, { ...reposMar }, { ...plein }, { ...plein }, { ...plein }, { ...plein }, {}, {}]
+    return { id: 9, colonnes: cols, rea: 6, vacances: [7], avantWE: null, apresWE: null, remplacants: [] }
+  }
+
+  it('l’associé ayant un jour off est placé sur la colonne dont le repos couvre cet off', () => {
+    const t = trameOff()
+    const ctx = { rea: { 5: 'YC' }, vacances: { 5: ['RC'] }, weekendAff: {} }
+    const out = proposerSemaines({
+      semainesPlage: [{ num: 5 }], annee: ANNEE, calendrier,
+      trameInfo: () => ({ trame: t, estPrincipale: true }), contexteAmont: ctx,
+      desiderata: { joursOffDetailParAssocie: { MOC: { 5: new Set(['mar']) } } },
+    })
+    expect(out[5][1]).toBe('MOC') // MOC récupère la seule colonne en repos le mardi
+    const aff = affectationResolue(t, 5, ctx, out)
+    expect(invariantsSemaine(t, aff, { vacanciers: ['RC'] })).toEqual([])
+  })
+})

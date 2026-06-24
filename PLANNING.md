@@ -300,6 +300,13 @@ Puis, sur cette base :
      les **jours off** via le **repos-levier** (placer sur une colonne dont le repos post-garde/astreinte
      tombe sur le jour off demandé), puis l'**équilibre des gardes** et l'**espacement**. Attribuer une
      colonne attribue d'emblée **sa garde/astreinte et son repos**. Modèle/algorithme : `src/utils/semaines.js`.
+   - **Jour off non écarté = desideratum FORT (Phase OFF, priorité haute).** Un jour off conservé par le
+     faiseur (case décochée — y compris un **pont** lié à un férié) est honoré **en priorité** : une phase
+     dédiée (`proposerSemaines`, après la règle dure vendredi-avant-vacances et **avant** les souhaits de
+     colonne et l'équilibre des gardes) **réserve** à l'associé une colonne dont le repos couvre le plus
+     possible ses jours off. Si **aucune** colonne libre ne couvre (impossibilité structurelle), l'associé
+     est placé normalement et l'off **non honoré** est signalé (panneau « Desiderata non honorés »). Les
+     jours off **écartés** par le faiseur sont, eux, ignorés.
    - **Un associé n'occupe qu'UNE colonne (anti-doublon).** Quand un associé cumule deux rôles spéciaux
      (ex. **réa ET garde de week-end**, ou deux week-ends consécutifs où avant-WE = après-WE), il n'est
      placé qu'une fois — **priorité réa > avant-WE > après-WE** ; la colonne de travail ainsi **libérée**

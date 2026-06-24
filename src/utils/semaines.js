@@ -424,6 +424,24 @@ export function proposerSemaines({
       attribuer(c, cands[0])
     }
 
+    // Phase OFF — RÈGLE (priorité haute) : un JOUR OFF non écarté est un desideratum FORT. On RÉSERVE à
+    // chaque associé qui en a un une colonne dont le repos couvre le plus possible ses jours off, AVANT les
+    // souhaits de colonne et l'équilibre des gardes (sinon la colonne couvrante est consommée et l'off saute).
+    // Si aucune colonne libre ne couvre, l'associé sera placé normalement (off non honoré → signalé au faiseur).
+    const avecOff = assocLibres
+      .filter(ini => (joursOffDetailParAssocie?.[ini]?.[num]?.size ?? 0) > 0)
+      .sort((a, b) => ((joursOffDetailParAssocie[b][num].size) - (joursOffDetailParAssocie[a][num].size)) || (ASSOCIES.indexOf(a) - ASSOCIES.indexOf(b)))
+    for (const ini of avecOff) {
+      let best = null, bestN = 0
+      for (const c of colLibres) {
+        if (out[num][c] != null) continue
+        if (colServiceVendredi(c) && interditsVendredi.has(ini)) continue // règle dure vendredi-avant-vacances
+        const n = reposCouvre(c, ini)
+        if (n > bestN) { bestN = n; best = c }
+      }
+      if (best != null && bestN > 0) attribuer(best, ini)
+    }
+
     // Phase A — souhaits de colonne (seulement si la semaine utilise la trame PRINCIPALE).
     if (estPrincipale) {
       const parCol = {}
