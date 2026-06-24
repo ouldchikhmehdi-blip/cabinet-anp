@@ -133,9 +133,19 @@ export function colonnesSpeciales(trame, num, { rea = {}, vacances = {}, weekend
 }
 
 // Affectation COMPLÈTE résolue d'une semaine (spéciales dérivées + libres stockées) → { col: ini }.
-// Les colonnes remplaçant restent vides (personnes externes).
+// Les colonnes remplaçant restent vides (personnes externes). Un associé déjà placé par une colonne
+// spéciale (réa / vacances / week-end) n'est JAMAIS re-placé par une colonne libre stockée : un verrou
+// PÉRIMÉ (ex. associé verrouillé en colonne de travail alors qu'il est en congé) est ignoré, sa colonne
+// reste vide (pas de doublon) — elle sera repourvue au prochain « Proposer ».
 export function affectationResolue(trame, num, contexteAmont, affectationsLibres = {}) {
-  return { ...colonnesSpeciales(trame, num, contexteAmont), ...(affectationsLibres[num] ?? {}) }
+  const map = colonnesSpeciales(trame, num, contexteAmont)
+  const occupes = new Set(Object.values(map))
+  for (const [col, ini] of Object.entries(affectationsLibres[num] ?? {})) {
+    if (ini == null || occupes.has(ini)) continue
+    map[col] = ini
+    occupes.add(ini)
+  }
+  return map
 }
 
 // Colonnes que le moteur doit POURVOIR avec un associé cette semaine : les colonnes libres
@@ -321,9 +331,11 @@ export function proposerSemaines({
     // il PRIME sur l'occupant dérivé de l'amont ET est persisté dans la sortie, pour qu'un échange manuel
     // survive à « Proposer » (sans ça, le moteur redérive ces colonnes de l'amont et défait l'échange ;
     // les colonnes de TRAVAIL verrouillées sont, elles, posées plus bas via colonnesAPourvoir).
+    const estVacancier = (ini) => (vacances[num] ?? []).includes(ini)
     for (const [c, ini] of Object.entries(verrou)) {
       const col = Number(c)
-      if (spec[col] != null && ASSOCIES.includes(ini)) { spec[col] = ini; out[num][col] = ini }
+      // Verrou périmé ignoré : un vacancier ne peut pas être forcé sur une colonne spéciale (il reste en congé).
+      if (spec[col] != null && ASSOCIES.includes(ini) && !estVacancier(ini)) { spec[col] = ini; out[num][col] = ini }
     }
     const feriesOffsets = feriesOffsetsParSemaine[num] ?? []
     // Règle DURE : pas de garde/astreinte le vendredi pour deux motifs réunis ici (même contrainte —
@@ -356,9 +368,13 @@ export function proposerSemaines({
 
     // Colonnes à pourvoir (libres + colonnes de travail spéciales restées vides) ; les verrouillées
     // sont posées d'emblée.
+    // Un verrou ne place un associé QUE s'il n'est pas déjà occupé cette semaine (vacancier, colonne
+    // spéciale, ou autre verrou déjà posé). Sinon le verrou est PÉRIMÉ : on l'ignore et la colonne
+    // redevient disponible (évite qu'un associé soit sur deux colonnes et qu'un autre finisse non placé).
     const colLibres = []
     for (const c of colonnesAPourvoir(trame, spec)) {
-      if (verrou[c] != null) { out[num][c] = verrou[c]; pris.add(verrou[c]); placer(c, verrou[c]) }
+      const v = verrou[c]
+      if (v != null && !pris.has(v)) { out[num][c] = v; pris.add(v); placer(c, v) }
       else colLibres.push(c)
     }
     let assocLibres = ASSOCIES.filter(a => !pris.has(a))

@@ -63,3 +63,43 @@ describe('proposerSemaines — complétude de l’attribution (invariantes)', ()
     expect(tousPlaces(aff, ['MP'])).toBe(true)
   })
 })
+
+// Trame 2 : 9 colonnes, 2 colonnes vacances (C2, C3), réa C4, avant-WE C0, après-WE C8.
+function trame2() {
+  return { id: 2, colonnes: Array.from({ length: 9 }, () => ({})), rea: 4, vacances: [2, 3], avantWE: 0, apresWE: 8, remplacants: [] }
+}
+
+describe('proposerSemaines / affectationResolue — verrou périmé (vacancier verrouillé en colonne de travail)', () => {
+  const ctx = { rea: { 10: 'YC' }, vacances: { 10: ['RC', 'FXD'] }, weekendAff: { 10: 'EH', 9: 'FF' } }
+
+  it('affectationResolue : un vacancier verrouillé en colonne de travail n’y est PAS placé (pas de doublon)', () => {
+    const t = trame2()
+    const aff = affectationResolue(t, 10, ctx, { 10: { 6: 'RC' } }) // RC en congé + verrou C6 (périmé)
+    expect(aff[6]).toBeUndefined()
+    expect(invariantsSemaine(t, aff, { vacanciers: ['RC', 'FXD'] }).filter(v => v.code === 'enDouble')).toEqual([])
+  })
+
+  it('proposerSemaines : le verrou périmé est ignoré, la colonne est repourvue, tout le monde est placé', () => {
+    const t = trame2()
+    const out = proposerSemaines({
+      semainesPlage: [{ num: 10 }], annee: ANNEE, calendrier,
+      trameInfo: () => ({ trame: t, estPrincipale: true }), contexteAmont: ctx, desiderata: {},
+      fixes: { 10: { 6: 'RC' } },
+    })
+    const aff = affectationResolue(t, 10, ctx, out)
+    expect(invariantsSemaine(t, aff, { vacanciers: ['RC', 'FXD'] })).toEqual([])
+    expect(tousPlaces(aff, ['RC', 'FXD'])).toBe(true)
+  })
+
+  it('un verrou NORMAL (associé disponible) est toujours respecté', () => {
+    const t = trame2()
+    const out = proposerSemaines({
+      semainesPlage: [{ num: 10 }], annee: ANNEE, calendrier,
+      trameInfo: () => ({ trame: t, estPrincipale: true }), contexteAmont: ctx, desiderata: {},
+      fixes: { 10: { 1: 'MOC' } },
+    })
+    expect(out[10][1]).toBe('MOC')
+    const aff = affectationResolue(t, 10, ctx, out)
+    expect(invariantsSemaine(t, aff, { vacanciers: ['RC', 'FXD'] })).toEqual([])
+  })
+})

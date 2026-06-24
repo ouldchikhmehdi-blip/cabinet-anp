@@ -21,10 +21,11 @@ import { evenementsAgendaParAssocie } from '../utils/evenementsAgenda'
 import { sauverEvenementsTiers, supprimerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { cleEcart, cleEcartWeekend, cleEcartVacances } from '../utils/ponts'
 import {
-  proposerSemaines, optimiserSemaines, affectationResolue, analyserSemaineColonnes,
+  proposerSemaines, optimiserSemaines, affectationResolue, analyserSemaineColonnes, colonnesSpeciales,
   gardesWeekendParAssocie, gardesSemaineParAssocie, bilanVendrediRecupParAssocie, roleVendrediCol, resoudreTrame, reposJours,
   viderSaufVerrous,
 } from '../utils/semaines'
+import { verrousPerimes } from '../utils/planningInvariants'
 import { colonnesSelectionnables, capaciteVacances, JOURS } from '../utils/trames'
 import { exporterCalendrierExcel, genererClasseurBuffer } from '../utils/exportCalendrier'
 import ApercuSemaine from '../components/planning/ApercuSemaine'
@@ -411,6 +412,15 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       if (incoherents.size) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${[...incoherents].join(', ')} en vacances mais désigné(s) au week-end / à la réa : à corriger en amont (étape Week-ends / Réa).` })
       if (al?.vendrediAvantVacances?.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${al.vendrediAvantVacances.join(', ')} de service le vendredi alors qu'il(s) part(ent) en vacances la semaine suivante (interdit) : à réaffecter.` })
       if (al?.vendrediVeilleWE?.length) bloquants.push({ severite: 'danger', semaine: num, message: `S${num} — ${al.vendrediVeilleWE.join(', ')} de garde/astreinte le vendredi, veille d'un week-end indisponible avec option « + vendredi » (interdit) : à réaffecter sur une colonne sans garde ni astreinte le vendredi.` })
+      // Verrous PÉRIMÉS : un cadenas posé sur une colonne de travail pour un associé désormais en congé
+      // (ou déjà placé en colonne spéciale) est IGNORÉ par l'outil (sa colonne est repourvue). On le signale.
+      const trameNum = trameDe(num)
+      if (trameNum) {
+        const verrouMap = {}
+        for (const c of (verrousData[num] ?? [])) { const ini = affectationsLibres[num]?.[c]; if (ini != null) verrouMap[c] = ini }
+        const perimes = verrousPerimes(verrouMap, { vacanciers: contexteAmont.vacances[num] ?? [], spec: colonnesSpeciales(trameNum, num, contexteAmont) })
+        for (const p of perimes) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — verrou ignoré sur C${p.col + 1} : ${p.ini} est ${p.raison === 'vacances' ? 'en congé' : 'déjà placé'} cette semaine. La colonne est repourvue ; retirez le cadenas si besoin.` })
+      }
       // — À surveiller (non bloquant) —
       if (a?.pont) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — pont : ${a.feries.map(f => `${f.nom} (${f.jourLabel})`).join(', ')} — jour férié en semaine : vérifie qui travaille et la garde/astreinte ce jour-là (l'outil ne l'ajuste pas automatiquement).` })
       if (al?.tropProche && Object.keys(al.tropProche).length) surveiller.push({ severite: 'info', semaine: num, message: `S${num} — gardes rapprochées (< 1 sem.) : ${Object.entries(al.tropProche).map(([i, e]) => `${i} (${e} j)`).join(', ')}.` })
@@ -422,7 +432,7 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
       semainesBloquantes: new Set(bloquants.map(c => c.semaine)),
       semainesSurveiller: new Set(surveiller.map(c => c.semaine)),
     }
-  }, [semaines, alertesColonnes, analyses, trameDe, contexteAmont])
+  }, [semaines, alertesColonnes, analyses, trameDe, contexteAmont, verrousData, affectationsLibres])
 
   // Catégorie d'une semaine : 'bloquant' (orange) > 'surveiller' (bleu) > null (neutre).
   const categorieSem = useCallback((num) => (
@@ -707,6 +717,27 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
     }
     return m
   }, [semaines, trameDe, contexteAmont, affectationsLibres, calendrier])
+
+  // Associés verrouillés par semaine (pour afficher le cadenas en Vue continue) + colonne de chaque associé.
+  //   { num: { inis: Set<ini>, colParIni: { ini: colIndex } } }
+  const verrouParSemaine = useMemo(() => {
+    const m = {}
+    for (const sem of semaines) {
+      const trame = trameDe(sem.num)
+      if (!trame) continue
+      const affR = affectationResolue(trame, sem.num, contexteAmont, affectationsLibres)
+      const verCols = new Set(verrousData[sem.num] ?? [])
+      const inis = new Set()
+      const colParIni = {}
+      for (const [col, ini] of Object.entries(affR)) {
+        if (!ASSOCIES.includes(ini)) continue
+        colParIni[ini] = Number(col)
+        if (verCols.has(Number(col))) inis.add(ini)
+      }
+      m[sem.num] = { inis, colParIni }
+    }
+    return m
+  }, [semaines, trameDe, contexteAmont, affectationsLibres, verrousData])
 
   // Colonnes remplaçant par semaine (période) pour l'export : { num: [colObject, …] } (lun..ven + service),
   // triées par index de colonne. Personnes externes (hors des 8 associés).
@@ -1235,9 +1266,9 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
               onClick={viderSaufVerrousAff}
               disabled={!aDesAffectations}
               style={{
-                padding: '4px 10px', fontSize: 12, borderRadius: 'var(--radius-md)',
+                padding: '8px 14px', fontSize: 13, fontWeight: 500, borderRadius: 'var(--radius-md)',
                 cursor: aDesAffectations ? 'pointer' : 'default', border: '0.5px solid var(--color-danger)',
-                background: 'var(--color-bg)', color: 'var(--color-danger)', opacity: aDesAffectations ? 1 : 0.5,
+                background: 'var(--color-danger-light)', color: 'var(--color-danger)', opacity: aDesAffectations ? 1 : 0.5,
               }}
               title="Efface le remplissage automatique En semaine (proposition + ajustements) en conservant les colonnes verrouillées et les trames choisies. Recliquez ensuite sur Proposer. Annulable."
             >
@@ -1400,6 +1431,8 @@ export default function PlanningSemaines({ annee: anneeProp, onChangeAnnee, onSt
                         compact={vueContinue}
                         onSelectColonne={vueContinue ? (ini) => clicEnteteColonne(sem.num, ini) : undefined}
                         iniSelectionne={vueContinue && selEchange?.num === sem.num ? selEchange.ini : null}
+                        iniVerrouilles={vueContinue ? verrouParSemaine[sem.num]?.inis : null}
+                        onToggleVerrou={vueContinue ? (ini) => { const col = verrouParSemaine[sem.num]?.colParIni[ini]; if (col != null) basculerVerrouColonne(sem.num, col) } : undefined}
                       />
                       {!vueContinue && (<>
                       <div style={s.colonnesEdit}>

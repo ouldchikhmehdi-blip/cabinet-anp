@@ -213,3 +213,13 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - Rôles : `admin` (accès complet) / `user` (lecture seule).
 - Rester dans la stack figée ; toute déviation se propose et se valide, ne s'impose pas.
 - **Laisser le lint vert** : `npm run lint` à **0 problème** après chaque intervention (cf. §8).
+
+---
+
+## 11. Méthode de travail et communication
+
+1. **Poser des questions, ne pas présumer.** Si quelque chose n'est pas clair, demander **avant d'écrire la moindre ligne**. Ne jamais faire de suppositions tacites sur l'intention, l'architecture ou les exigences. En cas d'exécution sans surveillance, choisir l'interprétation la plus raisonnable, poursuivre et **noter la supposition** plutôt que de bloquer le développement.
+2. **Adapter la complexité au problème.** Implémenter la solution la plus simple pour les problèmes simples, des solutions plus élaborées pour les problèmes complexes. Éviter la sur-ingénierie et la flexibilité inutile.
+3. **Ne pas toucher au code non lié**, mais **signaler** tout code défectueux ou toute anomalie de conception découverte, pour le traiter séparément.
+4. **Signaler clairement les incertitudes.** En cas de doute, revenir au point 1. Si pertinent, mener une expérience simple, localisée et à faible risque, puis soumettre l'hypothèse et les résultats pour discussion. *La confiance sans certitude est plus nuisible que la reconnaissance d'une lacune.*
+5. **Suggestions bienvenues.** Proposer une meilleure approche, ou une solution à impact durable plutôt qu'un simple changement tactique.

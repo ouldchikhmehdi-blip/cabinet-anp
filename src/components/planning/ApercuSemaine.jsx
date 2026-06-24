@@ -68,7 +68,7 @@ const s = {
 export default function ApercuSemaine({
   annee, sem, calendrier, affectationsSemaine, weekendAff = {}, reaAff = {},
   congesParSemaine = {}, recupParSemaine = {}, compteurs = null, remplacantsSemaine = {}, compact = false,
-  nbRemplForce = 0, onSelectColonne = null, iniSelectionne = null,
+  nbRemplForce = 0, onSelectColonne = null, iniSelectionne = null, iniVerrouilles = null, onToggleVerrou = null,
 }) {
   const feries = useMemo(() => {
     const m = {}
@@ -134,6 +134,7 @@ export default function ApercuSemaine({
             {ASSOCIES.map(a => {
               const cliquable = !!onSelectColonne
               const actif = a === iniSelectionne
+              const verrou = iniVerrouilles?.has?.(a)
               return (
                 <th
                   key={a}
@@ -146,6 +147,17 @@ export default function ApercuSemaine({
                   title={cliquable ? `Échanger la colonne ${a} (cliquez un 2ᵉ associé)` : undefined}
                 >
                   {a}
+                  {verrou && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onToggleVerrou?.(a) }}
+                      title="Colonne verrouillée — cliquez pour déverrouiller (la remettre en automatique)."
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 0 0 3px' }}
+                      aria-label="Déverrouiller"
+                    >
+                      🔒
+                    </button>
+                  )}
                 </th>
               )
             })}

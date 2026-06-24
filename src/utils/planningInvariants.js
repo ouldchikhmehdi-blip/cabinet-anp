@@ -38,6 +38,24 @@ export function invariantsSemaine(trame, affResolue = {}, { vacanciers = [] } = 
   return violations
 }
 
+// Verrous PÉRIMÉS d'une semaine : un verrou { col: ini } qui ne peut pas s'appliquer car l'associé est
+// déjà occupé cette semaine — vacancier (raison 'vacances') ou occupant d'une AUTRE colonne spéciale
+// (raison 'spéciale'). Le moteur les ignore (pas de doublon) ; on les signale pour que le faiseur retire
+// le cadenas. `spec` = { col: ini } des colonnes spéciales (cf. colonnesSpeciales). Renvoie [{ col, ini, raison }].
+export function verrousPerimes(verrou = {}, { vacanciers = [], spec = {} } = {}) {
+  const enVac = new Set(vacanciers)
+  const specOccupants = new Set(Object.values(spec))
+  const out = []
+  for (const [col, ini] of Object.entries(verrou)) {
+    if (!ASSOCIES.includes(ini)) continue
+    const c = Number(col)
+    if (spec[c] === ini) continue // verrou sur la PROPRE colonne spéciale de l'associé : légitime
+    if (enVac.has(ini)) out.push({ col: c, ini, raison: 'vacances' })
+    else if (specOccupants.has(ini)) out.push({ col: c, ini, raison: 'spéciale' })
+  }
+  return out
+}
+
 // ── WEEK-ENDS (proposerWeekends → { num: ini }) ──
 // Règles DURES : l'associé du week-end est disponible (ni indisponible déclaré, ni jour off posé le
 // sam/dim) et n'est pas en vacances la semaine du week-end (S) ni la suivante (S+1) — jamais de garde

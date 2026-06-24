@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { associesEnDouble, invariantsSemaine, invariantsWeekends, invariantsRea, invariantsVacances } from './planningInvariants'
+import { associesEnDouble, invariantsSemaine, verrousPerimes, invariantsWeekends, invariantsRea, invariantsVacances } from './planningInvariants'
 import { ASSOCIES } from '../data/associes'
 
 // Trame minimale : seuls les indices spéciaux comptent ici.
@@ -13,6 +13,23 @@ function affComplete() {
   autres.forEach((ini, k) => { aff[cols[k]] = ini })
   return aff
 }
+
+describe('verrousPerimes', () => {
+  it('vacancier verrouillé sur une colonne de travail → périmé (vacances)', () => {
+    expect(verrousPerimes({ 6: 'RC' }, { vacanciers: ['RC'], spec: { 2: 'RC' } }))
+      .toEqual([{ col: 6, ini: 'RC', raison: 'vacances' }])
+  })
+  it('verrou sur la propre colonne spéciale → légitime ([])', () => {
+    expect(verrousPerimes({ 2: 'RC' }, { vacanciers: ['RC'], spec: { 2: 'RC' } })).toEqual([])
+  })
+  it('associé déjà en colonne spéciale verrouillé ailleurs → périmé (spéciale)', () => {
+    expect(verrousPerimes({ 5: 'EH' }, { vacanciers: ['RC'], spec: { 0: 'EH' } }))
+      .toEqual([{ col: 5, ini: 'EH', raison: 'spéciale' }])
+  })
+  it('verrou normal (associé libre) → []', () => {
+    expect(verrousPerimes({ 1: 'MOC' }, { vacanciers: ['RC'], spec: { 0: 'EH' } })).toEqual([])
+  })
+})
 
 describe('associesEnDouble', () => {
   it('aucun doublon → []', () => {
