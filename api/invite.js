@@ -41,12 +41,28 @@ export default async function handler(req, res) {
     return sendError(res, 409, 'Un compte actif existe déjà pour cet e-mail.')
   }
 
+  // Supprime toute invitation NON utilisée existante pour cet e-mail (expirée ou
+  // encore en attente). L'index unique partiel ne réserve qu'un créneau par e-mail
+  // tant que used_at is null : sans ce nettoyage, une invitation expirée mais jamais
+  // ouverte bloquerait la régénération. « Générer l'invitation » agit donc aussi
+  // comme un renvoi : nouveau lien, nouveau délai, l'ancien token devient caduc.
+  const { error: cleanupErr } = await supabaseAdmin
+    .from('invitations')
+    .delete()
+    .eq('email', email.toLowerCase())
+    .is('used_at', null)
+
+  if (cleanupErr) {
+    console.error('Erreur nettoyage invitation:', cleanupErr)
+    return sendError(res, 500, 'Erreur interne lors de la régénération de l\'invitation.')
+  }
+
   // Génère un token aléatoire 256 bits (URL-safe base64)
   const token     = crypto.randomBytes(32).toString('base64url')
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
 
-  // Insère l'invitation (l'index unique partiel bloque si une invitation active existe déjà)
+  // Insère l'invitation (l'index unique partiel reste un garde-fou anti-course)
   const { error: insertErr } = await supabaseAdmin
     .from('invitations')
     .insert({
