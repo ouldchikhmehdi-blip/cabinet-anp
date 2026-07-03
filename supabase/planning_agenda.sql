@@ -19,6 +19,11 @@ create table if not exists public.planning_agenda (
 );
 -- Idempotent pour les bases déjà créées :
 alter table public.planning_agenda add column if not exists exclus jsonb not null default '[]'::jsonb;
+-- Source du flux : 'auto' = planning validé dérivé en interne (défaut) ; 'manuel' = import collé par
+-- l'associé (table planning_agenda_manuel). Une seule source active à la fois ; l'autre est ignorée.
+alter table public.planning_agenda add column if not exists source text not null default 'auto';
+alter table public.planning_agenda drop constraint if exists planning_agenda_source_check;
+alter table public.planning_agenda add constraint planning_agenda_source_check check (source in ('auto','manuel'));
 
 alter table public.planning_agenda enable row level security;
 

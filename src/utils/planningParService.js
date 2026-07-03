@@ -72,7 +72,7 @@ export function extraireNomRemplacant(cellule, connus = REMPLACANTS_CONNUS) {
 
 // Découpe un texte collé depuis Excel en matrice de cellules (lignes × colonnes), tabulations en séparateur.
 // Les lignes entièrement vides sont retirées.
-function enMatrice(texte) {
+export function enMatrice(texte) {
   return (texte ?? '')
     .replace(/\r/g, '')
     .split('\n')

@@ -13,7 +13,7 @@ export async function obtenirAbonnement(userId) {
     .upsert({ user_id: userId }, { onConflict: 'user_id', ignoreDuplicates: true })
   const { data, error } = await supabase
     .from('planning_agenda')
-    .select('token, actif, exclus')
+    .select('token, actif, exclus, source')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) throw error
@@ -34,6 +34,15 @@ export async function definirExclus(userId, exclus) {
   const { error } = await supabase
     .from('planning_agenda')
     .update({ exclus })
+    .eq('user_id', userId)
+  if (error) throw error
+}
+
+// Bascule la source du flux : 'auto' (planning validé) ou 'manuel' (import collé). Une seule à la fois.
+export async function definirSource(userId, source) {
+  const { error } = await supabase
+    .from('planning_agenda')
+    .update({ source })
     .eq('user_id', userId)
   if (error) throw error
 }

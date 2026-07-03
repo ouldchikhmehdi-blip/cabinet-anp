@@ -5,10 +5,13 @@
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { obtenirAbonnement, definirActif, definirExclus } from '../utils/agendaApi'
+import { obtenirAbonnement, definirActif, definirExclus, definirSource } from '../utils/agendaApi'
+import { obtenirImportManuel, sauverImportManuel } from '../utils/agendaManuelApi'
+import { parserAgendaManuel } from '../utils/agendaManuel'
 import { listerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { listerRecueils } from '../utils/desiderataApi'
 import { listerArchives } from '../utils/archivesApi'
+import { ANNEES, formatDateLongueFR, parseISO } from '../utils/calendrier'
 
 const PLATEFORMES = [
   { id: 'apple', label: '🍎 iPhone / Mac (Apple)' },
@@ -16,27 +19,56 @@ const PLATEFORMES = [
   { id: 'outlook', label: '🔷 Outlook' },
 ]
 
+const JOUR_MS = 24 * 60 * 60 * 1000
+
+// Libellé d'un événement journée-entière { d, fin(exclusif) } : jour unique ou plage « d → dernier jour ».
+function libelleEvenement(e) {
+  const debut = parseISO(e.d)
+  const dernier = new Date(parseISO(e.fin).getTime() - JOUR_MS) // fin est exclusif
+  const label = formatDateLongueFR(debut)
+  if (dernier.getTime() <= debut.getTime()) return label
+  return `${label} → ${formatDateLongueFR(dernier)}`
+}
+
 export default function MonAgenda() {
   const { session, profile } = useAuth()
   const ini = profile?.initiales ?? null
   const userId = session?.user?.id
 
-  const [abonnement, setAbonnement] = useState(null) // { token, actif }
+  const [abonnement, setAbonnement] = useState(null) // { token, actif, exclus, source }
   const [tiers, setTiers] = useState([])             // [{ annee, nom, debut, fin, nbEv }]
   const [plateforme, setPlateforme] = useState('apple')
   const [copie, setCopie] = useState(false)
   const [erreur, setErreur] = useState(null)
   const [busy, setBusy] = useState(false)
 
+  // Import manuel (source = 'manuel') : collage → analyse locale → enregistrement.
+  const [source, setSource] = useState('auto')       // 'auto' | 'manuel'
+  const [texteColle, setTexteColle] = useState('')
+  const [anneeIndice, setAnneeIndice] = useState(new Date().getFullYear())
+  const [apercu, setApercu] = useState(null)         // { events, diag } (analyse locale, avant sauvegarde)
+  const [importSauve, setImportSauve] = useState(null) // { data, updated_at } déjà enregistré
+  const [sauve, setSauve] = useState(false)
+
   // Abonnement (token) de l'associé.
   useEffect(() => {
     if (!userId || !ini) return
     let annule = false
     obtenirAbonnement(userId)
-      .then(a => { if (!annule) setAbonnement(a) })
+      .then(a => { if (!annule) { setAbonnement(a); setSource(a?.source ?? 'auto') } })
       .catch(() => { if (!annule) setErreur('Impossible de préparer votre lien de synchronisation.') })
     return () => { annule = true }
   }, [userId, ini])
+
+  // Import manuel déjà enregistré (chargé quand la source est 'manuel').
+  useEffect(() => {
+    if (!userId || source !== 'manuel') return
+    let annule = false
+    obtenirImportManuel(userId)
+      .then(d => { if (!annule) setImportSauve(d) })
+      .catch(() => { /* liste indicative seulement */ })
+    return () => { annule = true }
+  }, [userId, source])
 
   // Tiers validés contenant des événements pour cet associé (avec leurs noms).
   useEffect(() => {
@@ -106,6 +138,43 @@ export default function MonAgenda() {
       setAbonnement(prev => ({ ...prev, actif }))
     } catch {
       setErreur('Action impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Bascule la source du flux (auto ↔ manuel).
+  async function changerSource(next) {
+    if (!userId || next === source) return
+    setErreur(null); setBusy(true)
+    try {
+      await definirSource(userId, next)
+      setSource(next)
+      setAbonnement(prev => ({ ...prev, source: next }))
+    } catch {
+      setErreur('Action impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Analyse le collage EN LOCAL (aucune écriture) → aperçu des événements + diagnostics.
+  function analyser() {
+    setErreur(null); setSauve(false)
+    setApercu(parserAgendaManuel(texteColle, { ini, anneeIndice }))
+  }
+
+  // Enregistre l'import analysé (remplace tout l'import précédent) et bascule la source sur 'manuel'.
+  async function enregistrerImport() {
+    if (!userId || !apercu?.events?.length) return
+    setErreur(null); setBusy(true); setSauve(false)
+    try {
+      await sauverImportManuel(userId, apercu.events)
+      if (source !== 'manuel') { await definirSource(userId, 'manuel'); setSource('manuel'); setAbonnement(prev => ({ ...prev, source: 'manuel' })) }
+      setImportSauve({ data: apercu.events, updated_at: null })
+      setSauve(true); setTimeout(() => setSauve(false), 3000)
+    } catch {
+      setErreur('Enregistrement impossible.')
     } finally {
       setBusy(false)
     }
@@ -190,6 +259,103 @@ export default function MonAgenda() {
         <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>{erreur}</div>
       )}
 
+      {/* Source de l'agenda : planning validé (auto) OU import collé (manuel) */}
+      <div style={s.carte}>
+        <div style={s.titre}>Source de mon agenda</div>
+        <div style={s.aide}>
+          Choisissez ce qui alimente votre agenda. Une seule source est active à la fois ; l'autre est ignorée.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => changerSource('auto')} disabled={busy} style={s.onglet(source === 'auto')}>
+            Planning validé (automatique)
+          </button>
+          <button type="button" onClick={() => changerSource('manuel')} disabled={busy} style={s.onglet(source === 'manuel')}>
+            Je colle ma colonne (manuel)
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 10 }}>
+          {source === 'auto'
+            ? 'Votre agenda suit le planning validé par le faiseur (dérivé automatiquement).'
+            : 'Votre agenda suit le planning que vous collez ci-dessous depuis le fichier Excel du faiseur.'}
+        </div>
+      </div>
+
+      {/* Import manuel : coller sa colonne → analyser → enregistrer */}
+      {source === 'manuel' && (
+        <div style={s.carte}>
+          <div style={s.titre}>Coller mon planning</div>
+          <div style={s.aide}>
+            Depuis le fichier Excel du faiseur, sélectionnez la <strong>colonne des dates</strong> (1ʳᵉ colonne) et
+            <strong> votre colonne</strong> (ou tout le planning), copiez, puis collez ci-dessous. On repère votre
+            colonne grâce à vos initiales (<strong>{ini}</strong>) et on lit votre poste chaque jour.
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12.5, color: 'var(--color-text-secondary)' }}>Année du planning collé :</label>
+            <select value={anneeIndice} onChange={e => setAnneeIndice(Number(e.target.value))} style={{ ...s.boutonSec, padding: '6px 10px' }}>
+              {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <span style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)' }}>(sert à dater les lignes sans année, ex. « 17/03 »)</span>
+          </div>
+
+          <textarea
+            value={texteColle}
+            onChange={e => setTexteColle(e.target.value)}
+            placeholder={`Date\t${ini}\nlundi 16 mars 2026\tBloc B\n17/03\tBloc B\n18/03\tGarde\n19/03\tCongé`}
+            rows={7}
+            style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 12.5, padding: 10, borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', resize: 'vertical' }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button type="button" onClick={analyser} disabled={!texteColle.trim()} style={{ ...s.boutonSec, opacity: texteColle.trim() ? 1 : 0.5 }}>Analyser</button>
+            <button type="button" onClick={enregistrerImport} disabled={busy || !apercu?.events?.length} style={{ ...s.bouton, opacity: (busy || !apercu?.events?.length) ? 0.5 : 1 }}>
+              {sauve ? 'Enregistré ✓' : 'Enregistrer'}
+            </button>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+            « Enregistrer » remplace entièrement votre import précédent.
+            {importSauve?.data?.length > 0 && (
+              <> Import actuel : <strong>{importSauve.data.length}</strong> événement{importSauve.data.length > 1 ? 's' : ''} synchronisé{importSauve.data.length > 1 ? 's' : ''}.</>
+            )}
+          </div>
+
+          {/* Aperçu de l'analyse locale */}
+          {apercu && (
+            <div style={{ marginTop: 14 }}>
+              {apercu.diag.avert.length > 0 && (
+                <div style={{ fontSize: 12.5, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+                  {apercu.diag.avert.join(' ')}
+                </div>
+              )}
+              {apercu.events.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                    Colonne repérée : <strong>{apercu.diag.colonne}</strong> · {apercu.events.length} événement{apercu.events.length > 1 ? 's' : ''} sur {apercu.diag.nbJours} jour{apercu.diag.nbJours > 1 ? 's' : ''}.
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+                    {apercu.events.map((e, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 10, fontSize: 12.5, padding: '5px 10px', borderRadius: 8, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)' }}>
+                        <span style={{ color: 'var(--color-text-tertiary)', flex: 1 }}>{libelleEvenement(e)}</span>
+                        <span style={{ color: 'var(--color-text)', fontWeight: 500 }}>{e.titre}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {apercu.diag.nonDatees.length > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--color-amber)', marginTop: 10 }}>
+                  {apercu.diag.nonDatees.length} ligne{apercu.diag.nonDatees.length > 1 ? 's' : ''} ignorée{apercu.diag.nonDatees.length > 1 ? 's' : ''} (date illisible) : {apercu.diag.nonDatees.slice(0, 6).join(', ')}{apercu.diag.nonDatees.length > 6 ? '…' : ''}
+                </div>
+              )}
+              {apercu.diag.nonReconnues.length > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--color-amber)', marginTop: 6 }}>
+                  {apercu.diag.nonReconnues.length} cellule{apercu.diag.nonReconnues.length > 1 ? 's' : ''} non reconnue{apercu.diag.nonReconnues.length > 1 ? 's' : ''} (aucun poste identifié) : {apercu.diag.nonReconnues.slice(0, 5).map(x => `« ${x.texte} »`).join(', ')}{apercu.diag.nonReconnues.length > 5 ? '…' : ''}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Synchroniser */}
       <div style={s.carte}>
         <div style={s.titre}>Synchroniser mon agenda</div>
@@ -240,7 +406,8 @@ export default function MonAgenda() {
         )}
       </div>
 
-      {/* Choix par planning validé : synchroniser / désynchroniser chacun */}
+      {/* Choix par planning validé : synchroniser / désynchroniser chacun (source AUTO uniquement) */}
+      {source === 'auto' && (
       <div style={s.carte}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
           <div style={s.titre}>Plannings à synchroniser</div>
@@ -287,6 +454,7 @@ export default function MonAgenda() {
           <div style={{ fontSize: 12, color: 'var(--color-amber)' }}>Synchronisation globalement désactivée : « Réactiver » plus bas pour appliquer ces choix.</div>
         )}
       </div>
+      )}
 
       {/* Supprimer */}
       <div style={s.carte}>
