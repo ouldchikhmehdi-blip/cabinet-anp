@@ -1,7 +1,7 @@
 // Tests du parseur de collage « Planning par service » : transpose [date × personne → poste]
 // en [date × service → personne(s)], reconnaît initiales et colonnes remplaçant.
 import { describe, it, expect } from 'vitest'
-import { parserCollageParService, normaliserPosteCanonique, extraireNomRemplacant, POSTES_SERVICE } from './planningParService'
+import { parserCollageParService, normaliserPosteCanonique, extraireNomRemplacant, extraireRemplacement, POSTES_SERVICE } from './planningParService'
 
 const NOMS = { EH: 'Dr E. H', MP: 'Dr M. P', RC: 'Dr R. C' }
 
@@ -178,5 +178,58 @@ describe('parserCollageParService — report du nom de remplaçant (carry-forwar
     const { table } = parserCollageParService(texte, {})
     expect(table.lignes[0].parPoste['SARM 2'].texte).toBe('Remplaçant')
     expect(table.lignes[0].parPoste['SARM 2'].estRemplacant).toBe(true)
+  })
+})
+
+describe('extraireRemplacement', () => {
+  it('sépare « <remplaçant> remplace <associé> » et mappe le nom complet vers les initiales', () => {
+    expect(extraireRemplacement('Dr Delbert Aurelie remplace Dr M. P', { nomParIni: NOMS }))
+      .toEqual({ nom: 'Dr Delbert Aurelie', remplace: 'MP' })
+  })
+  it('accepte l\'associé remplacé écrit directement en initiales', () => {
+    expect(extraireRemplacement('Dr Delbert remplace MP', { nomParIni: NOMS }))
+      .toEqual({ nom: 'Dr Delbert', remplace: 'MP' })
+  })
+  it('remplaçant écrit court (« Dr Delbert ») : nom conservé tel quel', () => {
+    expect(extraireRemplacement('Dr Delbert remplace Dr E. H', { nomParIni: NOMS }))
+      .toEqual({ nom: 'Dr Delbert', remplace: 'EH' })
+  })
+  it('associé remplacé inconnu : garde le libellé tel quel', () => {
+    expect(extraireRemplacement('Dr Delbert Aurelie remplace Dr Inconnu', { nomParIni: NOMS }))
+      .toEqual({ nom: 'Dr Delbert Aurelie', remplace: 'Dr Inconnu' })
+  })
+  it('sans « remplace » : remplace = null (comportement historique préservé)', () => {
+    expect(extraireRemplacement('OK Dr Delbert Aurelie (Ok)')).toEqual({ nom: 'Dr Delbert Aurelie', remplace: null })
+  })
+  it('cellule sans remplaçant (poste) → null', () => {
+    expect(extraireRemplacement('SARM2')).toBeNull()
+    expect(extraireRemplacement('')).toBeNull()
+  })
+})
+
+describe('parserCollageParService — remplaçant nommé « remplace [associé] » (deux noms)', () => {
+  it('affiche « remplaçant (remplace INI) », reporté vers le bas', () => {
+    const texte = [
+      'Date\tRemp',
+      'S1\tDr Delbert Aurelie remplace Dr M. P',
+      'S1 lun\tSARM2',
+      'S1 mar\tNC',
+    ].join('\n')
+    const { table } = parserCollageParService(texte, { nomParIni: NOMS })
+    expect(table.lignes[1].parPoste['SARM 2'].texte).toBe('Dr Delbert Aurelie (remplace MP)')
+    expect(table.lignes[2].parPoste['Bloc A NC'].texte).toBe('Dr Delbert Aurelie (remplace MP)')
+    expect(table.lignes[1].parPoste['SARM 2'].estRemplacant).toBe(true)
+  })
+  it('un nouveau nom sans « remplace » réinitialise l\'associé remplacé', () => {
+    const texte = [
+      'Date\tRemp',
+      'S1\tDr Delbert Aurelie remplace Dr M. P',
+      'S1 lun\tSARM2',
+      'S2\tDr Martin',
+      'S2 lun\tNC',
+    ].join('\n')
+    const { table } = parserCollageParService(texte, { nomParIni: NOMS })
+    expect(table.lignes[1].parPoste['SARM 2'].texte).toBe('Dr Delbert Aurelie (remplace MP)')
+    expect(table.lignes[3].parPoste['Bloc A NC'].texte).toBe('Dr Martin')
   })
 })
