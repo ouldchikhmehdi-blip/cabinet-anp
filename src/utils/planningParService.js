@@ -70,9 +70,35 @@ export function extraireNomRemplacant(cellule, connus = REMPLACANTS_CONNUS) {
   return null
 }
 
+// Résout un libellé d'associé (nom complet OU initiales) → ses initiales, sinon le libellé nettoyé
+// (associé inconnu), sinon null. Sert à afficher « (remplace MOC) » à partir d'un nom complet collé.
+function resoudreAssocie(texte, { nomParIni = {}, associes = ASSOCIES } = {}) {
+  const cle = normaliserCle(texte)
+  if (!cle) return null
+  for (const ini of associes) if (normaliserCle(ini) === cle) return ini // déjà des initiales
+  for (const [ini, nom] of Object.entries(nomParIni)) if (nom && normaliserCle(nom) === cle) return ini // nom complet → initiales
+  return texte.replace(/\s+/g, ' ').trim() || null // inconnu : on garde le libellé tel quel
+}
+
+// Cellule « <remplaçant> remplace <associé> » → { nom, remplace }.
+//   nom      = nom du remplaçant (via extraireNomRemplacant, comportement inchangé) ;
+//   remplace = initiales de l'associé remplacé (si reconnu), sinon son libellé, sinon null.
+// On sépare sur « remplace » AVANT la reconnaissance du nom, pour rester robuste même si le remplaçant
+// est écrit court (« Dr Delbert remplace Dr Ould-Chikh »). Renvoie null si ce n'est pas un remplaçant.
+export function extraireRemplacement(cellule, { connus = REMPLACANTS_CONNUS, nomParIni = {}, associes = ASSOCIES } = {}) {
+  const brut = nettoyerNom(cellule)
+  if (!brut) return null
+  const m = brut.match(/^(.*?)\bremplace\b(.*)$/i)
+  const partieNom = m ? m[1] : brut
+  const nom = extraireNomRemplacant(partieNom, connus)
+  if (!nom) return null
+  const remplace = m && m[2].trim() ? resoudreAssocie(m[2].trim(), { nomParIni, associes }) : null
+  return { nom, remplace }
+}
+
 // Découpe un texte collé depuis Excel en matrice de cellules (lignes × colonnes), tabulations en séparateur.
 // Les lignes entièrement vides sont retirées.
-function enMatrice(texte) {
+export function enMatrice(texte) {
   return (texte ?? '')
     .replace(/\r/g, '')
     .split('\n')
@@ -127,36 +153,44 @@ export function parserCollageParService(texte, { nomParIni = {}, associes = ASSO
   // 2) Transposition jour par jour : pour chaque ligne, on lit le poste de chaque colonne personne.
   // Pour les colonnes remplaçant, le NOM courant est REPORTÉ vers le bas : un nom lu dans une cellule
   // (ex. dimanche « OK Dr Delbert Aurelie (Ok) ») vaut pour les jours suivants jusqu'au prochain nom.
+  // Nom ET associé remplacé courants, reportés vers le bas jusqu'à la prochaine annotation.
   const nomCourantParCol = {}
-  for (const col of colonnes) if (col.type === 'remplacant') nomCourantParCol[col.c] = col.nom
+  const remplaceCourantParCol = {}
+  for (const col of colonnes) if (col.type === 'remplacant') { nomCourantParCol[col.c] = col.nom; remplaceCourantParCol[col.c] = null }
   const nomsRempl = new Set()
   const lignes = []
   const postesVus = new Set()
   for (let r = 0; r < corps.length; r++) {
     const ligne = corps[r]
     const dateLabel = (ligne[0] ?? '').trim()
-    // parService[poste] = [{ nom, estRemplacant }] (dédoublonné par nom, ordre des colonnes).
+    // parService[poste] = [{ nom, estRemplacant, remplace }] (dédoublonné par nom+remplacé, ordre des colonnes).
     const parService = {}
     for (const col of colonnes) {
       let nom = col.nom
+      let remplace = null
       if (col.type === 'remplacant') {
-        const nomDetecte = extraireNomRemplacant(ligne[col.c], remplacantsConnus)
-        if (nomDetecte) { nomCourantParCol[col.c] = nomDetecte; continue } // annotation : pas un poste
+        const detecte = extraireRemplacement(ligne[col.c], { connus: remplacantsConnus, nomParIni, associes })
+        if (detecte) { // annotation : pas un poste — on mémorise le nom et l'associé remplacé (réinitialisé
+          nomCourantParCol[col.c] = detecte.nom        // à chaque nouveau nom : le « remplace X » est lié à CE nom)
+          remplaceCourantParCol[col.c] = detecte.remplace ?? null
+          continue
+        }
         nom = nomCourantParCol[col.c]
+        remplace = remplaceCourantParCol[col.c]
       }
       const service = normaliserPosteCanonique(ligne[col.c])
       if (!service) continue
       postesVus.add(`${col.c}`)
       if (col.type === 'remplacant') nomsRempl.add(nom)
       const items = (parService[service] ??= [])
-      if (!items.some(it => it.nom === nom)) items.push({ nom, estRemplacant: col.estRemplacant })
+      if (!items.some(it => it.nom === nom && it.remplace === remplace)) items.push({ nom, estRemplacant: col.estRemplacant, remplace })
     }
     const parPoste = {}
     for (const poste of POSTES_SERVICE) {
       const items = parService[poste]
       if (items?.length) {
         parPoste[poste] = {
-          texte: items.map(it => it.nom).join(' / '),
+          texte: items.map(it => it.remplace ? `${it.nom} (remplace ${it.remplace})` : it.nom).join(' / '),
           estRemplacant: items.every(it => it.estRemplacant),
         }
       }

@@ -10,6 +10,8 @@ import {
 import { chargerCalendrier, sauverCalendrier, recupererVacancesScolairesZoneC } from '../utils/calendrierApi'
 import { listerArchives, urlArchive, supprimerArchive } from '../utils/archivesApi'
 import { detecterPontsTous, detecterPontsWeekendTous } from '../utils/ponts'
+import { chargerTrames } from '../utils/tramesApi'
+import { detecterAberrations } from '../utils/desiderataAberrants'
 import RecapDesiderata from '../components/planning/RecapDesiderata'
 import PanneauPonts from '../components/planning/PanneauPonts'
 import RecapVacancesScolaires from '../components/planning/RecapVacancesScolaires'
@@ -49,6 +51,7 @@ export default function PlanningSuivi() {
   const [refOuvert, setRefOuvert] = useState(false)      // panneau « Référence tiers 1+2 » replié/déplié
   const [vueScolaire, setVueScolaire] = useState(false) // panneau récap vacances scolaires (badge)
   const [calendrier, setCalendrier] = useState(null) // base calendrier (pour les ponts écartés)
+  const [tramesData, setTramesData] = useState(null) // catalogue de trames (pour détecter les desiderata aberrants)
   const [archives, setArchives] = useState([])       // plannings validés (fichiers Excel) de l'année
   const [erreur, setErreur] = useState(null)
 
@@ -117,6 +120,16 @@ export default function PlanningSuivi() {
     listerArchives(annee)
       .then(a => { if (!annule) setArchives(a) })
       .catch(() => { /* table d'archives peut-être pas encore créée : section simplement vide */ })
+    return () => { annule = true }
+  }, [annee, estFaiseur])
+
+  // Catalogue de trames de l'année → trame principale, pour détecter les desiderata aberrants.
+  useEffect(() => {
+    if (!estFaiseur) return
+    let annule = false
+    chargerTrames(annee)
+      .then(t => { if (!annule) setTramesData(t) })
+      .catch(() => { if (!annule) setTramesData(null) }) // trames pas encore saisies : détection colonne inactive
     return () => { annule = true }
   }, [annee, estFaiseur])
 
@@ -316,6 +329,17 @@ export default function PlanningSuivi() {
   }, [lignes])
   const pontsWeekendParAssocie = useMemo(() => detecterPontsWeekendTous(weekendsIndispoParAssocie, annee), [weekendsIndispoParAssocie, annee])
   const ecartesSet = useMemo(() => new Set(calendrier?.pontsEcartes ?? []), [calendrier])
+
+  // ── Desiderata aberrants (choix internes contradictoires) par associé ──
+  const tramePrincipale = useMemo(
+    () => tramesData?.trames?.find(t => t.id === tramesData?.principaleId) ?? null,
+    [tramesData],
+  )
+  const aberrationsParAssocie = useMemo(() => {
+    const map = {}
+    for (const l of lignes) map[l.ini] = detecterAberrations(l.data, { tramePrincipale, annee })
+    return map
+  }, [lignes, tramePrincipale, annee])
 
   // ── Vacances scolaires ── desiderata déjà normalisés (l.data) + semaines scolaires de la base calendrier.
   const desiderataParAssocie = useMemo(() => {
@@ -861,7 +885,7 @@ export default function PlanningSuivi() {
                   <ChoixColonnesEte trameEte={trameEte} valeur={lignes.find(l => l.ini === ouvert).data.colonnesEte} lectureSeule enteteSeule />
                 </>
               ) : (
-                <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={estEteSelection} />
+                <RecapDesiderata initiales={ouvert} d={lignes.find(l => l.ini === ouvert).data} annee={annee} estEte={estEteSelection} aberrations={aberrationsParAssocie[ouvert] ?? []} />
               )}
             </div>
           )}
@@ -900,6 +924,7 @@ export default function PlanningSuivi() {
                   ponts={pontsParAssocie[l.ini] ?? []}
                   pontsWeekend={pontsWeekendParAssocie[l.ini] ?? []}
                   ecartesSet={ecartesSet}
+                  aberrations={aberrationsParAssocie[l.ini] ?? []}
                 />
               </div>
             ))}

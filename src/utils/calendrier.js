@@ -60,6 +60,64 @@ export function formatDateLongueFR(date) {
   return `${JOURS_FR[date.getUTCDay()]} ${date.getUTCDate()} ${MOIS_FR[date.getUTCMonth()]} ${date.getUTCFullYear()}`
 }
 
+// Retire accents/casse pour comparer un libellé (mois, jour) sans se soucier de l'orthographe.
+function sansAccentsMinuscule(s) {
+  return (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+// Construit une date UTC valide ou null si les composantes ne « bouclent » pas (ex. 31/02).
+function dateUTCValide(annee, moisIndex, jour) {
+  if (!Number.isInteger(annee) || !Number.isInteger(moisIndex) || !Number.isInteger(jour)) return null
+  const d = new Date(Date.UTC(annee, moisIndex, jour))
+  if (d.getUTCFullYear() !== annee || d.getUTCMonth() !== moisIndex || d.getUTCDate() !== jour) return null
+  return d
+}
+
+// Complète une année à 2 chiffres → 20xx (aucun planning antérieur à 2000 dans cette app).
+function completerAnnee(a) {
+  return a < 100 ? 2000 + a : a
+}
+
+// ── Parse une date FR en texte libre → 'YYYY-MM-DD' (UTC), ou null si illisible (JAMAIS d'exception). ──
+// Formats gérés : '2026-03-17', '17/03/2026', '17/03/26', '17-03-2026', '17.03.2026',
+//                 'lundi 17 mars 2026', '17 mars 2026', '17 mars' (année inférée via anneeIndice).
+// Le nom du jour de semaine éventuel est ignoré (jamais fiable face au numéro).
+export function parseDateFR(texte, { anneeIndice = 2026 } = {}) {
+  const brut = sansAccentsMinuscule(texte).trim()
+  if (!brut) return null
+
+  // Forme ISO directe : 2026-03-17.
+  const iso = brut.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (iso) {
+    const d = dateUTCValide(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+    return d ? formatISO(d) : null
+  }
+
+  // Forme numérique : 17/03/2026, 17/03/26, 17-03, 17.03.2026.
+  const num = brut.match(/\b(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?\b/)
+  if (num) {
+    const jour = Number(num[1])
+    const moisIndex = Number(num[2]) - 1
+    const annee = num[3] != null ? completerAnnee(Number(num[3])) : anneeIndice
+    const d = dateUTCValide(annee, moisIndex, jour)
+    return d ? formatISO(d) : null
+  }
+
+  // Forme textuelle : (lundi) 17 mars (2026). Le mois peut être abrégé (« mars », « aout »).
+  const txt = brut.match(/\b(\d{1,2})\s+([a-zû]+)\.?(?:\s+(\d{2,4}))?\b/)
+  if (txt) {
+    const jour = Number(txt[1])
+    const moisMot = txt[2]
+    const moisIndex = MOIS_FR.findIndex(m => sansAccentsMinuscule(m).startsWith(moisMot) || moisMot.startsWith(sansAccentsMinuscule(m).slice(0, 3)))
+    if (moisIndex < 0) return null
+    const annee = txt[3] != null ? completerAnnee(Number(txt[3])) : anneeIndice
+    const d = dateUTCValide(annee, moisIndex, jour)
+    return d ? formatISO(d) : null
+  }
+
+  return null
+}
+
 // Libellé « Mars 2026 » (mois capitalisé + année) — pour les séparateurs de mois.
 export function moisAnneeFR(date) {
   const m = MOIS_FR[date.getUTCMonth()]

@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
     const { data: ab } = await supabaseAdmin
       .from('planning_agenda')
-      .select('user_id, actif, exclus')
+      .select('user_id, actif, exclus, source')
       .eq('token', token)
       .maybeSingle()
     if (!ab || !ab.actif) return res.status(200).send(calendrier([]))
@@ -63,6 +63,33 @@ export default async function handler(req, res) {
       .maybeSingle()
     const ini = prof?.initiales
     if (!ini) return res.status(200).send(calendrier([]))
+
+    // Source MANUEL : l'associé a collé sa colonne du planning Excel (table planning_agenda_manuel).
+    // On sert directement ces événements journée-entière (le titre porte le poste), sans passer par
+    // les archives / le planning validé.
+    if (ab.source === 'manuel') {
+      const { data: man } = await supabaseAdmin
+        .from('planning_agenda_manuel')
+        .select('data')
+        .eq('user_id', ab.user_id)
+        .maybeSingle()
+      const evts = Array.isArray(man?.data) ? man.data : []
+      const lignes = []
+      for (const e of evts) {
+        if (!e?.d || !e?.fin) continue
+        lignes.push(
+          'BEGIN:VEVENT',
+          // UID stable par (associé, jour de début) : mises à jour propres, purge des jours retirés.
+          `UID:${ini}-manuel-${compact(e.d)}@cabinet-anp`,
+          `DTSTART;VALUE=DATE:${compact(e.d)}`,
+          `DTEND;VALUE=DATE:${compact(e.fin)}`,
+          `SUMMARY:${escTexte(e.titre || 'Planning')}`,
+          'TRANSP:TRANSPARENT',
+          'END:VEVENT',
+        )
+      }
+      return res.status(200).send(calendrier(lignes))
+    }
 
     // Source de vérité = les ARCHIVES vivantes (planning Excel validé, reçu par l'associé).
     // Un tiers = (année, plage de semaines) ; on ne retient que l'archive la PLUS RÉCENTE de chaque

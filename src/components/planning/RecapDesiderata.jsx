@@ -20,6 +20,14 @@ const styles = {
   },
   pontsTitre: { fontSize: 12, fontWeight: 600, color: 'var(--color-amber)', marginBottom: 4 },
   pontItem: { fontSize: 12, color: 'var(--color-text)', marginBottom: 2 },
+  // Encart « desiderata aberrants » — bordure + fond rouge, distinct des ponts, conservé à l'impression.
+  aberrantsBloc: {
+    marginBottom: 12, padding: '8px 10px',
+    background: 'var(--color-danger-light)', borderLeft: '3px solid var(--color-danger)',
+    borderRadius: 'var(--radius-md)',
+    WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
+  },
+  aberrantsTitre: { fontSize: 12, fontWeight: 600, color: 'var(--color-danger)', marginBottom: 4 },
 }
 
 function Ligne({ titre, children, vide }) {
@@ -68,7 +76,7 @@ function SectionMois({ titre, items }) {
  *   annee     — number (pour libeller semaines / week-ends)
  *   estEte    — bool : recueil d'été (masque les sections normales ; affiche le choix de colonnes)
  */
-export default function RecapDesiderata({ initiales, d, annee, estEte = false, ponts = [], pontsWeekend = [], ecartesSet = new Set() }) {
+export default function RecapDesiderata({ initiales, d, annee, estEte = false, ponts = [], pontsWeekend = [], ecartesSet = new Set(), aberrations = [] }) {
   const colEte = d.colonnesEte ?? {}
   const prioEte = (colEte.prioritaires ?? []).map((k, i) => `${i + 1}. ${k}`).join(' · ')
   const possEte = (colEte.possibles ?? []).join(' · ')
@@ -113,6 +121,15 @@ export default function RecapDesiderata({ initiales, d, annee, estEte = false, p
       {d.rienASignaler && (
         <div style={{ ...styles.valeur, fontWeight: 600, color: 'var(--color-success)', marginBottom: 10 }}>
           Rien à signaler
+        </div>
+      )}
+
+      {!estEte && aberrations.length > 0 && (
+        <div className="recap-aberrants" style={styles.aberrantsBloc}>
+          <div style={styles.aberrantsTitre}>⚠️ Desiderata à vérifier ({aberrations.length})</div>
+          {aberrations.map((a, i) => (
+            <div key={i} style={styles.pontItem}>{a.message}</div>
+          ))}
         </div>
       )}
 
