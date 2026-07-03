@@ -81,9 +81,33 @@ export function getConsultData() {
   return reconcilier(store)
 }
 
-/** Persistance complète du store. */
+// Persisteur DISTANT injectable (Supabase), branché par la page Consultations au montage. Laisse la
+// couche data agnostique : toute mutation passant par sauverStore() est ainsi persistée en base sans
+// avoir à modifier chaque site d'appel. null tant qu'aucun persisteur n'est enregistré (ex. tests).
+let _persisteurDistant = null
+export function setPersisteurDistant(fn) {
+  _persisteurDistant = fn
+}
+
+/** Persistance complète du store : localStorage (instantané) + persisteur distant (partagé). */
 function sauverStore(store) {
   sauver(CLE, store)
+  _persisteurDistant?.(store)
+}
+
+/** Écrit le store en localStorage SANS déclencher le persisteur distant (chargement depuis Supabase → évite l'écho). */
+export function remplacerStore(store) {
+  sauver(CLE, store)
+}
+
+/** Règles d'import utilisateur (localStorage) — lues pour la persistance distante. */
+export function getReglesUtilisateur() {
+  return charger(CLE_REGLES, [])
+}
+
+/** Écrit les règles utilisateur en localStorage (chargement depuis Supabase). */
+export function remplacerRegles(regles) {
+  sauver(CLE_REGLES, Array.isArray(regles) ? regles : [])
 }
 
 /** Réinitialise le store aux données du mock (utile pour un reset total). */
