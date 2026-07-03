@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import ImportConsultations from '../components/ImportConsultations'
 import GestionPraticiens from '../components/GestionPraticiens'
-import { getConsultData } from '../data/consultations'
+import { useAuth } from '../auth/AuthContext'
+import { getConsultData, setPersisteurDistant, remplacerStore, getReglesUtilisateur, remplacerRegles } from '../data/consultations'
+import { chargerConsultations, sauverConsultations } from '../utils/consultationsApi'
 import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
@@ -59,6 +61,31 @@ export default function Consultations() {
   const { global: CONSULTATIONS, teleconsultations: TELECONSULTATIONS, specialites: CONSULT_SPECIALITES } = consultData
 
   const rafraichir = useCallback(() => setConsultData(getConsultData()), [])
+
+  const { session } = useAuth()
+  const userId = session?.user?.id
+  const [erreurSync, setErreurSync] = useState(null)
+
+  // Persistance PARTAGÉE (Supabase) — corrige la perte des données entre machines : les consultations
+  // n'étaient qu'en localStorage. On enregistre un persisteur distant (toute mutation → base) et on
+  // charge le store partagé au montage (source de vérité ; le localStorage reste un cache instantané).
+  useEffect(() => {
+    setPersisteurDistant((store) =>
+      sauverConsultations(store, getReglesUtilisateur(), userId)
+        .then(() => setErreurSync(null))
+        .catch(() => setErreurSync('Sauvegarde cloud impossible — données conservées en local seulement.')),
+    )
+    let annule = false
+    chargerConsultations()
+      .then((row) => {
+        if (annule || !row?.data || Object.keys(row.data).length === 0) return
+        remplacerStore(row.data)          // écrit le cache local SANS re-déclencher le persisteur
+        remplacerRegles(row.regles)
+        setConsultData(getConsultData())
+      })
+      .catch(() => { /* hors-ligne / première fois : on garde le cache local */ })
+    return () => { annule = true; setPersisteurDistant(null) }
+  }, [userId])
 
   const def = periodeParDefaut([...new Set([...ANNEES, ...Object.keys(CONSULTATIONS).map(Number)])])
   const [moisDe, setMoisDe] = useState(def.moisDe)
@@ -187,6 +214,11 @@ export default function Consultations() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
+      {erreurSync && (
+        <div style={{ fontSize: 12.5, color: 'var(--color-danger)', background: 'var(--color-danger-light)', border: '0.5px solid var(--color-danger)', borderRadius: 8, padding: '8px 12px' }}>
+          ⚠️ {erreurSync}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Consultations</h1>
         <span style={{
