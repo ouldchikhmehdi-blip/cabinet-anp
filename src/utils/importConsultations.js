@@ -321,6 +321,26 @@ export function detecterAgendasSARM(colonnes) {
   }
 }
 
+/**
+ * Libellés d'AGRÉGAT (« Total », « Totaux », « Somme »…) — lignes ou colonnes de synthèse ajoutées
+ * par l'export, qui valent la somme de toutes les autres.
+ *
+ * Elles doivent être écartées AVANT tout classement : traitées comme un motif ordinaire, elles
+ * comptent une seconde fois l'intégralité du fichier (total ≈ ×2). Le danger est réel car une clé
+ * inconnue BLOQUE la validation tant qu'on ne lui a pas donné une cible — le réflexe est alors de
+ * la classer en « Global / autre », ce qui double les chiffres du mois.
+ *
+ * Comparaison sur la clé normalisée entière (pas un `includes`) pour ne pas avaler un vrai motif
+ * qui contiendrait le mot.
+ */
+const LIBELLES_TOTAL = new Set([
+  'TOTAL', 'TOTAUX', 'TOTAL GENERAL', 'TOTAL GLOBAL', 'SOMME', 'CUMUL', 'ENSEMBLE', 'TOUS',
+])
+
+function estLibelleTotal(libelle) {
+  return LIBELLES_TOTAL.has(normaliserCle(libelle))
+}
+
 /** Lit une cellule de comptage Doctolib (« 1 234 », « 12,5 », vide…) → nombre, 0 si illisible. */
 function nombreCellule(raw) {
   const v = Number(String(raw ?? '0').trim().replace(/\s/g, '').replace(',', '.'))
@@ -358,10 +378,12 @@ function extraireEntreesStats(parsed, agendasGardes) {
       orientation: 'agendas-colonnes',
       inclus,
       exclus: colonnes.filter(c => !inclus.includes(c)),
-      entrees: parsed.data.map(ligne => ({
-        libelle: (ligne[colLibelle] || '').trim(),
-        valeur: inclus.reduce((a, c) => a + nombreCellule(ligne[c]), 0),
-      })),
+      entrees: parsed.data
+        .map(ligne => ({
+          libelle: (ligne[colLibelle] || '').trim(),
+          valeur: inclus.reduce((a, c) => a + nombreCellule(ligne[c]), 0),
+        }))
+        .filter(e => !estLibelleTotal(e.libelle)),
     }
   }
 
@@ -375,10 +397,12 @@ function extraireEntreesStats(parsed, agendasGardes) {
     orientation: 'agendas-lignes',
     inclus,
     exclus: nomsLignes.filter(n => !inclus.includes(n)),
-    entrees: colonnes.map(col => ({
-      libelle: String(col).trim(),
-      valeur: lignesSARM.reduce((a, l) => a + nombreCellule(l[col]), 0),
-    })),
+    entrees: colonnes
+      .filter(col => !estLibelleTotal(col))
+      .map(col => ({
+        libelle: String(col).trim(),
+        valeur: lignesSARM.reduce((a, l) => a + nombreCellule(l[col]), 0),
+      })),
   }
 }
 

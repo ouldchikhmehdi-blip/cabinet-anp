@@ -95,6 +95,48 @@ describe('analyserStats — les deux orientations donnent le même résultat', (
   })
 })
 
+describe('lignes/colonnes de synthèse « Total » — ne doivent JAMAIS être comptées', () => {
+  // Une colonne Total vaut la somme de tout le fichier : comptée comme un motif, elle double le
+  // mois. Le risque est réel car une clé inconnue bloque la validation, poussant à la classer.
+  it('ignore une colonne Total (agendas en lignes)', () => {
+    const csv = [
+      ';Pré-anesthésie avant Intervention avec le Dr AYRAL Jean;Pré-anesthésie avant Intervention avec le Dr FEDKOVIC Yvan;Total',
+      'SARM-1;60;60;120',
+      'SARM-2;46;44;90',
+    ].join('\n')
+    const r = analyserStats(csv, CONFIG, REGLES)
+
+    expect(r.agrege.global[2026][6]).toBe(210)   // 106 + 104, pas 420
+    expect(r.fileAttente).toEqual([])            // et rien à classer : le piège a disparu
+  })
+
+  it('ignore une ligne Total (agendas en colonnes)', () => {
+    const csv = [
+      ';SARM-1;SARM-2',
+      'Pré-anesthésie avant Intervention avec le Dr AYRAL Jean;60;46',
+      'Pré-anesthésie avant Intervention avec le Dr FEDKOVIC Yvan;60;44',
+      'Total;120;90',
+    ].join('\n')
+    const r = analyserStats(csv, CONFIG, REGLES)
+
+    expect(r.agrege.global[2026][6]).toBe(210)
+    expect(r.fileAttente).toEqual([])
+  })
+
+  it('n’avale pas un vrai motif contenant le mot « total »', () => {
+    const csv = [
+      ';Consultation avant colectomie totale;Total',
+      'SARM-1;7;7',
+      'SARM-2;3;3',
+    ].join('\n')
+    const r = analyserStats(csv, CONFIG, REGLES)
+
+    // Le vrai motif reste à classer (10), la colonne de synthèse est écartée.
+    expect(r.fileAttente.map(f => f.cle)).toEqual(['Consultation avant colectomie totale'])
+    expect(r.fileAttente[0].count).toBe(10)
+  })
+})
+
 // ── Export Doctolib RÉEL (66 motifs, 4 agendas), avec les règles par défaut du projet ──
 // Garde-fou de bout en bout : si un import réel redemande une saisie ou change de total,
 // ce test tombe.
