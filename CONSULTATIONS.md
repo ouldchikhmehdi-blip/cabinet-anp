@@ -86,7 +86,7 @@ Tout est dans **`src/data/mockData.js`** (exports lus par la couche `src/data/co
 ### Spécialités & opérateurs actuels (données réelles 2022→2026)
 - **Gastro / Coloscopies** (`endoscopie`, #534AB7) : Ayral, Blanc, Charpy-Debourdeau, Espérance, Fedkovic,
   Garcia, Guillet, Hanslik, Lhote, Liautard, Louvety, Monnin, Rollin, Rudler, Saloum, Suma, Valats,
-  Vercambre, Danan, Boyer, Jaouen, Montariol, Fabre, Parelon, **Chir. bariatrique** (motif FIBRO Warthmann/Léon, rattaché ici).
+  Vercambre, Danan, Boyer, Jaouen, Montariol, Fabre, Parelon, **Chir. bariatrique** (motif « FIBRO AVANT CHIR BARIATRIQUE DR WARTHMANN / LEON », rattaché ici — aucun nom n'est extractible par les regex, d'où une **règle par défaut dédiée** dans `consultationsReglesDefaut.js` ; sans elle ce motif retombait en file d'attente à chaque import).
 - **Neurochirurgie** (`neurochirurgie`, #EF9F27) : Nogues, Meyer-Bisch, Dran, Rolland, Blanquet, Gharbi.
 - **Chirurgie viscérale** (`viscerale`, #D85A30) : Malgoire, Flamein, Pissas.
 - **Pneumologie** (`pneumologie`, #1D9E75) : Froment, Gautier-Déchaud, Maestre, Bughin, Marcano, Demazeau, Adam.
@@ -143,7 +143,18 @@ Format attendu (« statistiques », tableau croisé, séparateur `;`, 1ʳᵉ cel
 
 L'orientation est déduite de l'endroit où se trouvent les libellés d'agenda
 (`extraireEntreesStats`), puis les deux cas sont ramenés à une liste `{ libelle, valeur }` commune.
-Le mois/l'année ne figurent pas dans le fichier : ils restent choisis à l'import.
+
+📅 **Le fichier ne contient AUCUNE date** — ni colonne, ni ligne de période, ni en-tête ; le nom
+d'export est générique (`statistiques.csv`). Le mois et l'année sont donc **obligatoirement saisis**
+à l'import : c'est la seule saisie restante, et la seule source possible d'erreur de période
+(→ rattrapage par la suppression d'un mois, §12). Ne pas chercher à les déduire du fichier.
+
+**Fixture de non-régression** : `src/utils/__fixtures__/doctolib-stats-agendas-lignes.csv` est un
+export réel (66 motifs, 4 agendas, orientation `agendas-lignes`). Le test
+`importStatsOrientation.test.js` vérifie dessus, avec `REGLES_DEFAUT` seules : orientation détectée,
+**file d'attente vide** (aucune saisie), total = **1157** = somme brute SARM-1 + SARM-2 contrôlée
+indépendamment, et **zéro « non ventilé »**. Si un import réel se remet à demander un classement,
+ce test tombe.
 
 🔒 **Les agendas comptés ne sont PAS un choix utilisateur.** `detecterAgendasSARM()` applique la
 règle §2/§3 : toute colonne/ligne dont le nom contient « SARM » est comptée (donc un futur `SARM-3`

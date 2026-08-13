@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { analyserStats, analyserEnTeteStats, detecterAgendasSARM } from './importConsultations'
+import { REGLES_DEFAUT } from '../data/consultationsReglesDefaut'
 
 // Export réel Doctolib — agendas en LIGNES, motifs en colonnes (cf. capture du 2026-08-13).
 const CSV_AGENDAS_EN_LIGNES = [
@@ -90,5 +92,55 @@ describe('analyserStats — les deux orientations donnent le même résultat', (
     // AKOME porte 6 (vidéo) + 33 (SUMA) = 39 consultations, absentes du total.
     expect(r.agrege.global[2026][6]).toBe(389)
     expect(r.agrege.global[2026][6]).not.toBe(389 + 39)
+  })
+})
+
+// ── Export Doctolib RÉEL (66 motifs, 4 agendas), avec les règles par défaut du projet ──
+// Garde-fou de bout en bout : si un import réel redemande une saisie ou change de total,
+// ce test tombe.
+describe('export Doctolib réel — import sans aucune saisie', () => {
+  const csvReel = readFileSync(
+    new URL('./__fixtures__/doctolib-stats-agendas-lignes.csv', import.meta.url), 'utf8',
+  )
+
+  it('détecte les agendas sans rien demander', () => {
+    const t = analyserEnTeteStats(csvReel)
+    expect(t.orientation).toBe('agendas-lignes')
+    expect(t.inclus).toEqual(['SARM-1', 'SARM-2'])
+    expect(t.exclus).toEqual(['Cardiologie - CPA', 'AKOME'])
+  })
+
+  it('classe TOUS les motifs avec les règles par défaut (file d’attente vide)', () => {
+    const r = analyserStats(csvReel, CONFIG, REGLES_DEFAUT)
+    expect(r.fileAttente).toEqual([])
+  })
+
+  it('totalise exactement la somme brute SARM-1 + SARM-2', () => {
+    const r = analyserStats(csvReel, CONFIG, REGLES_DEFAUT)
+
+    // Contrôle indépendant du parseur : somme brute des deux lignes SARM du fichier.
+    const brut = csvReel.trim().split('\n')
+      .filter(l => /^SARM-[12];/.test(l))
+      .flatMap(l => l.split(';').slice(1).map(Number))
+      .reduce((a, b) => a + b, 0)
+
+    expect(r.agrege.global[2026][6]).toBe(brut)
+    expect(r.agrege.global[2026][6]).toBe(1157)
+    expect(r.agrege.teleconsultations[2026][6]).toBe(113)
+  })
+
+  it('ne laisse rien en « non ventilé » : tout retombe sur un praticien ou une spécialité', () => {
+    const r = analyserStats(csvReel, CONFIG, REGLES_DEFAUT)
+    const somme = o => Object.values(o).reduce((a, v) => a + (v[2026]?.[6] || 0), 0)
+    const ventile =
+      Object.values(r.agrege.praticiens).reduce((a, prats) => a + somme(prats), 0) +
+      somme(r.agrege.specialites)
+
+    expect(ventile + r.agrege.teleconsultations[2026][6]).toBe(r.agrege.global[2026][6])
+  })
+
+  it('rattache la chirurgie bariatrique (motif FIBRO, sans nom extractible)', () => {
+    const r = analyserStats(csvReel, CONFIG, REGLES_DEFAUT)
+    expect(r.agrege.praticiens.endoscopie.bariatrique[2026][6]).toBe(6)
   })
 })
