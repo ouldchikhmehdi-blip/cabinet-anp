@@ -42,6 +42,34 @@ function initStore() {
  * (ancienne structure), elle est convertie vers { praticiens } pour rester
  * cohérente avec le mock actuel.
  */
+/**
+ * Migration « Chir. bariatrique » : le motif FIBRO n'est plus attribué à un praticien.
+ *
+ * Ses opérateurs (Warthmann, Léon) sont des chirurgiens, pas des gastro-entérologues : le compter
+ * comme un praticien de la Gastro faussait le détail. Ses valeurs rejoignent donc le bucket
+ * « non attribué » de la spécialité, et le praticien disparaît de la liste.
+ *
+ * Le total de la spécialité est INCHANGÉ (`specMensuel` = somme des praticiens + bucket).
+ *
+ * Idempotente : une fois le praticien retiré, la fonction sort immédiatement. À appeler APRÈS la
+ * boucle de réconciliation — celle-ci ré-ajoute les praticiens du mock absents du store, or
+ * `bariatrique` en a justement été retiré, donc il ne revient pas.
+ */
+function migrerBariatrique(store) {
+  const spec = store.specialites.find(s => s.id === 'endoscopie')
+  if (!spec?.praticiens) return
+
+  const i = spec.praticiens.findIndex(p => p.id === 'bariatrique')
+  if (i === -1) return
+
+  const [prat] = spec.praticiens.splice(i, 1)
+  if (!spec.valeurs) spec.valeurs = {}
+  for (const [annee, mois] of Object.entries(prat.valeurs || {})) {
+    if (!spec.valeurs[annee]) spec.valeurs[annee] = Array(12).fill(0)
+    for (let m = 0; m < 12; m++) spec.valeurs[annee][m] += mois[m] || 0
+  }
+}
+
 function reconcilier(store) {
   for (const specMock of CONSULT_SPECIALITES) {
     let specStore = store.specialites.find(s => s.id === specMock.id)
@@ -71,6 +99,10 @@ function reconcilier(store) {
       specStore.valeurs = clone(specMock.valeurs)
     }
   }
+
+  // APRÈS la boucle : sinon le praticien retiré serait ré-ajouté puis re-migré à chaque
+  // chargement, et ses valeurs s'additionneraient indéfiniment dans le bucket.
+  migrerBariatrique(store)
 
   return store
 }
