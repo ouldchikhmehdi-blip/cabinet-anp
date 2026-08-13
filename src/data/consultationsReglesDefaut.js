@@ -190,6 +190,12 @@ const REGLES_GASTRO = [
   { cle: 'CHARPY-DEBOURDEAU',        action: 'praticien', specId: GASTRO, pratId: 'charpy' },
   { cle: 'CHARPY DEBOURDEAU Flora',  action: 'praticien', specId: GASTRO, pratId: 'charpy' },
   { cle: 'CHARPY DEBOURDEAU',        action: 'praticien', specId: GASTRO, pratId: 'charpy' },
+
+  // Chirurgie bariatrique — motif SANS nom de praticien extractible (« FIBRO AVANT CHIR
+  // BARIATRIQUE DR WARTHMANN / LEON »), rattaché à la Gastro (cf. CONSULTATIONS.md §4).
+  // La clé courte suffit : le matching par préfixe couvre la fin variable du libellé
+  // (noms des opérateurs, espaces en trop).
+  { cle: 'FIBRO AVANT CHIR BARIATRIQUE', action: 'praticien', specId: GASTRO, pratId: 'bariatrique' },
 ]
 
 // ─── Pneumologie ─────────────────────────────────────────────────────────────
