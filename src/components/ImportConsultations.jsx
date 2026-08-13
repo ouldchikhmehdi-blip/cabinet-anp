@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo, Fragment } from 'react'
 import Papa from 'papaparse'
 import {
   analyserCSV, detecterMappage, detecterFormat, reanalyserAvecNouvellesRegles,
-  analyserStats, reanalyserStats,
+  analyserStats, reanalyserStats, construireDetailImport,
 } from '../utils/importConsultations'
-import { appliquerImport, cibles, reglesInitiales } from '../data/consultations'
+import { appliquerImport, cibles, reglesInitiales, getConsultData } from '../data/consultations'
 import { charger, sauver } from '../utils/stockage'
 
 const CLE_REGLES        = 'sarm:consult-regles'
@@ -12,6 +12,23 @@ const CLE_COLONNES      = 'sarm:consult-colonnes'
 const CLE_COLONNES_STATS = 'sarm:consult-colonnes-stats'
 
 const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+
+const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
+
+// Écart « actuel → import » : vert si hausse, rouge si baisse, neutre si identique.
+// `importe === null` = ligne absente de l'import : sa valeur actuelle sera CONSERVÉE telle quelle.
+function Delta({ actuel, importe }) {
+  if (importe === null || importe === undefined) {
+    return <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>conservé</span>
+  }
+  const d = importe - actuel
+  if (d === 0) return <span style={{ color: 'var(--color-text-tertiary)' }}>=</span>
+  return (
+    <span style={{ color: d > 0 ? '#085041' : '#A32D2D', fontWeight: 500 }}>
+      {d > 0 ? '+' : '−'}{fmtNb(Math.abs(d))}
+    </span>
+  )
+}
 
 // ─── Sélecteur de cible (spécialité / praticien / global / ignorer) ───────────
 function SelecteurCible({ value, onChange }) {
@@ -178,6 +195,14 @@ export default function ImportConsultations({ onImportValide }) {
   const [moisStats, setMoisStats] = useState(new Date().getMonth())
   const [anneeStats, setAnneeStats] = useState(new Date().getFullYear())
   const [configStats, setConfigStats] = useState(null) // sauvegardée pour la réanalyse
+  const [ventilationOuverte, setVentilationOuverte] = useState(true)
+
+  // Aperçu détaillé : comparaison de l'import avec ce qui est DÉJÀ en base, mois par mois
+  // et praticien par praticien. Recalculé uniquement quand un nouveau résultat d'analyse arrive.
+  const detail = useMemo(
+    () => (resultats ? construireDetailImport(resultats.agrege, getConsultData()) : null),
+    [resultats],
+  )
 
   // sauverRegles : ne persiste QUE les règles utilisateur (pas les défauts),
   // puis recharge l'ensemble (défauts + utilisateur) pour l'état local
@@ -575,31 +600,142 @@ export default function ImportConsultations({ onImportValide }) {
           )}
 
           {/* ÉTAPE 4 : aperçu et validation */}
-          {etape === 'apercu' && resultats && (
+          {etape === 'apercu' && resultats && detail && (
             <div>
               <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--color-border)', fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', letterSpacing: '0.04em' }}>
-                APERÇU — {resultats.apercu.length} mois détectés
+                APERÇU AVANT IMPORT — {detail.mois.length} mois
               </div>
-              <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+
+              {/* Avertissement : mois déjà remplis → l'import REMPLACE (il n'additionne pas) */}
+              {detail.remplacements > 0 && (
+                <div style={{ padding: '8px 16px', fontSize: 11, color: '#712B13', background: '#FAECE7', borderBottom: '0.5px solid var(--color-border)' }}>
+                  ⚠ {detail.remplacements} mois {detail.remplacements > 1 ? 'contiennent' : 'contient'} déjà des
+                  données : elles seront <strong>remplacées</strong> par celles du fichier (pas additionnées).
+                </div>
+              )}
+
+              {/* ── Récap par mois : ce qui est en base vs ce qui sera écrit ── */}
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: 'var(--color-bg)' }}>
-                      {['Mois', 'Total RDV', 'dont Téléconsult.'].map(h => (
-                        <th key={h} style={{ padding: '6px 16px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--color-text-tertiary)', letterSpacing: '0.04em' }}>{h}</th>
+                      {[
+                        { h: 'Mois', a: 'left' }, { h: 'En base', a: 'right' }, { h: 'Import', a: 'right' },
+                        { h: 'Écart', a: 'right' }, { h: 'dont téléconsult.', a: 'right' },
+                      ].map(({ h, a }) => (
+                        <th key={h} style={{ padding: '6px 16px', textAlign: a, fontSize: 10, fontWeight: 600, color: 'var(--color-text-tertiary)', letterSpacing: '0.04em' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {resultats.apercu.map((row, i) => (
+                    {detail.mois.map((row, i) => (
                       <tr key={`${row.annee}-${row.mois}`} style={{ borderTop: '0.5px solid var(--color-border)', background: i % 2 === 0 ? 'transparent' : 'var(--color-bg)' }}>
-                        <td style={{ padding: '6px 16px', fontWeight: 500 }}>{row.label}</td>
-                        <td style={{ padding: '6px 16px' }}>{row.total}</td>
-                        <td style={{ padding: '6px 16px', color: 'var(--color-text-secondary)' }}>{row.tele || '—'}</td>
+                        <td style={{ padding: '6px 16px', fontWeight: 500 }}>
+                          {row.label}
+                          {row.ancienTotal > 0 && (
+                            <span style={{ fontSize: 9, background: '#FAECE7', color: '#712B13', padding: '1px 6px', borderRadius: 8, marginLeft: 6 }}>
+                              remplacé
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '6px 16px', textAlign: 'right', color: 'var(--color-text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                          {row.ancienTotal ? fmtNb(row.ancienTotal) : '—'}
+                        </td>
+                        <td style={{ padding: '6px 16px', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtNb(row.total)}</td>
+                        <td style={{ padding: '6px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          <Delta actuel={row.ancienTotal} importe={row.total} />
+                        </td>
+                        <td style={{ padding: '6px 16px', textAlign: 'right', color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                          {row.tele ? fmtNb(row.tele) : '—'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {/* ── Contrôle de cohérence : où vont les consultations importées ── */}
+              <div style={{ padding: '10px 16px', borderTop: '0.5px solid var(--color-border)', display: 'flex', gap: 20, flexWrap: 'wrap', background: 'var(--color-bg)' }}>
+                {[
+                  { l: 'Total importé', v: detail.totalImport, fort: true },
+                  { l: 'ventilé par praticien', v: detail.ventileImport },
+                  { l: 'téléconsultations', v: detail.teleImport },
+                  { l: 'non ventilé (global)', v: detail.nonVentile },
+                ].map(({ l, v, fort }) => (
+                  <div key={l}>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{l}</div>
+                    <div style={{ fontSize: fort ? 15 : 13, fontWeight: 500, color: 'var(--color-text)' }}>{fmtNb(v)}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Ventilation détaillée par spécialité / praticien ── */}
+              <div style={{ borderTop: '0.5px solid var(--color-border)' }}>
+                <button
+                  onClick={() => setVentilationOuverte(o => !o)}
+                  style={{
+                    width: '100%', textAlign: 'left', cursor: 'pointer',
+                    padding: '9px 16px', border: 'none', background: 'transparent',
+                    fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', letterSpacing: '0.04em',
+                  }}
+                >
+                  {ventilationOuverte ? '▾' : '▸'} VENTILATION PAR PRATICIEN ({detail.groupes.length} spécialités)
+                </button>
+
+                {ventilationOuverte && (
+                  <div style={{ maxHeight: 300, overflowY: 'auto', borderTop: '0.5px solid var(--color-border)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--color-bg)' }}>
+                          {[
+                            { h: '', a: 'left' }, { h: 'En base', a: 'right' },
+                            { h: 'Import', a: 'right' }, { h: 'Écart', a: 'right' },
+                          ].map(({ h, a }, i) => (
+                            <th key={i} style={{ padding: '5px 16px', textAlign: a, fontSize: 10, fontWeight: 600, color: 'var(--color-text-tertiary)', letterSpacing: '0.04em' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.groupes.map(g => (
+                          <Fragment key={g.id}>
+                            <tr style={{ borderTop: '0.5px solid var(--color-border)' }}>
+                              <td style={{ padding: '6px 16px', fontWeight: 500 }}>
+                                <span style={{ display: 'inline-block', width: 8, height: 8, background: g.couleur, borderRadius: 2, marginRight: 6 }} />
+                                {g.nom}
+                              </td>
+                              <td style={{ padding: '6px 16px', textAlign: 'right', color: 'var(--color-text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>{fmtNb(g.actuel)}</td>
+                              <td style={{ padding: '6px 16px', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtNb(g.importe)}</td>
+                              <td style={{ padding: '6px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} />
+                            </tr>
+                            {g.lignes.map(l => (
+                              <tr key={l.id} style={{ borderTop: '0.5px solid var(--color-border)', opacity: l.importe === null ? 0.6 : 1 }}>
+                                <td style={{ padding: '5px 16px 5px 34px', color: 'var(--color-text-secondary)', fontStyle: l.nonAttribue ? 'italic' : 'normal' }}>
+                                  {l.nom}
+                                  {l.masque && <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>masqué</span>}
+                                </td>
+                                <td style={{ padding: '5px 16px', textAlign: 'right', color: 'var(--color-text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                                  {l.actuel ? fmtNb(l.actuel) : '—'}
+                                </td>
+                                <td style={{ padding: '5px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                  {l.importe === null ? '—' : fmtNb(l.importe)}
+                                </td>
+                                <td style={{ padding: '5px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                  <Delta actuel={l.actuel} importe={l.importe} />
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ padding: '8px 16px', fontSize: 10.5, color: 'var(--color-text-tertiary)', borderTop: '0.5px solid var(--color-border)' }}>
+                      « conservé » = praticien absent du fichier : sa valeur actuelle pour ces mois n'est pas touchée.
+                      Le total global reste le chiffre de référence — il n'a pas à égaler la somme du détail (cf. le dur / l'affiné).
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {resultats.erreursParsing?.length > 0 && (
                 <div style={{ padding: '8px 16px', fontSize: 11, color: '#712B13', background: '#FAECE7', borderTop: '0.5px solid var(--color-border)' }}>
                   ⚠ {resultats.erreursParsing.length} erreur(s) de parsing — certaines lignes ont été ignorées.
@@ -611,17 +747,17 @@ export default function ImportConsultations({ onImportValide }) {
                 </button>
                 <button
                   onClick={validerImport}
-                  disabled={resultats.apercu.length === 0}
+                  disabled={detail.mois.length === 0}
                   style={{
                     fontSize: 12, padding: '7px 20px', borderRadius: 'var(--radius-md)',
                     border: '0.5px solid #1D9E75',
-                    background: resultats.apercu.length > 0 ? '#E1F5EE' : 'var(--color-bg)',
-                    color: resultats.apercu.length > 0 ? '#085041' : 'var(--color-text-tertiary)',
-                    cursor: resultats.apercu.length > 0 ? 'pointer' : 'default',
+                    background: detail.mois.length > 0 ? '#E1F5EE' : 'var(--color-bg)',
+                    color: detail.mois.length > 0 ? '#085041' : 'var(--color-text-tertiary)',
+                    cursor: detail.mois.length > 0 ? 'pointer' : 'default',
                     fontWeight: 500,
                   }}
                 >
-                  ✓ Valider l'import ({resultats.apercu.reduce((a, r) => a + r.total, 0)} consult.)
+                  ✓ Valider l'import ({fmtNb(detail.totalImport)} consult.)
                 </button>
               </div>
             </div>

@@ -109,10 +109,11 @@ Tout est dans **`src/data/mockData.js`** (exports lus par la couche `src/data/co
 | Fichier | Rôle |
 |---|---|
 | `src/data/mockData.js` | **Données réelles** : `CONSULTATIONS`, `TELECONSULTATIONS`, `CONSULT_SPECIALITES`. |
-| `src/data/consultations.js` | Couche d'accès : store localStorage (clé **`sarm:consult:v2`**), init depuis le mock, `reconcilier()`, `appliquerImport()`, `ajouterPraticien()`, `definirMasquePraticien()`, `cibles()`, `resetConsultData()`. |
+| `src/data/consultations.js` | Couche d'accès : store localStorage (clé **`sarm:consult:v2`**), init depuis le mock, `reconcilier()`, `appliquerImport()`, `ajouterPraticien()`, `definirMasquePraticien()`, `cibles()`, `resetConsultData()`, **`contenuMois()` / `supprimerMois()`** (cf. §12). |
 | `src/data/consultationsReglesDefaut.js` | Règles d'import par défaut (motif/nom → cible). |
-| `src/utils/importConsultations.js` | Parsing CSV : `analyserCSV` (format RDV) et **`analyserStats`** (format tableau croisé Doctolib : somme des colonnes choisies, ex. SARM-1 + SARM-2), normalisation des noms, matching tolérant. |
+| `src/utils/importConsultations.js` | Parsing CSV : `analyserCSV` (format RDV) et **`analyserStats`** (format tableau croisé Doctolib : somme des colonnes choisies, ex. SARM-1 + SARM-2), normalisation des noms, matching tolérant, **`construireDetailImport()`** (aperçu comparé, cf. §12). |
 | `src/components/ImportConsultations.jsx` | UI d'import (upload CSV, choix colonnes, classement des clés inconnues, aperçu, validation). |
+| `src/components/SuppressionMois.jsx` | UI de suppression d'un mois — **admin uniquement** (cf. §12). |
 | `src/components/GestionPraticiens.jsx` | Ajout / masquage de praticiens d'une spécialité. |
 | `src/pages/Consultations.jsx` | La page (KPIs, graphiques, comparaison multi-années, sélecteur spécialité, pills praticiens). |
 
@@ -138,8 +139,9 @@ Format attendu (« statistiques », tableau croisé) :
 - Lignes = un motif chacune (le mois/l'année sont dans l'en-tête ou choisis à l'import selon l'export).
 
 Procédure via l'UI (`ImportConsultations.jsx`) : upload → choisir les colonnes **SARM-1 + SARM-2** →
-classer les clés inconnues (praticien / spécialité / téléconsult / global / **ignorer**) → aperçu →
-valider. Les règles de classement sont mémorisées (`sarm:consult-regles`).
+classer les clés inconnues (praticien / spécialité / téléconsult / global / **ignorer**) → **aperçu
+comparé** (§12) → valider. Les règles de classement sont mémorisées (`sarm:consult-regles`).
+Erreur de mois/d'année à l'import → **suppression du mois**, réservée à l'admin (§12).
 
 **Ajouter une année (ex. 2026)** : importer le nouvel export ; `CONSULTATIONS[2026]` apparaîtra et la
 page le détectera automatiquement (`anneesDispos` = union de `ANNEES` et des clés de `CONSULTATIONS`).
@@ -192,5 +194,46 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 - **Ignorer** : AKOME, cardiologie, VPA, TAVI, échos dobu, et les opérateurs non-nôtres listés §3.
 - **Téléconsultations** = catégorie à part, jamais rattachées à un opérateur.
 - Données **réelles** (pas fictives) ; ne pas recréer de fausses valeurs.
+- L'import **remplace** le mois, il n'additionne pas ; la **suppression d'un mois** est réservée au
+  compte `admin` (§12) — ne pas ouvrir cette action aux faiseurs sans demande explicite.
 - `npm run lint` à **0** + `npm run build` OK après chaque intervention (cf. `CLAUDE.md` §8).
 - Pousser uniquement sur demande explicite (« pousse »).
+
+
+## 12. Aperçu avant import & suppression d'un mois
+
+### Aperçu détaillé (étape « apercu » de l'import)
+
+`construireDetailImport(agrege, store)` compare le fichier analysé aux données **déjà en base**,
+avant toute écriture. L'écran affiche :
+
+1. **Récap par mois** — `En base` / `Import` / `Écart` / `dont téléconsultations`, avec un badge
+   **« remplacé »** sur les mois déjà remplis (bandeau d'avertissement en tête si au moins un mois
+   l'est) : `appliquerImport()` **écrase** la valeur du mois, il ne l'additionne pas.
+2. **Contrôle de cohérence** — `Total importé` = `ventilé par praticien` + `téléconsultations` +
+   `non ventilé (global)`. Le « non ventilé » = lignes classées *Global / autre* : comptées dans le
+   dur, sans détail. Les trois postes sont disjoints (pas de double comptage).
+3. **Ventilation par praticien** — table repliable, groupée par spécialité, colonnes
+   `En base` / `Import` / `Écart`.
+
+⚠ **Piège rendu visible** : un praticien **absent du fichier** garde sa valeur actuelle pour ces
+mois (l'import n'écrit que ce qu'il contient). Ces lignes sont affichées en grisé avec la mention
+**« conservé »** — c'est la principale source de « pourquoi le détail ne colle pas au total ? ».
+
+### Suppression d'un mois — `SuppressionMois.jsx`
+
+Rattrapage d'un import erroné. `supprimerMois(annee, mois)` remet à **0** le total global, les
+téléconsultations et **tout** le détail (praticiens + buckets de spécialité) du mois visé.
+Si l'année devient entièrement vide, ses clés sont **retirées du store** — sans quoi une année
+importée par erreur (ex. 2027) resterait proposée dans le sélecteur d'années (`anneesDispos`).
+`contenuMois(annee, mois)` sert à afficher exactement ce qui va être effacé avant de confirmer
+(total, télé, détail ligne par ligne), puis une confirmation en deux temps.
+
+**Restriction d'accès** : le composant ne rend **rien** si `profile.role !== 'admin'` — le bouton
+est invisible pour tous les autres, y compris les faiseurs.
+C'est un **garde-fou d'interface**. Côté base, `planning_consultations` est une **ligne JSON
+unique** : la RLS ne peut pas distinguer « supprimer un mois » d'« importer un mois », donc la
+policy d'écriture reste `is_faiseur()` (sinon les faiseurs non-admins ne pourraient plus importer).
+Aujourd'hui l'unique compte `admin` est aussi faiseur → la suppression passe la RLS sans changement
+SQL. Pour un verrou réellement serveur, il faudrait passer l'écriture de cette table en
+`is_admin()` — ce qui retirerait l'import aux 2 faiseurs non-admins.
