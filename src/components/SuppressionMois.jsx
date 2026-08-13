@@ -10,9 +10,9 @@ const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
  * Suppression des données d'un mois (rattrapage d'un import erroné).
  *
  * **Réservé au compte admin** (`profiles.role = 'admin'`) : le composant ne rend rien pour
- * les autres. Garde-fou d'interface uniquement — côté base, l'écriture de
- * `planning_consultations` reste ouverte au faiseur (RLS), le store étant une ligne JSON
- * unique que la base ne peut pas distinguer d'un import (cf. CONSULTATIONS.md §12).
+ * les autres. Le verrou réel est en base — la RLS de `planning_consultations` n'accepte
+ * l'écriture que de `is_admin()` (cf. `supabase/planning_consultations_admin.sql`) ; cette
+ * garde reste ici en défense en profondeur, en plus de celle de la page.
  *
  * Props :
  *   consultData — store courant (pour lister les années disponibles)
