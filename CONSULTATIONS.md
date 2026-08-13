@@ -86,7 +86,28 @@ Tout est dans **`src/data/mockData.js`** (exports lus par la couche `src/data/co
 ### Spécialités & opérateurs actuels (données réelles 2022→2026)
 - **Gastro / Coloscopies** (`endoscopie`, #534AB7) : Ayral, Blanc, Charpy-Debourdeau, Espérance, Fedkovic,
   Garcia, Guillet, Hanslik, Lhote, Liautard, Louvety, Monnin, Rollin, Rudler, Saloum, Suma, Valats,
-  Vercambre, Danan, Boyer, Jaouen, Montariol, Fabre, Parelon, **Chir. bariatrique** (motif « FIBRO AVANT CHIR BARIATRIQUE DR WARTHMANN / LEON », rattaché ici — aucun nom n'est extractible par les regex, d'où une **règle par défaut dédiée** dans `consultationsReglesDefaut.js` ; sans elle ce motif retombait en file d'attente à chaque import).
+  Vercambre, Danan, Boyer, Jaouen, Montariol, Fabre, Parelon — **24 praticiens**.
+  Le bucket **« non attribué »** de cette spécialité porte la **chirurgie bariatrique** (⚠ ci-dessous).
+
+> ⚠ **Motif FIBRO / chirurgie bariatrique** — « FIBRO AVANT CHIR BARIATRIQUE DR WARTHMANN / LEON ».
+>
+> Aucun nom n'y est extractible par les regex (ni « avec le Dr … », ni tiret), d'où une **règle par
+> défaut dédiée** dans `consultationsReglesDefaut.js` ; sans elle le motif retombait en file
+> d'attente à **chaque** import.
+>
+> Elle le classe en **`action: 'specialite'`** → compté dans le **total Gastro**, dans le bucket
+> **« non attribué »**, *jamais* sur un gastro-entérologue : les opérateurs cités (Warthmann, Léon)
+> sont des **chirurgiens**, les attribuer fausserait le détail par praticien.
+>
+> **Ce n'est plus un praticien.** Le praticien `bariatrique` (« Chir. bariatrique ») a été
+> **supprimé** de `mockData.js`, ses valeurs 2022→2026 versées dans `endoscopie.valeurs`
+> (260 / 220 / 163 / 125 / 40). Totaux de la spécialité et du cabinet **inchangés**.
+>
+> Les stores déjà enregistrés (localStorage + Supabase) sont rattrapés par **`migrerBariatrique()`**
+> dans `consultations.js`, appelée à la fin de `reconcilier()`. ⚠ **Elle doit rester APRÈS la boucle
+> de réconciliation** : celle-ci ré-ajoute les praticiens du mock absents du store — l'appeler avant
+> ferait revenir le praticien puis re-verser ses valeurs à **chaque lecture**, gonflant le bucket
+> indéfiniment. L'idempotence est couverte par un test.
 - **Neurochirurgie** (`neurochirurgie`, #EF9F27) : Nogues, Meyer-Bisch, Dran, Rolland, Blanquet, Gharbi.
 - **Chirurgie viscérale** (`viscerale`, #D85A30) : Malgoire, Flamein, Pissas.
 - **Pneumologie** (`pneumologie`, #1D9E75) : Froment, Gautier-Déchaud, Maestre, Bughin, Marcano, Demazeau, Adam.

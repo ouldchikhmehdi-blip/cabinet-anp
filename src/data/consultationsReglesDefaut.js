@@ -191,11 +191,14 @@ const REGLES_GASTRO = [
   { cle: 'CHARPY DEBOURDEAU Flora',  action: 'praticien', specId: GASTRO, pratId: 'charpy' },
   { cle: 'CHARPY DEBOURDEAU',        action: 'praticien', specId: GASTRO, pratId: 'charpy' },
 
-  // Chirurgie bariatrique — motif SANS nom de praticien extractible (« FIBRO AVANT CHIR
-  // BARIATRIQUE DR WARTHMANN / LEON »), rattaché à la Gastro (cf. CONSULTATIONS.md §4).
+  // Chirurgie bariatrique — motif « FIBRO AVANT CHIR BARIATRIQUE DR WARTHMANN / LEON ».
+  // Compté dans le TOTAL de la Gastro, mais volontairement SANS attribution à un
+  // gastro-entérologue : les opérateurs cités (Warthmann, Léon) sont des chirurgiens, pas des
+  // gastro-entérologues — l'attribuer à l'un d'eux fausserait le détail par praticien.
+  // → action 'specialite' = bucket « non attribué » de la spécialité (spec.valeurs).
   // La clé courte suffit : le matching par préfixe couvre la fin variable du libellé
   // (noms des opérateurs, espaces en trop).
-  { cle: 'FIBRO AVANT CHIR BARIATRIQUE', action: 'praticien', specId: GASTRO, pratId: 'bariatrique' },
+  { cle: 'FIBRO AVANT CHIR BARIATRIQUE', action: 'specialite', specId: GASTRO },
 ]
 
 // ─── Pneumologie ─────────────────────────────────────────────────────────────

@@ -137,8 +137,19 @@ export const CONSULT_SPECIALITES = [
       { id: 'montariol', nom: 'Dr Montariol', valeurs: { 2022:[20,8,21,14,15,19,18,9,16,21,20,13], 2023:[26,23,30,16,20,31,24,12,20,21,0,0], 2024:[0,0,0,0,0,1,0,0,0,0,0,0], 2025:[0,0,0,0,0,0,0,0,0,0,0,0], 2026:[0,0,0,0,0,0,0,0,0,0,0,0] } },
       { id: 'fabre', nom: 'Dr Fabre', valeurs: { 2022:[0,1,0,0,0,1,0,0,0,0,0,0], 2023:[0,0,1,0,0,0,0,1,0,0,0,0], 2024:[0,0,0,0,1,0,0,0,1,0,0,0], 2025:[0,0,0,0,0,1,0,0,0,0,0,0], 2026:[0,0,0,0,0,0,0,0,0,0,0,0] } },
       { id: 'parelon', nom: 'Dr Parelon', valeurs: { 2022:[0,0,0,0,0,0,0,0,0,0,0,0], 2023:[0,0,0,0,0,0,0,0,1,0,0,0], 2024:[0,0,0,0,0,0,0,0,0,0,0,0], 2025:[0,0,0,0,0,0,0,0,0,0,0,0], 2026:[0,0,0,0,0,0,0,0,0,0,0,0] } },
-      { id: 'bariatrique', nom: 'Chir. bariatrique', valeurs: { 2022:[22,22,27,19,27,32,9,13,24,22,23,20], 2023:[21,19,24,19,25,24,10,7,22,19,19,11], 2024:[17,11,22,2,16,20,10,6,19,13,17,10], 2025:[20,12,11,14,9,15,5,4,13,12,8,2], 2026:[13,11,14,1,1,0,0,0,0,0,0,0] } },
     ],
+    // Bucket « non attribué » de la spécialité — chirurgie bariatrique (motif FIBRO
+    // « … DR WARTHMANN / LEON »). Comptée dans le TOTAL Gastro, jamais rattachée à un
+    // gastro-entérologue : les opérateurs cités sont des chirurgiens (cf. CONSULTATIONS.md §4).
+    // Était auparavant un praticien `bariatrique` ; migré ici (migrerBariatrique dans
+    // consultations.js fait la bascule pour les stores déjà enregistrés).
+    valeurs: {
+      2022:[22,22,27,19,27,32,9,13,24,22,23,20],
+      2023:[21,19,24,19,25,24,10,7,22,19,19,11],
+      2024:[17,11,22,2,16,20,10,6,19,13,17,10],
+      2025:[20,12,11,14,9,15,5,4,13,12,8,2],
+      2026:[13,11,14,1,1,0,0,0,0,0,0,0],
+    },
   },
   {
     id: 'neurochirurgie',

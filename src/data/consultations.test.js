@@ -32,6 +32,67 @@ beforeEach(() => {
   remplacerStore(storeTest())
 })
 
+describe('migration « Chir. bariatrique » → non attribué', () => {
+  // Store d'avant migration : le motif FIBRO est encore un praticien de la Gastro,
+  // et la spécialité a déjà un bucket « non attribué » alimenté par un import précédent.
+  const storeAvant = () => ({
+    global:            { 2026: [500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    teleconsultations: { 2026: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    specialites: [
+      {
+        id: 'endoscopie', nom: 'Gastro / Coloscopies', couleur: '#534AB7',
+        praticiens: [
+          { id: 'ayral',       nom: 'Dr Ayral',          valeurs: { 2026: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
+          { id: 'bariatrique', nom: 'Chir. bariatrique', valeurs: { 2026: [13, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
+        ],
+        valeurs: { 2026: [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+      },
+    ],
+  })
+
+  const gastro = s => s.specialites.find(x => x.id === 'endoscopie')
+
+  it('retire le praticien et verse ses valeurs dans le bucket « non attribué »', () => {
+    remplacerStore(storeAvant())
+    const g = gastro(getConsultData())
+
+    expect(g.praticiens.find(p => p.id === 'bariatrique')).toBeUndefined()
+    expect(g.valeurs[2026][0]).toBe(4 + 13)   // bucket existant + bariatrique
+    expect(g.valeurs[2026][1]).toBe(0 + 11)
+    expect(g.praticiens.find(p => p.id === 'ayral').valeurs[2026][0]).toBe(100)  // intact
+  })
+
+  it('est un déplacement pur : ce que perd le praticien, le bucket le gagne', () => {
+    // On ne compare PAS le total brut avant/après : reconcilier() ajoute au passage tous les
+    // praticiens du mock absents du store, ce qui gonflerait légitimement le total du store de
+    // test. On isole donc l'effet de la seule migration.
+    const somme = tab => (tab || []).reduce((a, b) => a + b, 0)
+    const avant = storeAvant()
+    const bariatriqueAvant = somme(gastro(avant).praticiens.find(p => p.id === 'bariatrique').valeurs[2026])
+    const bucketAvant = somme(gastro(avant).valeurs[2026])
+
+    remplacerStore(storeAvant())
+    const bucketApres = somme(gastro(getConsultData()).valeurs[2026])
+
+    expect(bucketApres - bucketAvant).toBe(bariatriqueAvant)
+  })
+
+  it('est idempotente : relire le store n’additionne pas une deuxième fois', () => {
+    remplacerStore(storeAvant())
+    const premier = gastro(getConsultData()).valeurs[2026][0]
+
+    // getConsultData() réconcilie à CHAQUE lecture — sans idempotence, le bucket gonflerait.
+    getConsultData(); getConsultData()
+    expect(gastro(getConsultData()).valeurs[2026][0]).toBe(premier)
+  })
+
+  it('ne réintroduit pas le praticien depuis le mock après migration', () => {
+    remplacerStore(storeAvant())
+    remplacerStore(getConsultData())              // persiste l'état migré
+    expect(gastro(getConsultData()).praticiens.find(p => p.id === 'bariatrique')).toBeUndefined()
+  })
+})
+
 describe('contenuMois', () => {
   it('décrit le total, les téléconsultations et le détail du mois', () => {
     const c = contenuMois(2027, 0)

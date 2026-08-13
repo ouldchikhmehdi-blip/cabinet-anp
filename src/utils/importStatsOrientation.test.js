@@ -139,8 +139,12 @@ describe('export Doctolib réel — import sans aucune saisie', () => {
     expect(ventile + r.agrege.teleconsultations[2026][6]).toBe(r.agrege.global[2026][6])
   })
 
-  it('rattache la chirurgie bariatrique (motif FIBRO, sans nom extractible)', () => {
+  it('compte le motif FIBRO dans la Gastro SANS l’attribuer à un gastro-entérologue', () => {
     const r = analyserStats(csvReel, CONFIG, REGLES_DEFAUT)
-    expect(r.agrege.praticiens.endoscopie.bariatrique[2026][6]).toBe(6)
+
+    // Dans le bucket « non attribué » de la spécialité…
+    expect(r.agrege.specialites.endoscopie[2026][6]).toBe(6)
+    // …et sur aucun praticien (les opérateurs du motif sont des chirurgiens, pas des gastros).
+    expect(r.agrege.praticiens.endoscopie?.bariatrique).toBeUndefined()
   })
 })
