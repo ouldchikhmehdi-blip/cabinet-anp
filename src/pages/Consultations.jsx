@@ -63,9 +63,16 @@ export default function Consultations() {
 
   const rafraichir = useCallback(() => setConsultData(getConsultData()), [])
 
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const userId = session?.user?.id
   const [erreurSync, setErreurSync] = useState(null)
+
+  // Toute modification (import, gestion des praticiens, suppression d'un mois) écrit la ligne
+  // JSON unique `planning_consultations`, dont la RLS est réservée à l'admin
+  // (supabase/planning_consultations_admin.sql). L'interface s'aligne sur la base : sans ce
+  // garde-fou, un faiseur verrait les boutons puis un échec de sauvegarde cloud.
+  // La LECTURE reste ouverte : la page s'affiche normalement pour les 8 associés.
+  const estAdmin = profile?.role === 'admin'
 
   // Persistance PARTAGÉE (Supabase) — corrige la perte des données entre machines : les consultations
   // n'étaient qu'en localStorage. On enregistre un persisteur distant (toute mutation → base) et on
@@ -229,10 +236,14 @@ export default function Consultations() {
         }}>Activité · nombre</span>
       </div>
 
-      <ImportConsultations onImportValide={rafraichir} />
-
-      {/* Correction d'un import erroné — le composant ne rend rien hors compte admin */}
-      <SuppressionMois consultData={consultData} onChange={rafraichir} />
+      {/* Outils d'administration des données (cf. estAdmin) */}
+      {estAdmin && (
+        <>
+          <ImportConsultations onImportValide={rafraichir} />
+          {/* Correction d'un import erroné */}
+          <SuppressionMois consultData={consultData} onChange={rafraichir} />
+        </>
+      )}
 
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}
@@ -364,7 +375,7 @@ export default function Consultations() {
               )
             })}
           </div>
-          <GestionPraticiens spec={spec} onChange={rafraichir} />
+          {estAdmin && <GestionPraticiens spec={spec} onChange={rafraichir} />}
         </>
       )}
 

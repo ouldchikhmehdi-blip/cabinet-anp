@@ -194,8 +194,9 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 - **Ignorer** : AKOME, cardiologie, VPA, TAVI, échos dobu, et les opérateurs non-nôtres listés §3.
 - **Téléconsultations** = catégorie à part, jamais rattachées à un opérateur.
 - Données **réelles** (pas fictives) ; ne pas recréer de fausses valeurs.
-- L'import **remplace** le mois, il n'additionne pas ; la **suppression d'un mois** est réservée au
-  compte `admin` (§12) — ne pas ouvrir cette action aux faiseurs sans demande explicite.
+- L'import **remplace** le mois, il n'additionne pas.
+- **Écriture = admin uniquement**, verrouillée par la RLS (§12) : import, gestion des praticiens et
+  suppression d'un mois. Toute nouvelle action mutant le store doit être masquée hors admin.
 - `npm run lint` à **0** + `npm run build` OK après chaque intervention (cf. `CLAUDE.md` §8).
 - Pousser uniquement sur demande explicite (« pousse »).
 
@@ -229,11 +230,26 @@ importée par erreur (ex. 2027) resterait proposée dans le sélecteur d'années
 `contenuMois(annee, mois)` sert à afficher exactement ce qui va être effacé avant de confirmer
 (total, télé, détail ligne par ligne), puis une confirmation en deux temps.
 
-**Restriction d'accès** : le composant ne rend **rien** si `profile.role !== 'admin'` — le bouton
-est invisible pour tous les autres, y compris les faiseurs.
-C'est un **garde-fou d'interface**. Côté base, `planning_consultations` est une **ligne JSON
-unique** : la RLS ne peut pas distinguer « supprimer un mois » d'« importer un mois », donc la
-policy d'écriture reste `is_faiseur()` (sinon les faiseurs non-admins ne pourraient plus importer).
-Aujourd'hui l'unique compte `admin` est aussi faiseur → la suppression passe la RLS sans changement
-SQL. Pour un verrou réellement serveur, il faudrait passer l'écriture de cette table en
-`is_admin()` — ce qui retirerait l'import aux 2 faiseurs non-admins.
+### Restriction d'accès — l'onglet Consultations est en écriture ADMIN
+
+**Le verrou est en base**, pas seulement dans l'interface : la RLS de `planning_consultations`
+n'accepte l'écriture (insert/update/delete) que de `public.is_admin()`
+— voir **`supabase/planning_consultations_admin.sql`** (appliqué). La **lecture** reste ouverte à
+tout authentifié : la page s'affiche normalement pour les 8 associés.
+
+**Pourquoi tout ou rien** : `planning_consultations` est une **ligne JSON unique** (id=1). Côté
+base, « supprimer un mois » et « importer un mois » sont le **même UPDATE** — la RLS ne peut pas
+les distinguer. Quiconque peut écrire peut donc effacer n'importe quel mois en réécrivant le store,
+quel que soit le verrou posé dans l'interface. Le seul verrou serveur possible est : écriture = admin.
+
+**Conséquence assumée** (arbitrage validé le 2026-08-13) : les **faiseurs non-admins ont perdu
+l'import Doctolib et la gestion des praticiens** sur cet onglet. L'import des consultations est
+devenu une action d'administration.
+
+**Alignement de l'interface** : `Consultations.jsx` masque `ImportConsultations`,
+`SuppressionMois` et `GestionPraticiens` hors admin (`estAdmin`) — sans quoi un faiseur verrait
+les boutons puis un échec de sauvegarde cloud. `SuppressionMois` garde en plus sa propre garde
+interne (défense en profondeur).
+
+⚠ **Toute nouvelle action mutant le store passe par `sauverStore()` → doit être réservée à
+l'admin**, sinon elle échouera en base (bandeau « Sauvegarde cloud impossible »).

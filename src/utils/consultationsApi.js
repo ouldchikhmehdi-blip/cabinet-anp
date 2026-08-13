@@ -1,6 +1,8 @@
 // ============================================================
 // consultationsApi.js — persistance partagée des Consultations (table planning_consultations,
-// ligne singleton id=1). Lecture pour tout authenticated ; écriture réservée au faiseur (RLS).
+// ligne singleton id=1). Lecture pour tout authenticated ; écriture réservée à l'ADMIN (RLS,
+// cf. supabase/planning_consultations_admin.sql) — l'interface masque en conséquence l'import,
+// la gestion des praticiens et la suppression d'un mois hors admin.
 // Rend les données de consultation partagées entre machines (le localStorage n'était que local).
 // (cf. supabase/planning_consultations.sql)
 // ============================================================
