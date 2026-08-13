@@ -21,6 +21,8 @@
  */
 import Papa from 'papaparse'
 
+const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+
 // ─── Normalisation des clés ───────────────────────────────────────────────────
 
 /**
@@ -451,8 +453,6 @@ function construireApercu(agrege) {
     for (const mois of Object.keys(moisMap)) moisSet.add(Number(mois))
   }
 
-  const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
-
   for (const annee of [...annees].sort()) {
     for (const mois of [...moisSet].sort((a, b) => a - b)) {
       const total = (agrege.global[annee] || {})[mois] || 0
@@ -463,4 +463,117 @@ function construireApercu(agrege) {
   }
 
   return lignes
+}
+
+// ─── Aperçu détaillé (comparaison avec les données déjà en base) ──────────────
+
+/** Lit une valeur { [annee]: number[12] } sans planter si l'année/le mois manque. */
+const lireSerie = (serieParAnnee, annee, mois) =>
+  ((serieParAnnee || {})[annee] || [])[mois] || 0
+
+/**
+ * Construit l'aperçu complet d'un import : récap mensuel comparé à l'existant,
+ * ventilation par spécialité / praticien, et contrôle de cohérence.
+ *
+ * `appliquerImport()` **remplace** la valeur du mois (il n'additionne pas) : l'aperçu
+ * affiche donc « actuel → import », et signale les lignes qui ne sont PAS dans l'import
+ * et qui conserveront donc leur valeur actuelle (source classique d'incompréhension).
+ *
+ * @param {Object} agrege — sortie de analyserCSV() / analyserStats()
+ * @param {Object} store  — store courant { global, teleconsultations, specialites }
+ * @returns {{
+ *   mois: Array, groupes: Array, totalImport: number, totalActuel: number,
+ *   teleImport: number, ventileImport: number, nonVentile: number, remplacements: number
+ * }}
+ */
+export function construireDetailImport(agrege, store) {
+  const specialites = store?.specialites || []
+
+  // ── Couples (année, mois) réellement touchés par l'import ──
+  const clesMois = []
+  for (const [annee, moisMap] of Object.entries(agrege.global || {})) {
+    for (const [mois, val] of Object.entries(moisMap)) {
+      if (val) clesMois.push({ annee: Number(annee), mois: Number(mois) })
+    }
+  }
+  clesMois.sort((a, b) => a.annee - b.annee || a.mois - b.mois)
+
+  // ── Récap mensuel : ce qu'il y a déjà vs ce qui sera écrit ──
+  const mois = clesMois.map(({ annee, mois: m }) => ({
+    annee,
+    mois: m,
+    label: `${MOIS_COURT[m]} ${annee}`,
+    total: (agrege.global[annee] || {})[m] || 0,
+    tele: (agrege.teleconsultations[annee] || {})[m] || 0,
+    ancienTotal: lireSerie(store?.global, annee, m),
+    ancienTele: lireSerie(store?.teleconsultations, annee, m),
+  }))
+
+  // Somme, sur les seuls mois importés, d'une série de l'agrégat ({ annee: { mois: val } })
+  const sommeAgrege = (obj) =>
+    clesMois.reduce((acc, { annee, mois: m }) => acc + ((obj?.[annee] || {})[m] || 0), 0)
+
+  // Idem sur une série du store ({ annee: number[12] })
+  const sommeStore = (serie) =>
+    clesMois.reduce((acc, { annee, mois: m }) => acc + lireSerie(serie, annee, m), 0)
+
+  // ── Ventilation par spécialité (praticiens + bucket « non attribué ») ──
+  const groupes = []
+  let ventileImport = 0
+
+  for (const spec of specialites) {
+    const lignes = []
+
+    for (const prat of spec.praticiens || []) {
+      const brut = agrege.praticiens?.[spec.id]?.[prat.id]
+      const importe = brut ? sommeAgrege(brut) : null   // null = absent de l'import
+      const actuel = sommeStore(prat.valeurs)
+      if (importe === null && actuel === 0) continue     // ni avant ni après → on n'affiche pas
+      if (importe !== null) ventileImport += importe
+      lignes.push({ id: prat.id, nom: prat.nom, importe, actuel, masque: !!prat.masque })
+    }
+
+    // Bucket « non attribué » de la spécialité (spec.valeurs)
+    const brutSpec = agrege.specialites?.[spec.id]
+    const importeSpec = brutSpec ? sommeAgrege(brutSpec) : null
+    const actuelSpec = sommeStore(spec.valeurs)
+    if (importeSpec !== null || actuelSpec > 0) {
+      if (importeSpec !== null) ventileImport += importeSpec
+      lignes.push({
+        id: `__spec-${spec.id}`,
+        nom: spec.praticiens ? 'Non attribué' : spec.nom,
+        importe: importeSpec,
+        actuel: actuelSpec,
+        nonAttribue: true,
+      })
+    }
+
+    if (lignes.length === 0) continue
+    groupes.push({
+      id: spec.id,
+      nom: spec.nom,
+      couleur: spec.couleur,
+      lignes,
+      importe: lignes.reduce((a, l) => a + (l.importe || 0), 0),
+      actuel: lignes.reduce((a, l) => a + l.actuel, 0),
+    })
+  }
+
+  const totalImport = sommeAgrege(agrege.global)
+  const totalActuel = sommeStore(store?.global)
+  const teleImport = sommeAgrege(agrege.teleconsultations)
+
+  return {
+    mois,
+    groupes,
+    totalImport,
+    totalActuel,
+    teleImport,
+    teleActuel: sommeStore(store?.teleconsultations),
+    ventileImport,
+    // Reste : lignes classées « Global / autre » — comptées dans le total, sans détail.
+    nonVentile: totalImport - teleImport - ventileImport,
+    // Nombre de mois déjà remplis qui vont être écrasés
+    remplacements: mois.filter(m => m.ancienTotal > 0).length,
+  }
 }

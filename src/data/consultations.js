@@ -208,6 +208,103 @@ export function appliquerImport(agrege) {
   return store
 }
 
+// ─── Suppression d'un mois ────────────────────────────────────────────────────
+
+/**
+ * Énumère tous les emplacements (tableaux de 12 valeurs) portant des données pour `annee` :
+ * total global, téléconsultations, bucket « non attribué » de chaque spécialité et chaque
+ * praticien. Renvoie des références vivantes sur les tableaux du store, pour lecture ET écriture.
+ */
+function emplacementsAnnee(store, annee) {
+  const liste = []
+
+  if (store.global[annee]) {
+    liste.push({ categorie: 'global', label: 'Total global', serie: store.global[annee] })
+  }
+  if (store.teleconsultations[annee]) {
+    liste.push({ categorie: 'teleconsult', label: 'Téléconsultations', serie: store.teleconsultations[annee] })
+  }
+
+  for (const spec of store.specialites) {
+    if (spec.valeurs?.[annee]) {
+      liste.push({
+        categorie: 'specialite',
+        label: spec.praticiens ? `${spec.nom} — non attribué` : spec.nom,
+        specNom: spec.nom,
+        serie: spec.valeurs[annee],
+      })
+    }
+    for (const prat of spec.praticiens || []) {
+      if (prat.valeurs?.[annee]) {
+        liste.push({
+          categorie: 'praticien',
+          label: prat.nom,
+          specNom: spec.nom,
+          serie: prat.valeurs[annee],
+        })
+      }
+    }
+  }
+
+  return liste
+}
+
+/**
+ * Décrit ce que contient un mois — sert à montrer précisément ce qui va être supprimé
+ * AVANT de valider (le total global n'est pas la somme du détail : cf. CONSULTATIONS.md §2).
+ *
+ * @param {number} annee
+ * @param {number} mois  — 0-11
+ * @returns {{ total: number, tele: number, lignes: Array<{label, specNom, valeur}> }}
+ */
+export function contenuMois(annee, mois) {
+  const store = getConsultData()
+  const emplacements = emplacementsAnnee(store, annee)
+
+  const valeurDe = cat => emplacements.find(e => e.categorie === cat)?.serie[mois] || 0
+
+  const lignes = emplacements
+    .filter(e => e.categorie === 'praticien' || e.categorie === 'specialite')
+    .map(e => ({ label: e.label, specNom: e.specNom, valeur: e.serie[mois] || 0 }))
+    .filter(l => l.valeur > 0)
+    .sort((a, b) => b.valeur - a.valeur)
+
+  return { total: valeurDe('global'), tele: valeurDe('teleconsult'), lignes }
+}
+
+/**
+ * Efface les données d'un mois : total global, téléconsultations et tout le détail
+ * (praticiens + buckets de spécialité) sont remis à 0. Sert à rattraper un import erroné.
+ *
+ * Si l'année devient entièrement vide, ses clés sont retirées du store — sinon une année
+ * importée par erreur (ex. 2027) resterait proposée dans le sélecteur d'années.
+ *
+ * @param {number} annee
+ * @param {number} mois — 0-11
+ * @returns {{ total: number, anneeSupprimee: boolean }} ce qui a été retiré
+ */
+export function supprimerMois(annee, mois) {
+  const store = getConsultData()
+  const emplacements = emplacementsAnnee(store, annee)
+
+  const total = emplacements.find(e => e.categorie === 'global')?.serie[mois] || 0
+  for (const { serie } of emplacements) serie[mois] = 0
+
+  // Nettoyage : année devenue vide partout → on retire ses clés du store
+  const anneeVide = emplacements.every(({ serie }) => serie.every(v => !v))
+  if (anneeVide) {
+    delete store.global[annee]
+    delete store.teleconsultations[annee]
+    for (const spec of store.specialites) {
+      if (spec.valeurs) delete spec.valeurs[annee]
+      for (const prat of spec.praticiens || []) delete prat.valeurs[annee]
+    }
+  }
+
+  sauverStore(store)
+  return { total, anneeSupprimee: anneeVide }
+}
+
 // ─── Gestion des praticiens ───────────────────────────────────────────────────
 
 /**

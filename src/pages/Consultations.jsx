@@ -4,6 +4,7 @@ import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import ImportConsultations from '../components/ImportConsultations'
 import GestionPraticiens from '../components/GestionPraticiens'
+import SuppressionMois from '../components/SuppressionMois'
 import { useAuth } from '../auth/AuthContext'
 import { getConsultData, setPersisteurDistant, remplacerStore, getReglesUtilisateur, remplacerRegles } from '../data/consultations'
 import { chargerConsultations, sauverConsultations } from '../utils/consultationsApi'
@@ -229,6 +230,9 @@ export default function Consultations() {
       </div>
 
       <ImportConsultations onImportValide={rafraichir} />
+
+      {/* Correction d'un import erroné — le composant ne rend rien hors compte admin */}
+      <SuppressionMois consultData={consultData} onChange={rafraichir} />
 
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}
