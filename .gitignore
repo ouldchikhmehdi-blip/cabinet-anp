@@ -25,3 +25,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Réglages Claude Code personnels (permissions locales) — hors repo partagé
+.claude/settings.local.json
