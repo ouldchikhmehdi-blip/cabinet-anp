@@ -298,6 +298,102 @@ export function analyserCSV(texteCSV, mappage, regles) {
   return { agrege, fileAttente, apercu, erreursParsing: parsed.errors }
 }
 
+// ─── Agendas à compter (règle fixe) ──────────────────────────────────────────
+
+/**
+ * Détermine les agendas à inclure dans un export « statistiques ».
+ *
+ * **Ce n'est pas un choix, c'est la règle du cabinet** (CONSULTATIONS.md §2/§3) : le total dur =
+ * `SARM-1` + `SARM-2`. Tout le reste (`AKOME`, `Cardiologie - CPA`…) est exclu — ces consultations
+ * ne sont pas les nôtres. L'utilisateur n'a donc pas à cocher les colonnes à chaque import.
+ *
+ * Le test porte sur « SARM » et non sur les libellés exacts `SARM-1` / `SARM-2` : un éventuel
+ * `SARM-3` (ou une variante d'écriture « SARM 1 ») serait à nous et doit être compté d'office.
+ *
+ * @param {string[]} colonnes — colonnes agenda du CSV (toutes sauf la 1ʳᵉ, qui porte le motif)
+ * @returns {{ inclus: string[], exclus: string[] }}
+ */
+export function detecterAgendasSARM(colonnes) {
+  const estSARM = c => normaliserCle(c).replace(/[\s-]/g, '').includes('SARM')
+  return {
+    inclus: (colonnes || []).filter(estSARM),
+    exclus: (colonnes || []).filter(c => !estSARM(c)),
+  }
+}
+
+/** Lit une cellule de comptage Doctolib (« 1 234 », « 12,5 », vide…) → nombre, 0 si illisible. */
+function nombreCellule(raw) {
+  const v = Number(String(raw ?? '0').trim().replace(/\s/g, '').replace(',', '.'))
+  return isNaN(v) ? 0 : v
+}
+
+/**
+ * Ramène un tableau croisé Doctolib à une liste `{ libelle: motif, valeur: total SARM }`,
+ * quelle que soit son ORIENTATION — Doctolib exporte les deux :
+ *
+ *   • `agendas-colonnes` — en-têtes = agendas (`SARM-1`, `SARM-2`, `AKOME`…), 1 ligne = 1 motif.
+ *     Valeur d'un motif = somme de ses cellules sur les colonnes SARM.
+ *
+ *   • `agendas-lignes`   — 1ʳᵉ colonne = agendas (`SARM-1`, `Cardiologie - CPA`, `SARM-2`, `AKOME`),
+ *     en-têtes = motifs. Valeur d'un motif = somme de sa colonne sur les seules lignes SARM.
+ *     Les lignes `AKOME` / `Cardiologie - CPA` sont ignorées en bloc.
+ *
+ * L'orientation est déduite de l'endroit où se trouvent les libellés d'agenda : si un en-tête
+ * ressemble à un agenda SARM → colonnes, sinon → lignes. Dans les deux cas la sélection est
+ * automatique (règle du cabinet) ; `agendasGardes` ne sert qu'à forcer un cas non détecté.
+ *
+ * @returns {{ entrees: Array<{libelle, valeur}>, orientation: string, inclus: string[], exclus: string[] }}
+ */
+function extraireEntreesStats(parsed, agendasGardes) {
+  const headers = parsed.meta.fields || []
+  const colLibelle = headers[0]
+  const colonnes = headers.slice(1).filter(h => h != null && String(h).trim() !== '')
+  const force = agendasGardes?.length ? agendasGardes : null
+
+  // ── Orientation A : agendas en colonnes ──
+  const parColonnes = detecterAgendasSARM(colonnes)
+  if (parColonnes.inclus.length > 0 || (force && force.some(a => colonnes.includes(a)))) {
+    const inclus = force || parColonnes.inclus
+    return {
+      orientation: 'agendas-colonnes',
+      inclus,
+      exclus: colonnes.filter(c => !inclus.includes(c)),
+      entrees: parsed.data.map(ligne => ({
+        libelle: (ligne[colLibelle] || '').trim(),
+        valeur: inclus.reduce((a, c) => a + nombreCellule(ligne[c]), 0),
+      })),
+    }
+  }
+
+  // ── Orientation B : agendas en lignes (1ʳᵉ colonne), motifs en en-têtes ──
+  const nomsLignes = parsed.data.map(l => (l[colLibelle] || '').trim()).filter(Boolean)
+  const parLignes = detecterAgendasSARM(nomsLignes)
+  const inclus = force || parLignes.inclus
+  const lignesSARM = parsed.data.filter(l => inclus.includes((l[colLibelle] || '').trim()))
+
+  return {
+    orientation: 'agendas-lignes',
+    inclus,
+    exclus: nomsLignes.filter(n => !inclus.includes(n)),
+    entrees: colonnes.map(col => ({
+      libelle: String(col).trim(),
+      valeur: lignesSARM.reduce((a, l) => a + nombreCellule(l[col]), 0),
+    })),
+  }
+}
+
+/**
+ * Inspecte un export « statistiques » sans le classer : sert à AFFICHER, dès le dépôt du fichier,
+ * quels agendas seront comptés et lesquels seront écartés. Aucune saisie n'est demandée.
+ *
+ * @returns {{ orientation: string, inclus: string[], exclus: string[] }}
+ */
+export function analyserEnTeteStats(texteCSV) {
+  const parsed = Papa.parse(texteCSV, { header: true, skipEmptyLines: true, delimiter: ';' })
+  const { orientation, inclus, exclus } = extraireEntreesStats(parsed, null)
+  return { orientation, inclus, exclus }
+}
+
 // ─── Analyse statistiques (format tableau croisé Doctolib) ───────────────────
 
 /**
@@ -309,11 +405,12 @@ export function analyserCSV(texteCSV, mappage, regles) {
  *   Aucune colonne Date — la période est choisie par l'utilisateur.
  *
  * @param {string} texteCSV — contenu brut du fichier CSV
- * @param {Object} config   — { colonnesGardees: string[], mois: number (0-11), annee: number }
+ * @param {Object} config   — { mois: number (0-11), annee: number, agendasGardes?: string[] }
+ *                            `agendasGardes` : override manuel, normalement inutile (règle SARM auto).
  * @param {Array}  regles   — règles mémorisées [{ cle, action, specId?, pratId? }]
  */
 export function analyserStats(texteCSV, config, regles) {
-  const { colonnesGardees, mois, annee } = config
+  const { agendasGardes, mois, annee } = config
 
   const parsed = Papa.parse(texteCSV, {
     header: true,
@@ -321,8 +418,9 @@ export function analyserStats(texteCSV, config, regles) {
     delimiter: ';',
   })
 
-  const headers = parsed.meta.fields || []
-  const colLibelle = headers[0] // première colonne = libellé du motif (peut être '' si vide)
+  // Normalisation des deux orientations possibles en une liste { libelle: motif, valeur: total SARM }.
+  // Les agendas non-SARM (AKOME, Cardiologie - CPA) sont écartés ici, une bonne fois.
+  const { entrees, orientation, inclus, exclus } = extraireEntreesStats(parsed, agendasGardes)
 
   // Index des règles par clé normalisée
   const regleParCle = {}
@@ -347,18 +445,8 @@ export function analyserStats(texteCSV, config, regles) {
   const RE_NOM  = /avec\s+(?:le\s+|l[''’]\s*|un\s+|la\s+)?(?:Dr|Pr|Docteur|Professeur)\.?\s+(.+)$/i
   const RE_NOM2 = /[-–]\s*(?:DR|PR|DOCTEUR|PROFESSEUR)\.?\s+(.+)$/i
 
-  for (const ligne of parsed.data) {
-    const libelle = (ligne[colLibelle] || '').trim()
-    if (!libelle) continue
-
-    // Somme des colonnes sélectionnées (ex. SARM-1 + SARM-2)
-    let valeur = 0
-    for (const col of colonnesGardees) {
-      const raw = (ligne[col] || '0').trim().replace(/\s/g, '').replace(',', '.')
-      const v = Number(raw)
-      if (!isNaN(v)) valeur += v
-    }
-    if (valeur === 0) continue
+  for (const { libelle, valeur } of entrees) {
+    if (!libelle || valeur === 0) continue
 
     // Téléconsultation : détection par libellé → global + télé, pas de spécialité
     if (/vid[ée]o|t[ée]l[ée]consult/i.test(libelle)) {
@@ -413,7 +501,9 @@ export function analyserStats(texteCSV, config, regles) {
   }))
 
   const apercu = construireApercu(agrege)
-  return { agrege, fileAttente, apercu, erreursParsing: parsed.errors }
+  // orientation / inclus / exclus remontent jusqu'à l'aperçu : l'utilisateur doit pouvoir vérifier
+  // d'un coup d'œil que ce sont bien les agendas SARM qui ont été comptés.
+  return { agrege, fileAttente, apercu, erreursParsing: parsed.errors, orientation, inclus, exclus }
 }
 
 /**

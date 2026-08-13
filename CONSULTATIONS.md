@@ -111,7 +111,7 @@ Tout est dans **`src/data/mockData.js`** (exports lus par la couche `src/data/co
 | `src/data/mockData.js` | **Données réelles** : `CONSULTATIONS`, `TELECONSULTATIONS`, `CONSULT_SPECIALITES`. |
 | `src/data/consultations.js` | Couche d'accès : store localStorage (clé **`sarm:consult:v2`**), init depuis le mock, `reconcilier()`, `appliquerImport()`, `ajouterPraticien()`, `definirMasquePraticien()`, `cibles()`, `resetConsultData()`, **`contenuMois()` / `supprimerMois()`** (cf. §12). |
 | `src/data/consultationsReglesDefaut.js` | Règles d'import par défaut (motif/nom → cible). |
-| `src/utils/importConsultations.js` | Parsing CSV : `analyserCSV` (format RDV) et **`analyserStats`** (format tableau croisé Doctolib : somme des colonnes choisies, ex. SARM-1 + SARM-2), normalisation des noms, matching tolérant, **`construireDetailImport()`** (aperçu comparé, cf. §12). |
+| `src/utils/importConsultations.js` | Parsing CSV : `analyserCSV` (format RDV) et **`analyserStats`** (tableau croisé Doctolib, **les 2 orientations** — cf. §8), `detecterAgendasSARM()` / `analyserEnTeteStats()` (règle SARM auto), normalisation des noms, matching tolérant, **`construireDetailImport()`** (aperçu comparé, cf. §12). |
 | `src/components/ImportConsultations.jsx` | UI d'import (upload CSV, choix colonnes, classement des clés inconnues, aperçu, validation). |
 | `src/components/SuppressionMois.jsx` | UI de suppression d'un mois — **admin uniquement** (cf. §12). |
 | `src/components/GestionPraticiens.jsx` | Ajout / masquage de praticiens d'une spécialité. |
@@ -133,14 +133,33 @@ Tout est dans **`src/data/mockData.js`** (exports lus par la couche `src/data/co
 
 ## 8. Import d'un nouvel export Doctolib
 
-Format attendu (« statistiques », tableau croisé) :
-- 1ʳᵉ colonne vide ou = libellé du motif ; colonnes suivantes = agendas (`SARM-1`, `SARM-2`, `AKOME`,
-  `Cardiologie - CPA`) ; séparateur `;`.
-- Lignes = un motif chacune (le mois/l'année sont dans l'en-tête ou choisis à l'import selon l'export).
+Format attendu (« statistiques », tableau croisé, séparateur `;`, 1ʳᵉ cellule vide).
+**Doctolib exporte dans les DEUX orientations** — les deux sont gérées, sans rien demander :
 
-Procédure via l'UI (`ImportConsultations.jsx`) : upload → choisir les colonnes **SARM-1 + SARM-2** →
-classer les clés inconnues (praticien / spécialité / téléconsult / global / **ignorer**) → **aperçu
-comparé** (§12) → valider. Les règles de classement sont mémorisées (`sarm:consult-regles`).
+| Orientation | Structure | Valeur d'un motif |
+|---|---|---|
+| `agendas-colonnes` | en-têtes = agendas (`SARM-1`, `SARM-2`, `AKOME`…), 1 ligne = 1 motif | somme de ses cellules sur les **colonnes** SARM |
+| `agendas-lignes` | 1ʳᵉ colonne = agendas, en-têtes = motifs | somme de sa colonne sur les seules **lignes** SARM |
+
+L'orientation est déduite de l'endroit où se trouvent les libellés d'agenda
+(`extraireEntreesStats`), puis les deux cas sont ramenés à une liste `{ libelle, valeur }` commune.
+Le mois/l'année ne figurent pas dans le fichier : ils restent choisis à l'import.
+
+🔒 **Les agendas comptés ne sont PAS un choix utilisateur.** `detecterAgendasSARM()` applique la
+règle §2/§3 : toute colonne/ligne dont le nom contient « SARM » est comptée (donc un futur `SARM-3`
+ou la variante « SARM 1 »), tout le reste (`AKOME`, `Cardiologie - CPA`) est écarté. L'écran ne fait
+que **montrer** ce qui a été retenu et écarté. Si aucun agenda SARM n'est trouvé, l'import est
+bloqué avec un message explicite plutôt que d'importer 0 en silence.
+
+> Historique : l'UI demandait de cocher les agendas et mémorisait le choix
+> (`sarm:consult-colonnes-stats`). Cette mémoire **prenait le pas sur la détection** — et surtout la
+> détection ne regardait que les en-têtes, donc elle ne trouvait rien sur les exports
+> `agendas-lignes`. D'où une sélection manuelle à chaque import. Clé et sélection supprimées.
+
+Procédure via l'UI (`ImportConsultations.jsx`) : upload → **agendas détectés** (affichage seul) +
+choix du mois/année → classer les clés inconnues (praticien / spécialité / téléconsult / global /
+**ignorer**) → **aperçu comparé** (§12) → valider. Les règles de classement sont mémorisées
+(`sarm:consult-regles`).
 Erreur de mois/d'année à l'import → **suppression du mois**, réservée à l'admin (§12).
 
 **Ajouter une année (ex. 2026)** : importer le nouvel export ; `CONSULTATIONS[2026]` apparaîtra et la
@@ -192,6 +211,8 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 - Répondre en **français**.
 - Total mensuel = **SARM-1 + SARM-2** (le dur). Détail opérateurs = approximation assumée.
 - **Ignorer** : AKOME, cardiologie, VPA, TAVI, échos dobu, et les opérateurs non-nôtres listés §3.
+- Les agendas comptés sont **détectés**, jamais demandés à l'utilisateur (§8) — ne pas réintroduire
+  de sélection manuelle ni de mémorisation du choix.
 - **Téléconsultations** = catégorie à part, jamais rattachées à un opérateur.
 - Données **réelles** (pas fictives) ; ne pas recréer de fausses valeurs.
 - L'import **remplace** le mois, il n'additionne pas.

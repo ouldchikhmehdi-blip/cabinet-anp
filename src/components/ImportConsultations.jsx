@@ -2,14 +2,13 @@ import { useState, useRef, useMemo, Fragment } from 'react'
 import Papa from 'papaparse'
 import {
   analyserCSV, detecterMappage, detecterFormat, reanalyserAvecNouvellesRegles,
-  analyserStats, reanalyserStats, construireDetailImport,
+  analyserStats, reanalyserStats, construireDetailImport, analyserEnTeteStats,
 } from '../utils/importConsultations'
 import { appliquerImport, cibles, reglesInitiales, getConsultData } from '../data/consultations'
 import { charger, sauver } from '../utils/stockage'
 
 const CLE_REGLES        = 'sarm:consult-regles'
 const CLE_COLONNES      = 'sarm:consult-colonnes'
-const CLE_COLONNES_STATS = 'sarm:consult-colonnes-stats'
 
 const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 
@@ -190,8 +189,8 @@ export default function ImportConsultations({ onImportValide }) {
 
   // ── États mode statistiques ──
   const [format, setFormat] = useState(null)           // 'rdv' | 'stats'
-  const [colonnesAgenda, setColonnesAgenda] = useState([])    // toutes les colonnes agenda du CSV
-  const [colonnesSelectionnees, setColonnesSelectionnees] = useState(() => charger(CLE_COLONNES_STATS, null))
+  // Agendas comptés : DÉTECTÉS, jamais saisis — { orientation, inclus, exclus } (règle SARM-1 + SARM-2).
+  const [detectionStats, setDetectionStats] = useState(null)
   const [moisStats, setMoisStats] = useState(new Date().getMonth())
   const [anneeStats, setAnneeStats] = useState(new Date().getFullYear())
   const [configStats, setConfigStats] = useState(null) // sauvegardée pour la réanalyse
@@ -236,16 +235,9 @@ export default function ImportConsultations({ onImportValide }) {
       setFormat(fmt)
 
       if (fmt === 'stats') {
-        // Mode statistiques : colonnes agenda = toutes sauf la première (libellé)
-        const cols = hdrs.slice(1).filter(h => h.trim())
-        setColonnesAgenda(cols)
-        // Colonnes sélectionnées : mémorisées (si valides) ou par défaut = celles contenant « SARM »
-        const memo = charger(CLE_COLONNES_STATS, null)
-        if (memo && Array.isArray(memo) && memo.every(c => cols.includes(c))) {
-          setColonnesSelectionnees(memo)
-        } else {
-          setColonnesSelectionnees(cols.filter(c => c.toUpperCase().includes('SARM')))
-        }
+        // Les agendas à compter sont une RÈGLE (SARM-1 + SARM-2), pas un choix : on les détecte,
+        // quelle que soit l'orientation du tableau croisé, et on se contente de les afficher.
+        setDetectionStats(analyserEnTeteStats(texte))
         setEtape('stats')
       } else {
         // Mode RDV : mappage des colonnes
@@ -270,8 +262,8 @@ export default function ImportConsultations({ onImportValide }) {
 
   // ── Lancement de l'analyse (mode statistiques) ──
   const lancerStats = () => {
-    sauver(CLE_COLONNES_STATS, colonnesSelectionnees)
-    const cfg = { colonnesGardees: colonnesSelectionnees, mois: moisStats, annee: anneeStats }
+    // Aucune colonne à mémoriser : la règle SARM s'applique d'elle-même à chaque fichier.
+    const cfg = { mois: moisStats, annee: anneeStats }
     setConfigStats(cfg)
     const r = analyserStats(texteCSV, cfg, regles)
     setResultats(r)
@@ -422,46 +414,48 @@ export default function ImportConsultations({ onImportValide }) {
                 </span>
               </div>
 
-              {/* Sélection des colonnes (agendas) */}
+              {/* Agendas comptés — DÉTECTÉS (règle SARM-1 + SARM-2), rien à cocher */}
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginBottom: 6, fontWeight: 500, letterSpacing: '0.04em' }}>
-                  AGENDAS À INCLURE
+                  AGENDAS COMPTÉS — DÉTECTÉS AUTOMATIQUEMENT
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {colonnesAgenda.map(col => {
-                    const cochee = colonnesSelectionnees?.includes(col)
-                    return (
-                      <label
-                        key={col}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          fontSize: 12, cursor: 'pointer',
-                          padding: '5px 10px', borderRadius: 'var(--radius-md)',
-                          border: `0.5px solid ${cochee ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                          background: cochee ? 'var(--color-primary-light)' : 'var(--color-surface)',
-                          color: cochee ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={cochee}
-                          style={{ accentColor: 'var(--color-primary)' }}
-                          onChange={e => {
-                            setColonnesSelectionnees(prev => {
-                              const base = prev || []
-                              return e.target.checked ? [...base, col] : base.filter(c => c !== col)
-                            })
-                          }}
-                        />
-                        {col}
-                      </label>
-                    )
-                  })}
-                </div>
-                {(!colonnesSelectionnees || colonnesSelectionnees.length === 0) && (
-                  <div style={{ fontSize: 11, color: '#D85A30', marginTop: 6 }}>
-                    ⚠ Sélectionnez au moins un agenda.
+
+                {detectionStats?.inclus.length > 0 ? (
+                  <>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {detectionStats.inclus.map(a => (
+                        <span key={a} style={{
+                          fontSize: 12, padding: '4px 10px', borderRadius: 'var(--radius-md)',
+                          border: '0.5px solid #1D9E75', background: '#E1F5EE', color: '#085041', fontWeight: 500,
+                        }}>
+                          ✓ {a}
+                        </span>
+                      ))}
+                      {detectionStats.exclus.length > 0 && (
+                        <>
+                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '0 2px' }}>· écartés :</span>
+                          {detectionStats.exclus.map(a => (
+                            <span key={a} style={{
+                              fontSize: 11, padding: '4px 9px', borderRadius: 'var(--radius-md)',
+                              border: '0.5px solid var(--color-border)', background: 'var(--color-bg)',
+                              color: 'var(--color-text-tertiary)', textDecoration: 'line-through',
+                            }}>
+                              {a}
+                            </span>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+                      Agendas trouvés en {detectionStats.orientation === 'agendas-lignes' ? 'lignes' : 'colonnes'} —
+                      le total sera la somme des agendas SARM, comme toujours.
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 11, color: '#712B13', background: '#FAECE7', border: '0.5px solid #F09595', borderRadius: 'var(--radius-md)', padding: '8px 10px' }}>
+                    ⚠ <strong>Aucun agenda SARM trouvé dans ce fichier</strong>, ni en lignes ni en colonnes.
+                    L'import ne compterait rien. Vérifiez qu'il s'agit bien de l'export « statistiques »
+                    Doctolib incluant les agendas SARM-1 / SARM-2.
                   </div>
                 )}
               </div>
@@ -494,13 +488,13 @@ export default function ImportConsultations({ onImportValide }) {
 
               <button
                 onClick={lancerStats}
-                disabled={!colonnesSelectionnees || colonnesSelectionnees.length === 0}
+                disabled={!detectionStats?.inclus.length}
                 style={{
                   fontSize: 12, padding: '7px 18px', borderRadius: 'var(--radius-md)',
                   border: '0.5px solid #1D9E75',
-                  background: (colonnesSelectionnees?.length > 0) ? '#E1F5EE' : 'var(--color-bg)',
-                  color: (colonnesSelectionnees?.length > 0) ? '#085041' : 'var(--color-text-tertiary)',
-                  cursor: (colonnesSelectionnees?.length > 0) ? 'pointer' : 'default',
+                  background: detectionStats?.inclus.length ? '#E1F5EE' : 'var(--color-bg)',
+                  color: detectionStats?.inclus.length ? '#085041' : 'var(--color-text-tertiary)',
+                  cursor: detectionStats?.inclus.length ? 'pointer' : 'default',
                 }}
               >
                 Analyser le fichier →
@@ -602,8 +596,14 @@ export default function ImportConsultations({ onImportValide }) {
           {/* ÉTAPE 4 : aperçu et validation */}
           {etape === 'apercu' && resultats && detail && (
             <div>
-              <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--color-border)', fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', letterSpacing: '0.04em' }}>
-                APERÇU AVANT IMPORT — {detail.mois.length} mois
+              <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--color-border)', fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>APERÇU AVANT IMPORT — {detail.mois.length} mois</span>
+                {resultats.inclus?.length > 0 && (
+                  <span style={{ fontSize: 10, background: '#E1F5EE', color: '#085041', padding: '2px 8px', borderRadius: 10, letterSpacing: 0, fontWeight: 400 }}>
+                    agendas comptés : {resultats.inclus.join(' + ')}
+                    {resultats.exclus?.length > 0 && ` · écartés : ${resultats.exclus.join(', ')}`}
+                  </span>
+                )}
               </div>
 
               {/* Avertissement : mois déjà remplis → l'import REMPLACE (il n'additionne pas) */}
