@@ -703,9 +703,13 @@ export default function ImportConsultations({ onImportValide }) {
                                 <span style={{ display: 'inline-block', width: 8, height: 8, background: g.couleur, borderRadius: 2, marginRight: 6 }} />
                                 {g.nom}
                               </td>
-                              <td style={{ padding: '6px 16px', textAlign: 'right', color: 'var(--color-text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>{fmtNb(g.actuel)}</td>
+                              <td style={{ padding: '6px 16px', textAlign: 'right', color: 'var(--color-text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                                {g.actuel ? fmtNb(g.actuel) : '—'}
+                              </td>
                               <td style={{ padding: '6px 16px', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtNb(g.importe)}</td>
-                              <td style={{ padding: '6px 16px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }} />
+                              <td style={{ padding: '6px 16px', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                                <Delta actuel={g.actuel} importe={g.importe} />
+                              </td>
                             </tr>
                             {g.lignes.map(l => (
                               <tr key={l.id} style={{ borderTop: '0.5px solid var(--color-border)', opacity: l.importe === null ? 0.6 : 1 }}>

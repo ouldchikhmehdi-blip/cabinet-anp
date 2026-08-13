@@ -183,6 +183,14 @@ ou la variante « SARM 1 »), tout le reste (`AKOME`, `Cardiologie - CPA`) est �
 que **montrer** ce qui a été retenu et écarté. Si aucun agenda SARM n'est trouvé, l'import est
 bloqué avec un message explicite plutôt que d'importer 0 en silence.
 
+🚫 **Lignes/colonnes de synthèse écartées d'office.** Un libellé d'agrégat (`Total`, `Totaux`,
+`Somme`, `Cumul`…) vaut la somme de tout le fichier. Traité comme un motif ordinaire il **double le
+mois** — et le piège est vicieux : une clé inconnue **bloque** la validation, donc le réflexe est de
+la classer en « Global / autre », ce qui ajoute une seconde fois l'intégralité du fichier.
+`estLibelleTotal()` les retire **avant** tout classement, dans les deux orientations. La comparaison
+porte sur la clé normalisée **entière** (pas un `includes`) pour ne pas avaler un vrai motif du
+genre « Consultation avant colectomie totale ». Couvert par des tests.
+
 > Historique : l'UI demandait de cocher les agendas et mémorisait le choix
 > (`sarm:consult-colonnes-stats`). Cette mémoire **prenait le pas sur la détection** — et surtout la
 > détection ne regardait que les en-têtes, donc elle ne trouvait rien sur les exports
@@ -260,6 +268,17 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 
 `construireDetailImport(agrege, store)` compare le fichier analysé aux données **déjà en base**,
 avant toute écriture. L'écran affiche :
+
+Lecture des trois colonnes, partout dans cet écran :
+
+| Colonne | Sens |
+|---|---|
+| **En base** | ce qui est **déjà enregistré** pour ce(s) mois, avant l'import (`—` = rien) |
+| **Import** | ce que le fichier va écrire — **remplace** la valeur en base, ne s'y ajoute pas |
+| **Écart** | `Import − En base` |
+
+Sur un mois vierge, `En base` vaut `—` partout et chaque écart est donc égal à la valeur importée :
+c'est normal, ce n'est pas un doublement.
 
 1. **Récap par mois** — `En base` / `Import` / `Écart` / `dont téléconsultations`, avec un badge
    **« remplacé »** sur les mois déjà remplis (bandeau d'avertissement en tête si au moins un mois
