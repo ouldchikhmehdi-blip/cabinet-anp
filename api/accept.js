@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       .eq('token_hash', tokenHash)
       .is('used_at', null)
       .gt('expires_at', new Date().toISOString())
-      .select('email, role')
+      .select('email, role, is_iade, nom_complet')
 
     if (updateErr) {
       console.error('Erreur update invitation:', updateErr)
@@ -71,14 +71,16 @@ export default async function handler(req, res) {
       return sendError(res, 410, 'Lien invalide ou expiré.')
     }
 
-    const { email, role } = invitations[0]
+    const { email, role, is_iade: isIade, nom_complet: nomComplet } = invitations[0]
 
-    // Crée le compte Supabase (le trigger handle_new_user crée profiles avec role)
+    // Crée le compte Supabase (le trigger handle_new_user crée profiles avec role).
+    // is_iade : compte restreint « congés IADE » (le trigger force alors role='user').
+    // nom_complet : nom saisi à l'invitation → le compte est nommé dès sa création.
     const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,          // pas d'e-mail de confirmation séparé
-      user_metadata: { role },      // lu par le trigger pour remplir profiles.role
+      email_confirm: true, // pas d'e-mail de confirmation séparé
+      user_metadata: { role, is_iade: !!isIade, nom_complet: nomComplet ?? null },
     })
 
     if (createErr) {

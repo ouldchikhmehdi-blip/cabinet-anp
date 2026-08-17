@@ -72,6 +72,10 @@ export default async function handler(req, res) {
     if (updateErr.code === '23505') {
       return sendError(res, 409, `Initiales ${initiales} déjà attribuées à un autre compte.`)
     }
+    // 23514 = profiles_iade_exclusif : un compte IADE ne peut être ni associé ni faiseur.
+    if (updateErr.code === '23514') {
+      return sendError(res, 400, 'Ce compte est un compte IADE : retirez d\'abord le drapeau « Agent » (colonne Congés IADE).')
+    }
     console.error('Erreur update planning-attribuer:', updateErr)
     return sendError(res, 500, 'Erreur lors de l\'attribution.')
   }

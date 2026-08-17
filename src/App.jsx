@@ -25,10 +25,18 @@ import PlanningSuivi from './pages/PlanningSuivi'
 import PlanningConstruction from './pages/PlanningConstruction'
 import PlanningParService from './pages/PlanningParService'
 import PlanningAffiche from './pages/PlanningAffiche'
+import IadeMesConges from './pages/IadeMesConges'
+import IadeCalendrier from './pages/IadeCalendrier'
+import IadeGestion from './pages/IadeGestion'
+import IadeApercu from './pages/IadeApercu'
 import './index.css'
 
+// Seules pages ouvertes à un compte IADE (cf. IADE.md). Tout le reste — financier,
+// planning, comptes — lui est fermé côté écran ET côté base (RLS).
+const PAGES_IADE = ['iade-mes-conges', 'iade-calendrier']
+
 export default function App() {
-  const { session, profile, aal, nextAal, loading, recovery, siegesPrets } = useAuth()
+  const { session, profile, aal, nextAal, loading, recovery, siegesPrets, profilCharge } = useAuth()
   // Onglet initial : lu depuis l'URL (?page=...) pour permettre l'ouverture
   // d'un onglet précis dans une nouvelle fenêtre (clic du milieu dans la sidebar).
   const [page, setPage] = useState(() => {
@@ -66,9 +74,10 @@ export default function App() {
   //   2. Lien d'invitation → AcceptInvitation (avant vérif session)
   //   3. Pas de session → Login
   //   4. Retour d'un lien « mot de passe oublié » → ResetPassword (avant tout routage AAL/2FA)
-  //   5. Session AAL1 sans facteur TOTP (nextAal='aal1') → EnrollMFA obligatoire
-  //   6. Session AAL1 avec facteur enrôlé (nextAal='aal2') → Login (étape code)
-  //   7. Session AAL2 → dashboard (ci-dessous)
+  //   5. Session AAL1 d'un compte IADE → accès direct à ses congés (2FA non exigée)
+  //   6. Session AAL1 sans facteur TOTP (nextAal='aal1') → EnrollMFA obligatoire
+  //   7. Session AAL1 avec facteur enrôlé (nextAal='aal2') → Login (étape code)
+  //   8. Session AAL2 → dashboard (ci-dessous)
 
   if (loading) {
     return (
@@ -103,12 +112,33 @@ export default function App() {
 
   // Session présente mais pas encore AAL2
   if (aal !== 'aal2') {
-    // Aucun facteur TOTP enrôlé → forcer l'enrôlement
-    if (nextAal === 'aal1' || nextAal === null) {
-      return <EnrollMFA />
+    // On ne peut trancher qu'en connaissant le profil : un compte IADE est
+    // dispensé de 2FA (il n'accède qu'à ses congés, et la base exige l'AAL2
+    // pour tout le reste — cf. supabase/securite_aal2.sql).
+    if (!profilCharge) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--color-bg)',
+          color: 'var(--color-text-secondary)',
+          fontSize: 14,
+        }}>
+          Chargement…
+        </div>
+      )
     }
-    // Facteur enrôlé mais pas encore challengé cette session → retour au Login (étape code)
-    return <Login />
+
+    if (!profile?.is_iade) {
+      // Aucun facteur TOTP enrôlé → forcer l'enrôlement
+      if (nextAal === 'aal1' || nextAal === null) {
+        return <EnrollMFA />
+      }
+      // Facteur enrôlé mais pas encore challengé cette session → retour au Login (étape code)
+      return <Login />
+    }
   }
 
   // Compte désactivé (vérif supplémentaire côté client)
@@ -123,7 +153,15 @@ export default function App() {
         background: 'var(--color-bg)',
         gap: 16,
       }}>
-        <div style={{ fontSize: 15, color: 'var(--color-text)' }}>Votre accès a été révoqué.</div>
+        {/* Deux cas mènent ici : accès révoqué par un admin, ou connexion (Google)
+            avec une adresse jamais invitée — le compte naît alors désactivé. */}
+        <div style={{ fontSize: 15, color: 'var(--color-text)', textAlign: 'center', maxWidth: 380, lineHeight: 1.5 }}>
+          Ce compte n'a pas accès au dashboard SARM.<br />
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+            L'accès est réservé aux personnes invitées. Si vous pensez qu'il s'agit d'une
+            erreur, contactez l'administrateur.
+          </span>
+        </div>
         <button
           onClick={() => supabase.auth.signOut()}
           style={{
@@ -159,6 +197,31 @@ export default function App() {
     )
   }
 
+  // ── Compte IADE : accès limité à ses congés et au calendrier de l'équipe ──
+  // Toute autre page (y compris via ?page=…) retombe sur « Mes congés ».
+  const estIade = profile?.is_iade === true
+  const peutGererIade = profile?.is_gestion_iade === true || profile?.is_faiseur === true || profile?.role === 'admin'
+
+  if (estIade) {
+    const pageIade = PAGES_IADE.includes(page) ? page : 'iade-mes-conges'
+    return (
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Sidebar
+          currentPage={pageIade}
+          onNavigate={(p) => { if (peutQuitter()) setPage(p) }}
+          masque={masque}
+          onToggleMasque={toggleMasque}
+          sombre={sombre}
+          onToggleSombre={toggleSombre}
+          isIade
+        />
+        <main style={{ flex: 1, overflow: 'auto', padding: '24px', background: 'var(--color-bg)' }}>
+          {pageIade === 'iade-calendrier' ? <IadeCalendrier /> : <IadeMesConges />}
+        </main>
+      </div>
+    )
+  }
+
   // ── Vue PLEIN ÉCRAN (sans sidebar) — calendrier des desiderata, ouvert en nouvel onglet ──
   // Page contextuelle ouverte depuis « Ouverture du planning » (pas une entrée de navigation).
   if (page === 'planning-affiche') {
@@ -183,6 +246,9 @@ export default function App() {
       case 'planning-calendrier': return profile?.is_faiseur ? <PlanningConstruction /> : <VueGlobale />
       case 'planning-suivi':      return profile?.is_faiseur ? <PlanningSuivi /> : <VueGlobale />
       case 'planning-par-service': return profile?.is_faiseur ? <PlanningParService /> : <VueGlobale />
+      case 'iade-gestion':        return peutGererIade ? <IadeGestion /> : <VueGlobale />
+      case 'iade-calendrier':     return peutGererIade ? <IadeCalendrier /> : <VueGlobale />
+      case 'iade-apercu':         return peutGererIade ? <IadeApercu /> : <VueGlobale />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }
@@ -200,6 +266,7 @@ export default function App() {
         isAdmin={profile?.role === 'admin'}
         isFaiseur={profile?.is_faiseur === true}
         hasInitiales={!!profile?.initiales}
+        peutGererIade={peutGererIade}
       />
       <main style={{
         flex: 1,
