@@ -35,6 +35,52 @@ Dans **Authentication → URL Configuration** :
 
 ---
 
+## Étape 2 bis — « Continuer avec Google » (facultatif mais recommandé)
+
+Permet à quiconque a une adresse Gmail de se connecter en un clic, sans mot de passe à
+retenir. **Particulièrement utile pour les IADE**, qui n'ont pas de 2FA (cf. `IADE.md`).
+
+### Le principe de sécurité, à comprendre avant d'activer
+
+Google **authentifie** (il prouve qui vous êtes), l'**invitation autorise** (elle dit à quoi
+vous avez droit). Les deux sont séparés :
+
+- adresse **invitée** → le compte est créé actif, avec le rôle et les drapeaux de son invitation ;
+  l'invitation encore ouverte est consommée au passage ;
+- adresse **non invitée** → le compte est créé **désactivé**. Il ne lit rien, nulle part,
+  et voit un écran « Ce compte n'a pas accès au dashboard SARM ».
+
+C'est le trigger `handle_new_user` (`supabase/connexion_google.sql`) qui applique cette règle,
+donc **quel que soit le chemin de création du compte**. Corollaire important : le rôle n'est
+plus lu dans `raw_user_meta_data` (que le client peut renseigner) mais dans la table
+`invitations`, écrite uniquement par le `service_role`.
+
+> ⚠️ Prérequis : exécuter `supabase/connexion_google.sql` **avant** d'activer le fournisseur
+> Google. Sans lui, n'importe quel compte Gmail obtiendrait un accès actif au cabinet.
+
+### Configuration
+
+1. **Google Cloud Console** → *APIs & Services → Credentials* → **Create OAuth client ID**
+   → type **Web application**.
+2. Dans **Authorized redirect URIs**, coller l'URI affichée par Supabase à l'étape suivante
+   (de la forme `https://<ref>.supabase.co/auth/v1/callback`).
+3. **Supabase → Authentication → Sign In / Providers → Google** : activer, coller le
+   **Client ID** et le **Client Secret**, enregistrer.
+4. Vérifier que **Redirect URLs** (étape 2) contient bien l'URL du site : c'est là que
+   l'utilisateur revient après Google.
+
+Rien à changer côté code : les boutons sont déjà présents sur l'écran de connexion et sur
+l'écran d'acceptation d'invitation (ce dernier n'apparaît que pour une adresse `@gmail.com`).
+
+### Ce que Google ne change PAS
+
+- **Les associés gardent leur 2FA.** Revenir de Google donne une session AAL1 ; l'écran de
+  connexion enchaîne directement sur la demande du code TOTP, et la base refuse toute donnée
+  du cabinet tant que l'AAL2 n'est pas atteint (`public.acces_cabinet()`).
+- **Les IADE en restent dispensés** : leur module ne demande pas l'AAL2.
+
+---
+
 ## Mot de passe oublié (réinitialisation en libre-service)
 
 Flux **100 % natif Supabase, côté front** (aucune fonction serveur, aucune table) :

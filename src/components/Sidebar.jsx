@@ -23,7 +23,21 @@ const suiviItem = { id: 'planning-suivi', label: 'Ouverture du planning', icon: 
 const parServiceItem = { id: 'planning-par-service', label: 'Planning par service', icon: '📋' }
 const adminItem = { id: 'admin-users', label: 'Comptes', icon: '🔑' }
 
-export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur, hasInitiales }) {
+// Congés IADE — côté gestion (gestionnaire IADE, faiseur, admin)
+const iadeGestionItems = [
+  { section: true, label: 'Congés IADE' },
+  { id: 'iade-gestion', label: 'Demandes IADE', icon: '🗓' },
+  { id: 'iade-calendrier', label: 'Absences IADE', icon: '🌴' },
+  { id: 'iade-apercu', label: 'Aperçu compte IADE', icon: '👁', sub: true },
+]
+
+// Congés IADE — côté agent : sa navigation ENTIÈRE (rien d'autre ne lui est ouvert)
+const iadeAgentItems = [
+  { id: 'iade-mes-conges', label: 'Mes congés', icon: '🌴' },
+  { id: 'iade-calendrier', label: "Congés de l'équipe", icon: '📆' },
+]
+
+export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur, hasInitiales, peutGererIade, isIade }) {
   const toggleBtn = (active) => ({
     flex: 1,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -37,10 +51,12 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
     transition: 'all 0.15s',
   })
 
-  const items = [
+  // Un compte IADE ne voit QUE ses deux entrées — ni financier, ni planning, ni comptes.
+  const items = isIade ? iadeAgentItems : [
     ...navItems,
     ...(hasInitiales ? [agendaItem] : []),
     ...(isFaiseur ? [suiviItem, calendrierItem, parServiceItem] : []),
+    ...(peutGererIade ? iadeGestionItems : []),
     ...(isAdmin ? [adminItem] : []),
   ]
 
@@ -167,14 +183,17 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
         display: 'flex', flexDirection: 'column', gap: 8
       }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={onToggleMasque}
-            title={masque ? 'Afficher les montants' : 'Masquer les montants'}
-            aria-pressed={masque}
-            style={toggleBtn(masque)}
-          >
-            <span>{masque ? '🙈' : '👁'}</span> Montants
-          </button>
+          {/* Masquer les montants n'a pas de sens pour un compte IADE : aucun montant ne lui est affiché. */}
+          {!isIade && (
+            <button
+              onClick={onToggleMasque}
+              title={masque ? 'Afficher les montants' : 'Masquer les montants'}
+              aria-pressed={masque}
+              style={toggleBtn(masque)}
+            >
+              <span>{masque ? '🙈' : '👁'}</span> Montants
+            </button>
+          )}
           <button
             onClick={onToggleSombre}
             title={sombre ? 'Passer en clair' : 'Passer en sombre'}
@@ -206,7 +225,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
           ⎋ Déconnexion
         </button>
         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-          8 associés · parts égales
+          {isIade ? 'Équipe IADE' : '8 associés · parts égales'}
         </div>
       </div>
     </aside>

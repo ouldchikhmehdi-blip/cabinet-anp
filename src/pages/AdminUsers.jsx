@@ -12,10 +12,19 @@ import { ASSOCIES, appliquerAssocies } from '../data/associes'
  *   - Promouvoir / rétrograder le rôle d'un utilisateur
  *   - Révoquer l'accès d'un utilisateur
  */
+// Colonnes du module congés IADE (ajoutées par supabase/iade_conges.sql).
+// Tant que ce fichier n'a pas été exécuté en base, la requête échoue : on
+// recharge alors sans ces colonnes et on signale que le module est à activer.
+const CHAMPS_PROFILS       = 'id, email, role, status, initiales, is_faiseur, nom_complet, created_at'
+const CHAMPS_PROFILS_IADE  = `${CHAMPS_PROFILS}, is_iade, is_gestion_iade`
+const CHAMPS_INVITS        = 'id, email, role, expires_at, used_at, created_at'
+const CHAMPS_INVITS_IADE   = `${CHAMPS_INVITS}, is_iade`
+
 export default function AdminUsers() {
   const { session, profile: moi } = useAuth()
   const [profiles,    setProfiles]    = useState([])
   const [invitations, setInvitations] = useState([])
+  const [moduleIade,  setModuleIade]  = useState(true)
   const [sieges,      setSieges]      = useState(() => [...ASSOCIES])  // liste ordonnée des associés (initiales)
   const [charge,      setCharge]      = useState(true)
   const [erreur,      setErreur]      = useState(null)
@@ -24,6 +33,7 @@ export default function AdminUsers() {
   // Formulaire d'invitation
   const [emailInvit, setEmailInvit] = useState('')
   const [roleInvit,  setRoleInvit]  = useState('user')
+  const [nomInvit,   setNomInvit]   = useState('')
   const [envoi,      setEnvoi]      = useState(false)
   const [lienGenere, setLienGenere] = useState(null)  // { email, url, emailSent }
   const [copie,      setCopie]      = useState(false)
@@ -41,11 +51,18 @@ export default function AdminUsers() {
     setCharge(true)
     setErreur(null)
     try {
-      const [{ data: p }, { data: i }, { data: s }] = await Promise.all([
-        supabase.from('profiles').select('id, email, role, status, initiales, is_faiseur, nom_complet, created_at').order('created_at'),
-        supabase.from('invitations').select('id, email, role, expires_at, used_at, created_at').order('created_at', { ascending: false }),
+      let [{ data: p, error: pErr }, { data: i, error: iErr }, { data: s }] = await Promise.all([
+        supabase.from('profiles').select(CHAMPS_PROFILS_IADE).order('created_at'),
+        supabase.from('invitations').select(CHAMPS_INVITS_IADE).order('created_at', { ascending: false }),
         supabase.from('planning_associes').select('liste').eq('id', 1).maybeSingle(),
       ])
+
+      // Repli si supabase/iade_conges.sql n'a pas encore été exécuté.
+      const iadePret = !pErr && !iErr
+      if (pErr) ({ data: p } = await supabase.from('profiles').select(CHAMPS_PROFILS).order('created_at'))
+      if (iErr) ({ data: i } = await supabase.from('invitations').select(CHAMPS_INVITS).order('created_at', { ascending: false }))
+
+      setModuleIade(iadePret)
       setProfiles(p ?? [])
       setInvitations(i ?? [])
       if (Array.isArray(s?.liste) && s.liste.length) setSieges(s.liste)
@@ -71,15 +88,22 @@ export default function AdminUsers() {
     e.preventDefault()
     setEnvoi(true); setErreur(null); setLienGenere(null); setCopie(false)
     try {
+      // « iade » n'est pas un rôle en base : c'est un compte `user` porteur du drapeau is_iade.
+      const estIade = roleInvit === 'iade'
       const res = await fetch('/api/invite', {
         method: 'POST', headers,
-        body: JSON.stringify({ email: emailInvit.trim(), role: roleInvit }),
+        body: JSON.stringify({
+          email: emailInvit.trim(),
+          role:  estIade ? 'user' : roleInvit,
+          isIade: estIade,
+          nomComplet: nomInvit.trim() || null,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setLienGenere({ email: emailInvit.trim(), url: data.link, emailSent: data.emailSent })
       flash(data.message)
-      setEmailInvit(''); setRoleInvit('user')
+      setEmailInvit(''); setRoleInvit('user'); setNomInvit('')
       charger()
     } catch (err) {
       flash(err.message, true)
@@ -106,6 +130,23 @@ export default function AdminUsers() {
       const res = await fetch('/api/planning-attribuer', {
         method: 'POST', headers,
         body: JSON.stringify({ userId, initiales, isFaiseur, nomComplet }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      flash(data.message)
+      charger()
+    } catch (err) {
+      flash(err.message, true)
+    }
+  }
+
+  // ── Drapeaux du module congés IADE ────────────────────────────────
+  // isIade : compte restreint (ne voit que ses congés) · isGestionIade : valide les demandes.
+  async function attribuerIade(userId, isIade, isGestionIade) {
+    try {
+      const res = await fetch('/api/iade-attribuer', {
+        method: 'POST', headers,
+        body: JSON.stringify({ userId, isIade, isGestionIade }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -292,6 +333,14 @@ export default function AdminUsers() {
       {erreur  && <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{erreur}</div>}
       {succes  && <div style={{ fontSize: 13, color: 'var(--color-success)', background: 'var(--color-success-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{succes}</div>}
 
+      {/* Module congés IADE pas encore installé en base */}
+      {!moduleIade && (
+        <div style={{ fontSize: 13, color: 'var(--color-amber)', background: 'var(--color-amber-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>
+          Module « congés IADE » inactif : exécutez <strong>supabase/iade_conges.sql</strong> dans
+          Supabase → SQL Editor pour pouvoir créer des comptes IADE et désigner un gestionnaire.
+        </div>
+      )}
+
       {/* ── Formulaire d'invitation ── */}
       <div style={{ ...s.section }}>
         <div style={s.titre}>Inviter un nouvel utilisateur</div>
@@ -321,7 +370,23 @@ export default function AdminUsers() {
               >
                 <option value="user">Utilisateur</option>
                 <option value="admin">Administrateur</option>
+                <option value="iade" disabled={!moduleIade}>IADE (congés uniquement)</option>
               </select>
+            </div>
+            <div>
+              {/* Nom porté par l'invitation : le compte est nommé dès sa création.
+                  Obligatoire pour un IADE — c'est ce nom qui identifie l'auteur d'une demande. */}
+              <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>
+                Nom complet {roleInvit === 'iade' ? '' : '(facultatif)'}
+              </label>
+              <input
+                type="text"
+                required={roleInvit === 'iade'}
+                value={nomInvit}
+                onChange={e => setNomInvit(e.target.value)}
+                style={{ ...s.input, width: 200 }}
+                placeholder={roleInvit === 'iade' ? 'Prénom Nom' : 'Dr Nom'}
+              />
             </div>
             <button type="submit" disabled={envoi} style={s.boutonPrimary}>
               {envoi ? 'Envoi…' : 'Générer l\'invitation'}
@@ -380,6 +445,7 @@ export default function AdminUsers() {
                   <th style={s.th}>Initiales</th>
                   <th style={s.th}>Nom complet</th>
                   <th style={s.th}>Faiseur</th>
+                  <th style={s.th}>Congés IADE</th>
                   <th style={s.th}>Depuis</th>
                   <th style={s.th}>Actions</th>
                 </tr>
@@ -393,7 +459,7 @@ export default function AdminUsers() {
                     </td>
                     <td style={s.td}>
                       <span style={s.badge(p.role, p.status)}>
-                        {p.role === 'admin' ? 'Admin' : 'Utilisateur'}
+                        {p.role === 'admin' ? 'Admin' : p.is_iade ? 'IADE' : 'Utilisateur'}
                       </span>
                     </td>
                     <td style={s.td}>
@@ -404,7 +470,7 @@ export default function AdminUsers() {
                     <td style={s.td}>
                       <select
                         value={p.initiales ?? ''}
-                        disabled={p.status !== 'active'}
+                        disabled={p.status !== 'active' || p.is_iade === true}
                         onChange={e => attribuer(p.id, e.target.value || null, p.is_faiseur, p.nom_complet ?? null)}
                         style={{ ...s.input, padding: '4px 8px', fontSize: 12 }}
                       >
@@ -433,16 +499,42 @@ export default function AdminUsers() {
                       />
                     </td>
                     <td style={s.td}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: p.status === 'active' ? 'pointer' : 'default' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: p.status === 'active' && !p.is_iade ? 'pointer' : 'default' }}>
                         <input
                           type="checkbox"
                           checked={p.is_faiseur === true}
-                          disabled={p.status !== 'active'}
+                          disabled={p.status !== 'active' || p.is_iade === true}
                           onChange={e => attribuer(p.id, p.initiales ?? null, e.target.checked, p.nom_complet ?? null)}
                           style={{ accentColor: 'var(--color-primary)' }}
                         />
                         {p.is_faiseur && <span style={s.badge('admin', p.status)}>Faiseur</span>}
                       </label>
+                    </td>
+                    {/* Congés IADE : « Agent » = compte restreint aux congés · « Gestion » = valide les demandes.
+                        Les deux sont exclusifs, et un agent IADE ne peut être ni admin, ni faiseur, ni associé. */}
+                    <td style={s.td}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--color-text-secondary)', cursor: moduleIade && p.status === 'active' ? 'pointer' : 'default' }}>
+                          <input
+                            type="checkbox"
+                            checked={p.is_iade === true}
+                            disabled={!moduleIade || p.status !== 'active' || p.is_gestion_iade === true || p.role === 'admin' || p.is_faiseur === true || !!p.initiales}
+                            onChange={e => attribuerIade(p.id, e.target.checked, false)}
+                            style={{ accentColor: 'var(--color-primary)' }}
+                          />
+                          Agent
+                        </label>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--color-text-secondary)', cursor: moduleIade && p.status === 'active' ? 'pointer' : 'default' }}>
+                          <input
+                            type="checkbox"
+                            checked={p.is_gestion_iade === true}
+                            disabled={!moduleIade || p.status !== 'active' || p.is_iade === true}
+                            onChange={e => attribuerIade(p.id, false, e.target.checked)}
+                            style={{ accentColor: 'var(--color-primary)' }}
+                          />
+                          Gestion
+                        </label>
+                      </div>
                     </td>
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{fmtDate(p.created_at)}</td>
                     <td style={s.td}>
@@ -450,8 +542,9 @@ export default function AdminUsers() {
                         <div style={{ display: 'flex', gap: 6 }}>
                           {p.status === 'active' && (
                             <>
+                              {/* Un compte IADE reste un compte restreint : pas de promotion possible. */}
                               {p.role === 'user' ? (
-                                <button style={s.boutonSec} onClick={() => changerRole(p.id, 'admin')}>
+                                <button style={s.boutonSec} disabled={p.is_iade === true} onClick={() => changerRole(p.id, 'admin')}>
                                   Promouvoir admin
                                 </button>
                               ) : (
@@ -539,7 +632,7 @@ export default function AdminUsers() {
                 {invitationsActives.map(i => (
                   <tr key={i.id} style={s.tr}>
                     <td style={s.td}>{i.email}</td>
-                    <td style={s.td}>{i.role === 'admin' ? 'Admin' : 'Utilisateur'}</td>
+                    <td style={s.td}>{i.is_iade ? 'IADE (congés)' : i.role === 'admin' ? 'Admin' : 'Utilisateur'}</td>
                     <td style={{ ...s.td, color: 'var(--color-amber)' }}>{fmtDate(i.expires_at)}</td>
                   </tr>
                 ))}

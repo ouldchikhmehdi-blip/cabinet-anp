@@ -7,6 +7,8 @@
 > **Le site a deux parties indépendantes : le _dashboard financier_ (décrit ci-dessous) et le _planning_ (aide à la fabrication du planning d'anesthésie). Avant toute intervention sur le planning, lire `PLANNING.md` à la racine — il fait foi pour ce module.**
 >
 > **Onglet _Consultations_ → tout est dans `CONSULTATIONS.md` (racine), qui fait foi : le lire avant toute intervention sur les consultations. Ses données sont _réelles_ (Doctolib 2022→2026).**
+>
+> **Module _Congés IADE_ (comptes restreints des infirmiers anesthésistes) → `IADE.md` (racine), qui fait foi : le lire avant toute intervention sur les comptes IADE ou leurs congés.**
 
 ---
 
@@ -44,7 +46,7 @@ Fonctionnalités transverses : **filtres par période** et **comparaison année 
 - **CSS inline + variables CSS** — pas de framework CSS (ni Tailwind, ni autre)
 
 ### Auth & DB
-- **Supabase Auth** — email/password + **TOTP 2FA obligatoire** (AAL2)
+- **Supabase Auth** — email/password + **TOTP 2FA obligatoire** (AAL2), **exigée par la RLS elle-même** (`public.est_aal2()`, cf. `supabase/securite_aal2.sql`) et non plus seulement par le front. Seule exception : les **comptes IADE**, qui se connectent sans 2FA et n'atteignent que leurs congés (cf. `IADE.md`)
 - **Supabase PostgreSQL** — tables `profiles` + `invitations`, **RLS** (schéma : `supabase/schema.sql`)
 
 ### Backend / API
@@ -115,6 +117,8 @@ Schéma de référence : **`supabase/schema.sql`**.
 - `user_role` : `admin` | `user` (`user` = lecture seule)
 - `user_status` : `active` | `disabled`
 
+**Drapeaux de rôle sur `profiles`** (au-delà de l'enum) : `is_faiseur` (faiseur de planning, cf. `PLANNING.md`), `is_iade` (compte restreint aux congés) et `is_gestion_iade` (valide les congés IADE) — cf. `IADE.md`.
+
 **Table `profiles`** (1 ligne par `auth.users`)
 - `id` (uuid, FK `auth.users`, `on delete cascade`), `email`, `role` (défaut `user`), `status` (défaut `active`), `created_at`, `updated_at`
 - Index sur `role` et `status` · trigger `touch_updated_at` qui met à jour `updated_at`
@@ -126,12 +130,12 @@ Schéma de référence : **`supabase/schema.sql`**.
 - **Aucune écriture client** : toutes les écritures passent par le `service_role` dans les fonctions `/api`
 
 **RLS (activée sur les deux tables)**
-- `is_admin()` : fonction **`SECURITY DEFINER`** (bypass RLS pour éviter la récursion), réservée à `authenticated` ; utilisée dans les policies au lieu d'une sous-requête directe
+- `is_admin()` : fonction **`SECURITY DEFINER`** (bypass RLS pour éviter la récursion), réservée à `authenticated` ; utilisée dans les policies au lieu d'une sous-requête directe. **Exige l'AAL2** (comme `is_faiseur()`) depuis `supabase/securite_aal2.sql` : un jeton obtenu avec le seul mot de passe n'ouvre plus rien du cabinet
 - `profiles` SELECT : sa propre ligne **ou** admin · `profiles` UPDATE : **admins uniquement** (défense en profondeur ; les vraies opérations passent par le `service_role` qui ignore la RLS)
 - `invitations` SELECT : **admins uniquement** (écran d'audit)
 
 **Sécurité du rôle (anti-élévation de privilèges)**
-- Le rôle est lu dans `raw_user_meta_data.role`, **posé par le serverless** lors de `admin.createUser`. Un client **ne peut pas** créer un `auth.users` sans `service_role`, donc **ne peut pas s'auto-attribuer un rôle**. Défaut : `user`.
+- Depuis `supabase/connexion_google.sql`, le rôle et les drapeaux sont lus **dans la table `invitations`** (écrite uniquement par le `service_role`), plus dans `raw_user_meta_data`. Le trigger `handle_new_user` applique la règle : **adresse invitée → compte actif avec les droits de son invitation ; adresse non invitée → compte `disabled`**. C'est ce qui permet d'activer « Continuer avec Google » sans ouvrir le site à tout compte Gmail — et un compte créé à la main dans le dashboard Supabase naît donc désactivé.
 
 **Premier admin** : créé **manuellement** (Auth → Users, « Auto Confirm User »), puis en SQL :
 `update public.profiles set role='admin' where email='...';` — TOTP enrôlé à la 1ʳᵉ connexion.
@@ -202,6 +206,17 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [ ] **Migration `src/data/*` (mock) → tables Supabase** + RLS avec exigence **AAL2** pour les données sensibles
 - [ ] Suppression de la protection intérimaire Vercel une fois les données en base
 
+### Module congés IADE (cf. `IADE.md`)
+- [x] Écrans agent / gestion / aperçu, endpoints, RLS, tests — livré le 2026-08-17
+- [x] Migrations appliquées en base (`iade_conges`, `securite_aal2`, `invitation_nom_complet`, `connexion_google`)
+- [x] Exigence **AAL2 déplacée dans la RLS** (`est_aal2()`, `acces_cabinet()`) ; comptes IADE dispensés de 2FA
+- [ ] ⏳ **À FAIRE — Authentification Google (Mehdi)** : créer le client OAuth dans Google Cloud Console,
+      puis coller Client ID + Secret dans Supabase → Authentication → Providers → Google.
+      Procédure : `AUTH.md` § Étape 2 bis. **Le code est déjà en place** (boutons « Continuer avec Google »
+      sur l'écran de connexion et sur l'invitation) ; tant que ce réglage n'est pas fait, le bouton
+      répond « Connexion Google indisponible » et tout le reste fonctionne normalement.
+- [ ] Désigner le gestionnaire IADE et inviter les agents (onglet « Comptes »)
+
 ---
 
 ## 10. Rappels pour l'assistant
@@ -210,7 +225,7 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - Ne jamais demander de coller des données bancaires réelles.
 - Sécurité **toujours côté serveur** (RLS + Vercel Functions), jamais uniquement front.
 - Lire `AUTH.md` et `supabase/schema.sql` avant de toucher à l'auth ou à la DB.
-- Rôles : `admin` (accès complet) / `user` (lecture seule).
+- Rôles : `admin` (accès complet) / `user` (lecture seule) / **compte IADE** (`is_iade` : congés uniquement, cf. `IADE.md`).
 - Rester dans la stack figée ; toute déviation se propose et se valide, ne s'impose pas.
 - **Laisser le lint vert** : `npm run lint` à **0 problème** après chaque intervention (cf. §8).
 
