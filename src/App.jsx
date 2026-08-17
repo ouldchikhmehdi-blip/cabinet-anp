@@ -204,8 +204,10 @@ export default function App() {
 
   if (estIade) {
     const pageIade = PAGES_IADE.includes(page) ? page : 'iade-mes-conges'
+    // .iade-shell : bascule en bandeau horizontal sous 700 px (cf. src/index.css).
+    // Ces comptes consultent l'app depuis leur téléphone.
     return (
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <div className="iade-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         <Sidebar
           currentPage={pageIade}
           onNavigate={(p) => { if (peutQuitter()) setPage(p) }}

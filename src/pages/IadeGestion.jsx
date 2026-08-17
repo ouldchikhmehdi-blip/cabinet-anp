@@ -111,7 +111,9 @@ export default function IadeGestion() {
       background: 'var(--color-surface)',
       border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)',
-      overflow: 'hidden',
+      // Défilement horizontal plutôt que rognage : sur téléphone, les tableaux
+      // se consultent en glissant le doigt au lieu de déborder de l'écran.
+      overflowX: 'auto',
     },
     tr: { borderBottom: '0.5px solid var(--color-border)' },
     th: { padding: '10px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em' },
@@ -162,7 +164,7 @@ export default function IadeGestion() {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande en attente.</div>
         ) : (
           <div style={s.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Agent</th>
@@ -216,7 +218,7 @@ export default function IadeGestion() {
           </div>
         ) : (
           <div style={s.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Agent</th>
@@ -252,7 +254,7 @@ export default function IadeGestion() {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande traitée sur l'année.</div>
         ) : (
           <div style={s.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Agent</th>

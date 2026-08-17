@@ -102,3 +102,81 @@ select, input {
     color: #000;
   }
 }
+/* ============================================================
+   Vue IADE sur smartphone (iOS / Android)
+   ------------------------------------------------------------
+   Les comptes IADE consultent l'app depuis leur téléphone, alors que le reste
+   du dashboard est pensé pour un écran large. Sous 700 px, la barre latérale
+   passe en bandeau horizontal et le contenu prend toute la largeur.
+
+   Les `!important` neutralisent les styles EN LIGNE de Sidebar.jsx (qui, eux,
+   ne peuvent pas porter de media query). Ils sont tous portés par `.iade-shell` :
+   la vue des associés n'est pas touchée.
+   ============================================================ */
+@media (max-width: 700px) {
+  .iade-shell {
+    flex-direction: column !important;
+    /* dvh : hauteur réelle une fois la barre d'URL de Safari/Chrome mobile prise en compte */
+    height: 100dvh !important;
+  }
+
+  /* Barre latérale → bandeau en haut */
+  .iade-shell > aside {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    border-right: none !important;
+    border-bottom: 0.5px solid var(--color-border) !important;
+  }
+  .iade-shell > aside > div:first-child {
+    padding: 10px 14px 8px !important;
+  }
+  /* Sous-titre « Service Anesthésie Réanimation Millénaire » : trop long sur mobile */
+  .iade-shell > aside > div:first-child > div:last-child {
+    display: none;
+  }
+
+  /* Onglets côte à côte, soulignés au lieu d'être barrés à gauche */
+  .iade-shell > aside > nav {
+    display: flex !important;
+    padding: 4px 6px !important;
+    gap: 4px;
+  }
+  .iade-shell > aside > nav > button {
+    flex: 1;
+    justify-content: center;
+    padding: 9px 4px !important;
+    border-left: none !important;
+    border-bottom: 2px solid transparent;
+  }
+
+  /* Pied de barre (thème, déconnexion) sur une seule ligne */
+  .iade-shell > aside > div:last-child {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px !important;
+    padding: 8px 12px !important;
+  }
+  .iade-shell > aside > div:last-child > div:last-child {
+    display: none;
+  }
+
+  .iade-shell > main {
+    padding: 16px 12px !important;
+    /* En colonne, un enfant flex ne peut défiler que si sa hauteur minimale est nulle */
+    min-height: 0 !important;
+  }
+
+  /* Formulaire de demande : un champ par ligne plutôt que des colonnes serrées */
+  .iade-shell form > div {
+    min-width: 100% !important;
+  }
+
+  /* iOS zoome automatiquement sur un champ dont le texte fait moins de 16 px :
+     on force 16 px pour éviter ce zoom intempestif à chaque saisie. */
+  .iade-shell input,
+  .iade-shell select,
+  .iade-shell textarea {
+    font-size: 16px !important;
+  }
+}

@@ -94,7 +94,9 @@ export default function IadeMesConges({ apercu = null }) {
       background: 'var(--color-surface)',
       border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)',
-      overflow: 'hidden',
+      // Défilement horizontal plutôt que rognage : sur téléphone, les tableaux
+      // se consultent en glissant le doigt au lieu de déborder de l'écran.
+      overflowX: 'auto',
     },
     label: { fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 },
     input: {
@@ -204,7 +206,7 @@ export default function IadeMesConges({ apercu = null }) {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande en attente.</div>
         ) : (
           <div style={s.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Période</th>
@@ -239,7 +241,7 @@ export default function IadeMesConges({ apercu = null }) {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande traitée pour le moment.</div>
         ) : (
           <div style={s.card}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Période</th>
