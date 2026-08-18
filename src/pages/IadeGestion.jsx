@@ -6,9 +6,13 @@
 // Les jours sont stockés un par un ; l'écran les regroupe en plages contiguës de
 // même nature issues d'un même envoi, pour qu'une semaine de congés se traite
 // d'un seul clic sans perdre la possibilité de répondre jour par jour.
+//
+// L'export mensuel destiné à la comptable vit dans son propre composant
+// (components/iade/SyntheseMensuelle.jsx).
 // ============================================================
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import CalendrierConges from '../components/iade/CalendrierConges'
+import SyntheseMensuelle from '../components/iade/SyntheseMensuelle'
 import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade } from '../utils/iadeCongesApi'
 import {
   bornesMois, libelleType, libelleStatut, formatPeriode,
@@ -208,6 +212,12 @@ export default function IadeGestion() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* ── Synthèse mensuelle pour la comptable ── */}
+      <div style={s.section}>
+        <div style={s.titre}>Synthèse mensuelle pour la comptable</div>
+        <SyntheseMensuelle jours={demandes} agents={agents} annee={annee} />
       </div>
 
       {/* ── Calendrier d'équipe ── */}

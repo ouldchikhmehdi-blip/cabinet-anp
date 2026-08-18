@@ -79,6 +79,7 @@ Composants :
 |---|---|
 | `src/components/iade/CalendrierSaisie.jsx` | Grille mensuelle **cliquable** où l'agent pose ses jours (cases larges, pensées pour le doigt sur téléphone) |
 | `src/components/iade/CalendrierConges.jsx` | Bandeau mensuel en lecture seule : une ligne par agent, une colonne par jour |
+| `src/components/iade/SyntheseMensuelle.jsx` | Export texte du mois pour la comptable (cf. § 3 bis) |
 
 Dans les deux, chaque case porte l'**abréviation de la nature** (`CP` / `RF`) et prend la
 **couleur du statut** (ambre = demandé, vert = validé) : les deux informations se lisent
@@ -88,6 +89,48 @@ Logique métier pure (testée, 29 tests) : `src/utils/iadeConges.js` — natures
 regroupement en plages contiguës (`plages`), validation de la sélection, découpage du mois
 en grille (`grilleMois`).
 Accès Supabase : `src/utils/iadeCongesApi.js`.
+
+> ⚠️ `SyntheseMensuelle` est un composant séparé **volontairement** : inline dans
+> `IadeGestion`, ce bloc faisait échouer le compilateur React (« existing memoization
+> could not be preserved ») et désoptimisait toute la page. Ne pas le réintégrer.
+
+---
+
+## 3 bis. Synthèse mensuelle pour la comptable
+
+Chaque mois, la personne qui valide doit transmettre les congés à la comptable.
+L'écran « Congés IADE » porte pour cela un bloc **« Synthèse mensuelle pour la
+comptable »** : on choisit un mois (l'année est celle du sélecteur en haut de page),
+on clique **« Copier le texte »**, on colle dans un e-mail. Rien à mettre en forme.
+
+Le texte produit (fonction pure `syntheseMensuelle()`, testée) :
+
+```
+SARM — Service Anesthésie Réanimation Millénaire
+Congés IADE validés — Septembre 2026
+
+Amar Sophie — 2 jours
+  Congés payés (2) : lun. 14/09, mar. 15/09
+
+Dupont Marie — 6 jours
+  Congés payés (5) : lun. 07/09, mar. 08/09, mer. 09/09, jeu. 10/09, ven. 11/09
+  Récup. jour férié (1) : jeu. 17/09
+
+Total du mois : 8 jours — 7 congés payés · 1 récup. jour férié
+
+Édité le 02/10/2026 depuis le dashboard SARM.
+```
+
+Règles, à ne pas modifier sans y réfléchir :
+
+- **Seuls les jours `validee` sortent.** Un jour en attente n'est pas un congé accordé :
+  l'envoyer en paie serait une erreur. Les jours refusés n'y sont évidemment pas non plus.
+- Les jours du mois **encore en attente** sont comptés et affichés **au-dessus** du texte,
+  en avertissement — pour qu'on les traite avant d'envoyer — mais jamais dans le texte.
+- Dates listées **une par une** avec le jour de la semaine (`lun. 07/09`), pas en plages :
+  la comptable saisit des jours, une plage l'obligerait à les recompter.
+- Agents triés par nom ; un agent supprimé entre-temps apparaît en « Agent inconnu »
+  plutôt que de disparaître silencieusement du décompte.
 
 ---
 

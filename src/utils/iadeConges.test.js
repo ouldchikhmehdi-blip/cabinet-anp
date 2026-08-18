@@ -3,7 +3,8 @@ import {
   TYPES_CONGE, libelleType, courtType, libelleStatut,
   jourSuivant, seSuivent,
   compterParType, resumeTypes, plages, verifierSelection,
-  formatJour, formatPeriode,
+  formatJour, formatJourCourt, formatPeriode,
+  syntheseMensuelle,
   bornesMois, joursDuMois, grilleMois,
   grouperParAgent, absenceDuJour, indexJoursPoses,
 } from './iadeConges'
@@ -121,6 +122,7 @@ describe('verifierSelection', () => {
 describe('formats', () => {
   it('formate un jour', () => {
     expect(formatJour('2026-07-13')).toBe('13/07/2026')
+    expect(formatJourCourt('2026-07-13')).toBe('lun. 13/07')
   })
   it('affiche un jour unique sans « du … au »', () => {
     expect(formatPeriode('2026-07-13', '2026-07-13')).toBe('13/07/2026')
@@ -182,5 +184,62 @@ describe('grouperParAgent / absenceDuJour / indexJoursPoses', () => {
     ])
     expect(index.has('2026-07-02')).toBe(false)
     expect(index.get('2026-07-03').id).toBe('b')
+  })
+})
+
+describe('syntheseMensuelle', () => {
+  const agents = [{ id: 'u1', nom: 'Dupont Marie' }, { id: 'u2', nom: 'Amar Sophie' }]
+  const jours = [
+    // Marie : 2 CP + 1 récup, validés
+    { id: 'a', user_id: 'u1', jour: '2026-09-07', type_conge: 'cp',          statut: 'validee' },
+    { id: 'b', user_id: 'u1', jour: '2026-09-08', type_conge: 'cp',          statut: 'validee' },
+    { id: 'c', user_id: 'u1', jour: '2026-09-17', type_conge: 'recup_ferie', statut: 'validee' },
+    // Sophie : 1 CP validé
+    { id: 'd', user_id: 'u2', jour: '2026-09-14', type_conge: 'cp',          statut: 'validee' },
+    // à exclure : en attente, refusé, et un mois voisin
+    { id: 'e', user_id: 'u2', jour: '2026-09-21', type_conge: 'cp',          statut: 'en_attente' },
+    { id: 'f', user_id: 'u1', jour: '2026-09-28', type_conge: 'cp',          statut: 'refusee' },
+    { id: 'g', user_id: 'u1', jour: '2026-10-01', type_conge: 'cp',          statut: 'validee' },
+  ]
+
+  const synth = syntheseMensuelle({ jours, agents, annee: 2026, mois: 8 }) // septembre
+
+  it('ne retient que les jours validés du mois demandé', () => {
+    expect(synth.valides).toBe(4)
+    expect(synth.parType).toEqual({ cp: 3, recup_ferie: 1 })
+    expect(synth.texte).not.toMatch(/21\/09|28\/09|01\/10/)
+  })
+
+  it('signale à part les jours encore en attente, sans les mettre dans le texte', () => {
+    expect(synth.enAttente).toBe(1)
+  })
+
+  it('trie les agents par nom et détaille chaque nature', () => {
+    const lignes = synth.texte.split('\n')
+    expect(lignes[1]).toBe('Congés IADE validés — Septembre 2026')
+    expect(synth.texte.indexOf('Amar Sophie')).toBeLessThan(synth.texte.indexOf('Dupont Marie'))
+    expect(synth.texte).toContain('Dupont Marie — 3 jours')
+    expect(synth.texte).toContain('Congés payés (2) : lun. 07/09, mar. 08/09')
+    expect(synth.texte).toContain('Récup. jour férié (1) : jeu. 17/09')
+    expect(synth.texte).toContain('Amar Sophie — 1 jour')
+    expect(synth.texte).toContain('Total du mois : 4 jours — 3 congés payés · 1 récup. jour férié')
+  })
+
+  it('ajoute la date d\'édition seulement si on la fournit', () => {
+    expect(synth.texte).not.toMatch(/Édité le/)
+    const avecDate = syntheseMensuelle({ jours, agents, annee: 2026, mois: 8, genereLe: '2026-10-02' })
+    expect(avecDate.texte).toContain('Édité le 02/10/2026 depuis le dashboard SARM.')
+  })
+
+  it('reste lisible quand le mois est vide', () => {
+    const vide = syntheseMensuelle({ jours, agents, annee: 2026, mois: 0 })
+    expect(vide.valides).toBe(0)
+    expect(vide.nbAgents).toBe(0)
+    expect(vide.texte).toContain('Aucun congé validé sur ce mois.')
+  })
+
+  it('n\'invente pas de nom pour un agent supprimé', () => {
+    const orphelin = syntheseMensuelle({ jours, agents: [], annee: 2026, mois: 8 })
+    expect(orphelin.texte).toContain('Agent inconnu')
   })
 })

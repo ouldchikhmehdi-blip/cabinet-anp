@@ -8,7 +8,7 @@ const JOUR_MS = 24 * 60 * 60 * 1000
 const SEMAINE_MS = 7 * JOUR_MS
 
 const JOURS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-const MOIS_FR = [
+export const MOIS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]

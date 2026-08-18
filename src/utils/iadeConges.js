@@ -12,7 +12,7 @@
 // Les dates circulent en ISO 'YYYY-MM-DD' ; les calculs sont en UTC (cf. calendrier.js).
 // Accès Supabase : iadeCongesApi.js · Schéma + RLS : supabase/iade_conges.sql
 // ============================================================
-import { parseISO, formatISO, joursFeriesFR } from './calendrier'
+import { parseISO, formatISO, joursFeriesFR, moisAnneeFR } from './calendrier'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -174,6 +174,14 @@ export function formatJour(iso) {
   return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
+// « lun. 12/07 » — pour les listes de dates de la synthèse comptable.
+const NOMS_JOURS_COURTS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.']
+
+export function formatJourCourt(iso) {
+  const d = parseISO(iso)
+  return `${NOMS_JOURS_COURTS[d.getUTCDay()]} ${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}`
+}
+
 // « 12/07/2026 » pour un jour unique, « du 12/07/2026 au 26/07/2026 » sinon.
 export function formatPeriode(debutIso, finIso) {
   if (debutIso === finIso) return formatJour(debutIso)
@@ -252,4 +260,70 @@ export function indexJoursPoses(jours) {
     if (!existant || j.statut === 'validee') index.set(j.jour, j)
   }
   return index
+}
+
+// ── Synthèse mensuelle pour la comptabilité ──────────────────────────────────
+
+// Texte prêt à copier-coller dans un e-mail à la comptable : pour le mois demandé,
+// les jours **validés** de chaque agent, détaillés par nature.
+//
+// Ne sortent QUE les jours validés : un jour encore en attente n'est pas un congé
+// accordé, l'envoyer en paie serait une erreur. Le nombre de jours en attente est
+// renvoyé à part pour que l'écran puisse alerter la personne qui exporte.
+//
+// → { texte, valides, enAttente, nbAgents, parType }
+export function syntheseMensuelle({ jours = [], agents = [], annee, mois, genereLe = null }) {
+  const { debut, fin } = bornesMois(annee, mois)
+  const duMois    = jours.filter(j => j.jour >= debut && j.jour <= fin)
+  const valides   = duMois.filter(j => j.statut === 'validee')
+  const enAttente = duMois.filter(j => j.statut === 'en_attente').length
+
+  const nomDe = (id) => agents.find(a => a.id === id)?.nom ?? 'Agent inconnu'
+
+  const parAgent = new Map()
+  for (const j of valides) {
+    if (!parAgent.has(j.user_id)) parAgent.set(j.user_id, [])
+    parAgent.get(j.user_id).push(j)
+  }
+  const lignesAgents = [...parAgent.entries()]
+    .map(([id, siens]) => ({ nom: nomDe(id), jours: siens }))
+    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+
+  const lignes = [
+    'SARM — Service Anesthésie Réanimation Millénaire',
+    `Congés IADE validés — ${moisAnneeFR(new Date(Date.UTC(annee, mois, 1)))}`,
+    '',
+  ]
+
+  if (lignesAgents.length === 0) {
+    lignes.push('Aucun congé validé sur ce mois.')
+  } else {
+    for (const a of lignesAgents) {
+      lignes.push(`${a.nom} — ${a.jours.length} jour${a.jours.length > 1 ? 's' : ''}`)
+      for (const t of TYPES_CONGE) {
+        const dessus = a.jours
+          .filter(j => j.type_conge === t.id)
+          .sort((x, y) => x.jour.localeCompare(y.jour))
+        if (dessus.length === 0) continue
+        const intitule = dessus.length > 1
+          ? t.pluriel.charAt(0).toUpperCase() + t.pluriel.slice(1)
+          : t.label
+        lignes.push(`  ${intitule} (${dessus.length}) : ${dessus.map(j => formatJourCourt(j.jour)).join(', ')}`)
+      }
+      lignes.push('')
+    }
+    lignes.push(`Total du mois : ${valides.length} jour${valides.length > 1 ? 's' : ''} — ${resumeTypes(valides)}`)
+  }
+
+  if (genereLe) {
+    lignes.push('', `Édité le ${formatJour(genereLe)} depuis le dashboard SARM.`)
+  }
+
+  return {
+    texte:    lignes.join('\n'),
+    valides:  valides.length,
+    enAttente,
+    nbAgents: lignesAgents.length,
+    parType:  compterParType(valides),
+  }
 }
