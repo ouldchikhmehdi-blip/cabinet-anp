@@ -8,7 +8,8 @@ import SuppressionMois from '../components/SuppressionMois'
 import { useAuth } from '../auth/AuthContext'
 import { getConsultData, setPersisteurDistant, remplacerStore, getReglesUtilisateur, remplacerRegles } from '../data/consultations'
 import { chargerConsultations, sauverConsultations } from '../utils/consultationsApi'
-import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, MOIS_ACTUEL, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
+import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
+import { moisRenseignes, sommeComparable, dernierMoisRenseigne } from '../utils/periodeComparable'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -125,15 +126,34 @@ export default function Consultations() {
   const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
   const ref = years.at(-2)
 
+  // ── Mois RÉELLEMENT renseignés de l'année principale ─────────────────────────
+  // Les séries mensuelles sont PARTIELLES : l'année en cours s'arrête au dernier export Doctolib
+  // importé (cf. CONSULTATIONS.md §5). Sans ce filtre, un mois pas encore importé compte comme un
+  // vrai zéro et fausse tout : la moyenne est divisée par des mois inexistants, et la comparaison
+  // année/année oppose 6 mois de l'année en cours à 7 (ou 12) mois de l'année de référence.
+  const allPrimary = CONSULTATIONS[primary] || []
+  const moisPleins = moisRenseignes(allPrimary, de, a)
+  // true quand la période sélectionnée déborde des données disponibles → comparaison recadrée
+  const periodePartielle = moisPleins.length > 0 && moisPleins.length < (a - de + 1)
+  const periodeComparable = moisPleins.length
+    ? MOIS_COURT[moisPleins[0]] + ' → ' + MOIS_COURT[moisPleins.at(-1)]
+    : periode
+
+  // Somme d'une série de l'année de RÉFÉRENCE, restreinte aux mois où l'année principale a des
+  // données : c'est ce qui rend l'écart année/année honnête (on compare la même fenêtre).
+  const sumComparable = (serie) => sommeComparable(serie, moisPleins)
+
+  const dernierMoisPlein = dernierMoisRenseigne(allPrimary)
+
   // ── Niveau global (toutes consultations) ──
   const consultDe = (y) => (CONSULTATIONS[y] || []).slice(de, a + 1)
-  const t1 = sum(consultDe(primary)), t2 = sum(consultDe(ref))
-  const allPrimary = CONSULTATIONS[primary] || []
-  const cumulAujourdhui = sum(allPrimary.slice(0, MOIS_ACTUEL + 1))
-  const moyenne = consultDe(primary).length ? t1 / consultDe(primary).length : 0
+  const t1 = sum(consultDe(primary))
+  const t2 = sumComparable(CONSULTATIONS[ref])
+  const cumulAujourdhui = dernierMoisPlein >= 0 ? sum(allPrimary.slice(0, dernierMoisPlein + 1)) : 0
+  const moyenne = moisPleins.length ? t1 / moisPleins.length : 0
 
   const tc1 = sum((TELECONSULTATIONS[primary] || []).slice(de, a + 1))
-  const tc2 = sum((TELECONSULTATIONS[ref] || []).slice(de, a + 1))
+  const tc2 = sumComparable(TELECONSULTATIONS[ref])
   const partTele = t1 ? Math.round(tc1 / t1 * 100) : 0
 
   const dataBar = labels.map((m, i) => {
@@ -150,7 +170,8 @@ export default function Consultations() {
   // Spécialité sélectionnée
   const spec = specialitesAffichees.find(s => s.id === specId) || specialitesAffichees[0]
   const specSerieDe = (y) => specMensuel(spec, y).slice(de, a + 1)
-  const specTprimary = sum(specSerieDe(primary)), specTref = sum(specSerieDe(ref))
+  // Référence toujours restreinte aux mois renseignés de l'année principale (cf. sumComparable).
+  const specTprimary = sum(specSerieDe(primary)), specTref = sumComparable(specMensuel(spec, ref))
 
   // Praticiens visibles (non masqués) pour le détail — les masqués restent dans les totaux via specMensuel
   const hasPrat = !!spec.praticiens
@@ -175,7 +196,8 @@ export default function Consultations() {
   // Série « année vs année » active (spécialité entière sans praticiens, OU un praticien isolé) — toutes les années.
   const aColor = prat ? colorOf(prat) : spec.couleur
   const aSerieDe = (y) => prat ? (prat.valeurs[y] || []).slice(de, a + 1) : specSerieDe(y)
-  const aTprimary = sum(aSerieDe(primary)), aTref = sum(aSerieDe(ref))
+  const aTprimary = sum(aSerieDe(primary))
+  const aTref = sumComparable(prat ? prat.valeurs[ref] : specMensuel(spec, ref))
 
   const aBar = labels.map((m, i) => {
     const row = { mois: m }
@@ -190,7 +212,7 @@ export default function Consultations() {
 
   // Totaux du groupe de praticiens affichés (KPI multi-sélection) — année principale vs référence
   const detailTprimary = sum(detailPrats.map(p => sum((p.valeurs[primary] || []).slice(de, a + 1))))
-  const detailTref = sum(detailPrats.map(p => sum((p.valeurs[ref] || []).slice(de, a + 1))))
+  const detailTref = sum(detailPrats.map(p => sumComparable(p.valeurs[ref])))
 
   // Bucket « non attribué » : consultations au niveau spécialité, sur l'année principale
   const autreValues = hasPrat && spec.valeurs ? (spec.valeurs[primary] || Array(12).fill(0)) : null
@@ -253,12 +275,37 @@ export default function Consultations() {
         availableYears={anneesDispos}
       />
 
+      {/* La période choisie déborde des mois importés : sans ce rappel, l'écart année/année se lit
+          comme une baisse d'activité alors qu'il ne manque qu'un export. */}
+      {periodePartielle && (
+        <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '7px 12px' }}>
+          ℹ️ {primary} n'est renseigné que jusqu'à <strong>{MOIS_COURT[moisPleins.at(-1)]}</strong>.
+          Les comparaisons avec {ref} et la moyenne portent sur <strong>{periodeComparable}</strong> —
+          les mois non encore importés sont exclus, pas comptés comme zéro.
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <KpiCard label={`Consultations · ${primary}`} value={fmtNb(t1)} sub={periode} subColor="neutral" />
-        <KpiCard label={`Consultations · ${ref}`} value={fmtNb(t2)} sub={diffLabel(t1, t2, ref)} subColor={diffColor(t1, t2)} />
+        <KpiCard
+          label={`Consultations · ${ref}`}
+          value={fmtNb(t2)}
+          sub={periodePartielle ? `${diffLabel(t1, t2, ref)} · ${periodeComparable}` : diffLabel(t1, t2, ref)}
+          subColor={diffColor(t1, t2)}
+        />
         <KpiCard label={`Téléconsultations · ${primary}`} value={fmtNb(tc1)} sub={`${partTele} % · ${diffLabel(tc1, tc2, ref)}`} subColor="neutral" />
-        <KpiCard label="Cumul à ce jour" value={fmtNb(cumulAujourdhui)} sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${primary}`} subColor="neutral" />
-        <KpiCard label="Moyenne mensuelle" value={fmtNb(moyenne)} sub={`sur ${consultDe(primary).length} mois`} subColor="neutral" />
+        <KpiCard
+          label="Cumul à ce jour"
+          value={fmtNb(cumulAujourdhui)}
+          sub={dernierMoisPlein >= 0 ? `Jan → ${MOIS_COURT[dernierMoisPlein]} ${primary}` : `${primary}`}
+          subColor="neutral"
+        />
+        <KpiCard
+          label="Moyenne mensuelle"
+          value={fmtNb(moyenne)}
+          sub={`sur ${moisPleins.length} mois renseigné${moisPleins.length > 1 ? 's' : ''}`}
+          subColor="neutral"
+        />
       </div>
 
       <div style={cardStyle}>
