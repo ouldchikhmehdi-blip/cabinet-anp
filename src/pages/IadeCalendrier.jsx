@@ -1,7 +1,7 @@
 // ============================================================
 // IadeCalendrier — « Congés de l'équipe » : qui est absent, mois par mois.
-// Lecture seule, alimentée par la RPC iade_calendrier() (ni commentaires,
-// ni motifs de refus, ni demandes refusées). Visible par les IADE et la gestion.
+// Lecture seule, alimentée par la RPC iade_calendrier() : nom, jour, nature et
+// statut — ni motifs de refus, ni jours refusés. Visible par les IADE et la gestion.
 // ============================================================
 import { useState, useEffect } from 'react'
 import CalendrierConges from '../components/iade/CalendrierConges'

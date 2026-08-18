@@ -32,19 +32,29 @@ Fonction SQL de référence : **`public.peut_gerer_iade()`** = gestionnaire IADE
 Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 ──────────                          ────────────────────────────────────────
 « Mes congés »
-  motif + du/au + précision
-  → Envoyer                 ──────► « Demandes IADE » : demande à traiter
+  1. choisir la nature : CP ou récup. jour férié
+  2. cliquer les jours dans le calendrier
+  3. Envoyer                ──────► « Congés IADE » : jours à traiter
                                       ├─ Valider  → statut = validee
                                       └─ Refuser  → statut = refusee (+ motif)
-  ◄── voit la réponse et le motif dans « Demandes traitées »
+  ◄── voit la réponse et le motif dans « Jours traités »
 ```
 
-- Tant que la demande est **`en_attente`**, l'agent peut la **retirer** (bouton « Retirer »).
-- Une fois **décidée**, elle est **figée pour l'agent** (RLS) ; seule la gestion peut revenir dessus
+- **Une ligne = un jour**, avec sa nature : **congé payé** (`cp`) ou **récupération d'un jour
+  férié travaillé** (`recup_ferie`). C'est la seule distinction demandée.
+- **Aucun motif n'est demandé à l'agent** : la raison d'un congé ne regarde pas l'employeur.
+  Seule la **réponse** de la gestion peut être commentée (`motif_reponse`).
+- Les jours envoyés ensemble partagent un **`lot`** : l'écran de gestion les regroupe en plages
+  contiguës de même nature, donc une semaine de congés se valide **d'un seul clic** — sans perdre
+  la possibilité de répondre jour par jour.
+- Tant qu'un jour est **`en_attente`**, l'agent peut le **retirer** (bouton « Retirer »).
+- Une fois **décidé**, il est **figé pour l'agent** (RLS) ; seule la gestion peut revenir dessus
   (« Refuser finalement » / « Valider finalement » dans l'historique).
 - `decide_par` et `decide_le` sont posés **par un trigger en base**, jamais par le client.
-- **Pas de solde de congés** : on enregistre des périodes, on ne décompte pas de quota.
-  Les jours ouvrés affichés sont **calculés** (hors samedi/dimanche et jours fériés français).
+- Un jour **refusé peut être reposé** (l'index unique ignore les lignes refusées) ; un jour
+  en attente ou validé ne peut pas être posé deux fois.
+- **Pas de solde de congés** : on compte les jours posés, on ne décompte pas de quota.
+- Les **jours passés ne sont pas cliquables** : une demande porte sur des jours à venir.
 
 ---
 
@@ -54,20 +64,29 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 |---|---|---|
 | **Mes congés** | `src/pages/IadeMesConges.jsx` | Agent IADE |
 | **Congés de l'équipe** / **Absences IADE** | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
-| **Demandes IADE** | `src/pages/IadeGestion.jsx` | Gestion uniquement |
+| **Congés IADE** (validation) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |
 
 **Aperçu compte IADE** : voir l'application telle qu'un agent la voit (ses deux écrans, pour
 l'agent choisi dans la liste) **sans créer de second compte** et **sans pouvoir agir à sa place**.
-C'est la même page `IadeMesConges` rendue avec la prop `apercu={{ userId, nom }}` : formulaire
+C'est la même page `IadeMesConges` rendue avec la prop `apercu={{ userId, nom }}` : calendrier
 et boutons inertes. Une personne de la gestion dispose donc des deux perspectives depuis
-son propre compte : celle qui valide (« Demandes IADE ») et celle de l'agent (« Aperçu »).
+son propre compte : celle qui valide (« Congés IADE ») et celle de l'agent (« Aperçu »).
 
-Composant partagé : `src/components/iade/CalendrierConges.jsx` — bandeau mensuel
-(une ligne par agent absent, une colonne par jour ; `●` validé, `○` en attente).
+Composants :
 
-Logique métier pure (testée) : `src/utils/iadeConges.js` — types de congé, jours ouvrés,
-chevauchements, validation de saisie, découpage du mois.
+| Fichier | Rôle |
+|---|---|
+| `src/components/iade/CalendrierSaisie.jsx` | Grille mensuelle **cliquable** où l'agent pose ses jours (cases larges, pensées pour le doigt sur téléphone) |
+| `src/components/iade/CalendrierConges.jsx` | Bandeau mensuel en lecture seule : une ligne par agent, une colonne par jour |
+
+Dans les deux, chaque case porte l'**abréviation de la nature** (`CP` / `RF`) et prend la
+**couleur du statut** (ambre = demandé, vert = validé) : les deux informations se lisent
+sans dépendre de la seule couleur.
+
+Logique métier pure (testée, 29 tests) : `src/utils/iadeConges.js` — natures de jour,
+regroupement en plages contiguës (`plages`), validation de la sélection, découpage du mois
+en grille (`grilleMois`).
 Accès Supabase : `src/utils/iadeCongesApi.js`.
 
 ---
@@ -80,37 +99,47 @@ Contrainte **`profiles_iade_exclusif`** : un compte IADE est forcément `role='u
 
 **`invitations`** (colonne ajoutée) : `is_iade` — permet d'inviter directement un IADE.
 
-**`iade_conges`** — une ligne = une absence demandée :
+**`iade_conges`** — **une ligne = un jour posé** :
 
 | Colonne | Rôle |
 |---|---|
 | `user_id` | l'agent (FK `auth.users`) |
-| `date_debut` · `date_fin` | période, **bornes incluses** (`date_fin >= date_debut`) |
-| `type_conge` | `conges` · `rtt` · `sans_solde` · `formation` · `enfant_malade` · `autre` |
-| `commentaire` | précision libre de l'agent (facultatif) |
+| `jour` | le jour posé (une seule date, pas de période) |
+| `type_conge` | `cp` (congé payé) · `recup_ferie` (récupération d'un jour férié) |
+| `lot` | identifiant de l'envoi : les jours cliqués ensemble le partagent |
 | `statut` | `en_attente` · `validee` · `refusee` |
-| `motif_reponse` | commentaire de la décision, visible par l'agent |
+| `motif_reponse` | commentaire **de la décision**, visible par l'agent |
 | `decide_par` · `decide_le` | posés par le trigger `iade_conges_decision` |
+
+Index unique partiel **`iade_conges_jour_unique`** sur `(user_id, jour) where statut <> 'refusee'` :
+un même jour ne se pose qu'une fois, mais un refus peut être re-demandé.
 
 > ⚠️ Les listes `type_conge` et `statut` sont dupliquées côté front dans
 > `src/utils/iadeConges.js` (`TYPES_CONGE`, `STATUTS`) : **modifier les deux ensemble**.
+>
+> ℹ️ Le modèle précédent (une ligne = une **période**, avec un motif libre et six types de
+> congé) a été abandonné le 2026-08-18. `supabase/iade_conges.sql` supprime la table de
+> l'ancien format **si elle est vide**, et **refuse de tourner** si elle contient des lignes,
+> plutôt que de les convertir à l'aveugle.
 
 ---
 
 ## 5. Sécurité — ce qui est garanti par la base
 
 1. **Un IADE ne lit aucune donnée du cabinet.** Les tables `planning_*` et
-   `planning_consultations` étaient en `select using (true)` pour tout compte authentifié :
-   `iade_conges.sql` les repasse en `using ( not public.is_iade() )`, bucket
-   `planning-archives` compris. Le cloisonnement n'est donc pas seulement visuel.
+   `planning_consultations` sont en `select using ( public.acces_cabinet() )` —
+   soit **2FA + compte actif + non-IADE** — posé par `supabase/connexion_google.sql`,
+   bucket `planning-archives` compris. Le cloisonnement n'est donc pas seulement visuel.
    > ⚠️ Réexécuter un `supabase/planning_*.sql` restaure `using (true)` :
-   > **relancer `iade_conges.sql` ensuite** (il est idempotent).
+   > **relancer `securite_aal2.sql` puis `connexion_google.sql` ensuite** (ils sont idempotents).
+   > `iade_conges.sql` ne touche volontairement plus à ces politiques : le relancer seul
+   > affaiblirait la sécurité au lieu de la rétablir.
 2. **Un IADE ne peut pas se valider lui-même** : il n'écrit que sa propre ligne, et
    seulement tant qu'elle est `en_attente` (policy `iade_conges_update_self`) ;
    le trigger refuse en plus tout changement de statut hors `peut_gerer_iade()`.
 3. **Le calendrier d'équipe ne fuit rien de sensible** : les IADE ne lisent pas la table,
    ils appellent la fonction `public.iade_calendrier(debut, fin)` (SECURITY DEFINER) qui
-   renvoie *nom, dates, type, statut* — **ni commentaire, ni motif de refus, ni demande refusée**.
+   renvoie *nom, jour, nature, statut* — **ni motif de refus, ni jour refusé**.
 4. **Un IADE ne peut pas devenir admin** : le drapeau est posé par le serverless
    (`/api/accept` d'après l'invitation), la contrainte `profiles_iade_exclusif` bloque le cumul,
    et `/api/promote` renvoie une erreur explicite.
@@ -138,8 +167,10 @@ Contrainte **`profiles_iade_exclusif`** : un compte IADE est forcément `role='u
    posée à son nom. Une adresse **non invitée** qui tente le même bouton obtient un
    compte **désactivé** qui ne lit rien (cf. `AUTH.md § Étape 2 bis`).
 
-   Ce qu'un compte IADE compromis expose, à connaître : les **noms, dates et motifs**
-   d'absence de l'équipe IADE (le motif « enfant malade » est une donnée personnelle).
+   Ce qu'un compte IADE compromis expose, à connaître : les **noms et dates** d'absence de
+   l'équipe IADE, et la nature des jours (CP / récupération). Depuis l'abandon des motifs
+   (2026-08-18), plus aucune donnée personnelle sensible n'y transite — un congé « enfant
+   malade » ne se distingue plus d'un congé payé.
    Si un jour cela paraît trop, la 2FA se réactive pour eux en supprimant le test
    `profile?.is_iade` dans le routage de `src/App.jsx` — rien d'autre à changer.
 
@@ -147,8 +178,9 @@ Contrainte **`profiles_iade_exclusif`** : un compte IADE est forcément `role='u
 
 ## 6. Mise en service
 
-1. **Base** — ✅ **fait le 2026-08-17** sur le projet Supabase `SARM dashboard`
-   (migrations `iade_conges` et `iade_conges_revoke_trigger_function`).
+1. **Base** — ✅ **fait le 2026-08-17**, modèle « jour par jour » appliqué le **2026-08-18**,
+   sur le projet Supabase `SARM dashboard` (migrations `iade_conges`,
+   `iade_conges_revoke_trigger_function`, `iade_conges_jour_par_jour`).
    Sur un nouvel environnement : exécuter **`supabase/iade_conges.sql`** dans
    SQL Editor, après `schema.sql` et `planning.sql`. Tant que ce n'est pas fait,
    l'onglet « Comptes » affiche un bandeau orange et les options IADE restent grisées.
@@ -201,7 +233,11 @@ pas de fonction serverless, donc pas de `service_role` en jeu.
 
 ## 8. Pistes non retenues (à ce stade)
 
-- **Solde / quota de congés par agent** (CP, RTT restants) : écarté, on n'enregistre que des dates.
+- **Solde / quota de congés par agent** (CP restants, compteur de récupérations dues) :
+  écarté pour l'instant, on compte les jours posés sans les décompter d'un droit.
+  Le modèle « une ligne = un jour, avec sa nature » rend ce calcul possible plus tard
+  sans nouvelle migration.
+- **Demi-journées** : non gérées, l'unité est le jour.
 - **Notification e-mail** à l'agent lors de la décision : tout se lit dans l'app.
 - **Saisie d'une absence par la gestion pour un agent** : la RLS l'autorise déjà
   (`iade_conges_insert`), l'écran ne l'expose pas encore.

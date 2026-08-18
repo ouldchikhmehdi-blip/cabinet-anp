@@ -159,8 +159,8 @@ export default function IadeApercu() {
               onNaviguer={naviguer}
             />
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 12 }}>
-              L'agent voit exactement ces données : ni les précisions qu'il a écrites pour ses
-              collègues, ni les motifs de refus, ni les demandes refusées.
+              L'agent voit exactement ces données : la nature des jours et leur statut, mais
+              ni les motifs de refus, ni les jours refusés de ses collègues.
             </div>
           </div>
         )}

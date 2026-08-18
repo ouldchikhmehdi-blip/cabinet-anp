@@ -1,10 +1,14 @@
 // ============================================================
 // CalendrierConges — bandeau mensuel des absences IADE (lecture seule).
 // Une ligne par agent absent dans le mois, une colonne par jour.
-// Partagé par « Congés de l'équipe » (IADE) et « Demandes IADE » (gestion).
+// Partagé par « Congés de l'équipe » (IADE) et « Congés IADE » (gestion).
+//
+// Chaque case porte l'abréviation de la NATURE du jour (CP / RF) et prend la
+// couleur de son STATUT (ambre = demandé, vert = validé) : les deux informations
+// se lisent d'un coup d'œil sans dépendre de la seule couleur.
 // ============================================================
 import { moisAnneeFR } from '../../utils/calendrier'
-import { joursDuMois, grouperParAgent, absenceDuJour, libelleType, formatPeriode, STATUTS } from '../../utils/iadeConges'
+import { joursDuMois, grouperParAgent, absenceDuJour, courtType, libelleType, formatJour, libelleStatut, STATUTS } from '../../utils/iadeConges'
 
 export default function CalendrierConges({ annee, mois, absences = [], chargement = false, onNaviguer }) {
   const jours = joursDuMois(annee, mois)
@@ -13,9 +17,9 @@ export default function CalendrierConges({ annee, mois, absences = [], chargemen
   const cellule = {
     border: '0.5px solid var(--color-border)',
     padding: 0,
-    width: 22,
-    minWidth: 22,
-    height: 26,
+    width: 26,
+    minWidth: 26,
+    height: 28,
     textAlign: 'center',
     fontSize: 10,
   }
@@ -99,22 +103,24 @@ export default function CalendrierConges({ annee, mois, absences = [], chargemen
                     {ligne.nom}
                   </td>
                   {jours.map(j => {
-                    const a = absenceDuJour(ligne.absences, j.iso)
+                    const a = absenceDuJour(ligne.jours, j.iso)
                     const st = a ? STATUTS[a.statut] : null
                     return (
                       <td
                         key={j.iso}
-                        title={a ? `${libelleType(a.type_conge)} · ${formatPeriode(a.date_debut, a.date_fin)} · ${st?.label}` : undefined}
+                        title={a ? `${libelleType(a.type_conge)} · ${formatJour(a.jour)} · ${libelleStatut(a.statut).toLowerCase()}` : undefined}
                         style={{
                           ...cellule,
                           background: a
                             ? st?.fond
                             : j.weekend || j.ferie ? 'var(--color-bg)' : 'transparent',
                           color: st?.couleur,
-                          fontWeight: 600,
+                          fontWeight: 700,
+                          fontSize: 9,
+                          letterSpacing: '0.02em',
                         }}
                       >
-                        {a ? (a.statut === 'validee' ? '●' : '○') : ''}
+                        {a ? courtType(a.type_conge) : ''}
                       </td>
                     )
                   })}
@@ -131,8 +137,9 @@ export default function CalendrierConges({ annee, mois, absences = [], chargemen
         borderTop: '0.5px solid var(--color-border)',
         fontSize: 11, color: 'var(--color-text-tertiary)',
       }}>
-        <span style={{ color: 'var(--color-success)' }}>● congé validé</span>
-        <span style={{ color: 'var(--color-amber)' }}>○ demande en attente</span>
+        <span><strong>CP</strong> congé payé · <strong>RF</strong> récup. jour férié</span>
+        <span style={{ color: 'var(--color-success)' }}>fond vert : validé</span>
+        <span style={{ color: 'var(--color-amber)' }}>fond ambre : en attente</span>
         <span>Colonnes grisées : week-ends et jours fériés</span>
       </div>
     </div>

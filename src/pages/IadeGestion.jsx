@@ -1,12 +1,19 @@
 // ============================================================
-// IadeGestion — « Demandes IADE » : valider ou refuser les congés des IADE.
+// IadeGestion — « Congés IADE » : valider ou refuser les jours posés par les IADE.
 // Accessible au gestionnaire des IADE (profiles.is_gestion_iade), au faiseur de
 // planning (is_faiseur) et à l'admin — cf. peut_gerer_iade() côté base.
+//
+// Les jours sont stockés un par un ; l'écran les regroupe en plages contiguës de
+// même nature issues d'un même envoi, pour qu'une semaine de congés se traite
+// d'un seul clic sans perdre la possibilité de répondre jour par jour.
 // ============================================================
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import CalendrierConges from '../components/iade/CalendrierConges'
-import { chargerDemandes, chargerAgentsIade, deciderDemande, chargerCalendrierIade } from '../utils/iadeCongesApi'
-import { bornesMois, libelleType, libelleStatut, formatPeriode, nbJoursOuvres, STATUTS } from '../utils/iadeConges'
+import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade } from '../utils/iadeCongesApi'
+import {
+  bornesMois, libelleType, libelleStatut, formatPeriode,
+  plages, compterParType, TYPES_CONGE, STATUTS,
+} from '../utils/iadeConges'
 import { ANNEES } from '../utils/calendrier'
 
 export default function IadeGestion() {
@@ -14,16 +21,16 @@ export default function IadeGestion() {
   const [annee, setAnnee] = useState(maintenant.getFullYear())
   const [mois,  setMois]  = useState(maintenant.getMonth())
 
-  const [demandes, setDemandes] = useState([])
+  const [demandes, setDemandes] = useState([])   // jours posés sur l'année
   const [agents,   setAgents]   = useState([])
   const [absences, setAbsences] = useState([])   // calendrier du mois affiché
   const [charge,   setCharge]   = useState(true)
   const [chargeCal, setChargeCal] = useState(true)
   const [erreur,   setErreur]   = useState(null)
   const [succes,   setSucces]   = useState(null)
-  const [enCours,  setEnCours]  = useState(null) // id de la demande en cours de décision
+  const [enCours,  setEnCours]  = useState(null) // clé de la plage en cours de décision
 
-  // Demandes de l'année + comptes IADE.
+  // Jours de l'année + comptes IADE.
   const charger = useCallback(async () => {
     setCharge(true)
     try {
@@ -64,23 +71,33 @@ export default function IadeGestion() {
     return agents.find(a => a.id === userId)?.nom ?? 'Agent inconnu'
   }, [agents])
 
-  async function decider(d, statut) {
+  // Une ligne à traiter = des jours consécutifs, de même nature, issus du même envoi.
+  const enAttente = useMemo(
+    () => plages(demandes.filter(d => d.statut === 'en_attente'), ['user_id', 'lot', 'type_conge', 'statut']),
+    [demandes]
+  )
+  // Le motif de refus entre dans la clé : deux refus motivés différemment restent séparés.
+  const traitees = useMemo(
+    () => plages(demandes.filter(d => d.statut !== 'en_attente'), ['user_id', 'type_conge', 'statut', 'motif_reponse']),
+    [demandes]
+  )
+
+  async function decider(plage, statut) {
+    const quoi = `${nomDe(plage.user_id)} — ${libelleType(plage.type_conge)}, ${formatPeriode(plage.debut, plage.fin)} (${plage.nb} jour(s))`
     let motif = null
+
     if (statut === 'refusee') {
-      const saisie = prompt(
-        `Refuser la demande de ${nomDe(d.user_id)} (${formatPeriode(d.date_debut, d.date_fin)}).\n\n` +
-        `Motif communiqué à l'agent (facultatif) :`, ''
-      )
+      const saisie = prompt(`Refuser : ${quoi}\n\nMotif communiqué à l'agent (facultatif) :`, '')
       if (saisie === null) return          // annulation de la boîte de dialogue
       motif = saisie
-    } else if (!confirm(`Valider le congé de ${nomDe(d.user_id)} — ${formatPeriode(d.date_debut, d.date_fin)} ?`)) {
+    } else if (!confirm(`Valider : ${quoi} ?`)) {
       return
     }
 
-    setErreur(null); setSucces(null); setEnCours(d.id)
+    setErreur(null); setSucces(null); setEnCours(plage.ids[0])
     try {
-      await deciderDemande(d.id, statut, motif)
-      setSucces(`Demande ${statut === 'validee' ? 'validée' : 'refusée'} — ${nomDe(d.user_id)}, ${formatPeriode(d.date_debut, d.date_fin)}.`)
+      await deciderJours(plage.ids, statut, motif)
+      setSucces(`${plage.nb} jour(s) ${statut === 'validee' ? 'validé(s)' : 'refusé(s)'} — ${quoi}.`)
       await charger()
     } catch {
       setErreur('Décision impossible (droits insuffisants ou demande supprimée).')
@@ -89,17 +106,13 @@ export default function IadeGestion() {
     }
   }
 
-  const enAttente = useMemo(() => demandes.filter(d => d.statut === 'en_attente'), [demandes])
-  const traitees  = useMemo(() => demandes.filter(d => d.statut !== 'en_attente'), [demandes])
-
-  // Récapitulatif par agent sur l'année : jours ouvrés validés + demandes en attente.
+  // Récapitulatif par agent sur l'année : jours validés par nature + jours en attente.
   const recap = useMemo(() => agents.map(a => {
-    const siennes = demandes.filter(d => d.user_id === a.id)
+    const siens = demandes.filter(d => d.user_id === a.id)
     return {
       ...a,
-      jours:     siennes.filter(d => d.statut === 'validee').reduce((n, d) => n + nbJoursOuvres(d.date_debut, d.date_fin), 0),
-      validees:  siennes.filter(d => d.statut === 'validee').length,
-      attente:   siennes.filter(d => d.statut === 'en_attente').length,
+      valides: compterParType(siens.filter(d => d.statut === 'validee')),
+      attente: siens.filter(d => d.statut === 'en_attente').length,
     }
   }), [agents, demandes])
 
@@ -140,6 +153,8 @@ export default function IadeGestion() {
     background: STATUTS[statut]?.fond, color: STATUTS[statut]?.couleur, whiteSpace: 'nowrap',
   })
 
+  const totalAttente = enAttente.reduce((n, p) => n + p.nb, 0)
+
   return (
     <div style={{ maxWidth: 1180 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -149,7 +164,7 @@ export default function IadeGestion() {
         </select>
       </div>
       <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 24 }}>
-        Demandes de congés des infirmiers anesthésistes : à valider ou à refuser.
+        Jours posés par les infirmiers anesthésistes : congés payés et récupérations de jours fériés, à valider ou à refuser.
       </div>
 
       {erreur && <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{erreur}</div>}
@@ -157,7 +172,7 @@ export default function IadeGestion() {
 
       {/* ── À traiter ── */}
       <div style={s.section}>
-        <div style={s.titre}>Demandes à traiter ({enAttente.length})</div>
+        <div style={s.titre}>Demandes à traiter ({totalAttente} jour(s))</div>
         {charge ? (
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Chargement…</div>
         ) : enAttente.length === 0 ? (
@@ -169,24 +184,22 @@ export default function IadeGestion() {
                 <tr style={s.tr}>
                   <th style={s.th}>Agent</th>
                   <th style={s.th}>Période</th>
-                  <th style={s.th}>Motif</th>
-                  <th style={s.th}>Jours ouvrés</th>
-                  <th style={s.th}>Précision</th>
+                  <th style={s.th}>Nature</th>
+                  <th style={s.th}>Jours</th>
                   <th style={s.th}>Décision</th>
                 </tr>
               </thead>
               <tbody>
-                {enAttente.map(d => (
-                  <tr key={d.id} style={s.tr}>
-                    <td style={{ ...s.td, fontWeight: 500 }}>{nomDe(d.user_id)}</td>
-                    <td style={s.td}>{formatPeriode(d.date_debut, d.date_fin)}</td>
-                    <td style={s.td}>{libelleType(d.type_conge)}</td>
-                    <td style={s.td}>{nbJoursOuvres(d.date_debut, d.date_fin)}</td>
-                    <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{d.commentaire || '—'}</td>
+                {enAttente.map(p => (
+                  <tr key={p.ids[0]} style={s.tr}>
+                    <td style={{ ...s.td, fontWeight: 500 }}>{nomDe(p.user_id)}</td>
+                    <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
+                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{p.nb}</td>
                     <td style={s.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button style={s.boutonValider} disabled={enCours === d.id} onClick={() => decider(d, 'validee')}>Valider</button>
-                        <button style={s.boutonRefuser} disabled={enCours === d.id} onClick={() => decider(d, 'refusee')}>Refuser</button>
+                        <button style={s.boutonValider} disabled={enCours === p.ids[0]} onClick={() => decider(p, 'validee')}>Valider</button>
+                        <button style={s.boutonRefuser} disabled={enCours === p.ids[0]} onClick={() => decider(p, 'refusee')}>Refuser</button>
                       </div>
                     </td>
                   </tr>
@@ -223,8 +236,8 @@ export default function IadeGestion() {
                 <tr style={s.tr}>
                   <th style={s.th}>Agent</th>
                   <th style={s.th}>E-mail</th>
-                  <th style={s.th}>Congés validés</th>
-                  <th style={s.th}>Jours ouvrés posés</th>
+                  {TYPES_CONGE.map(t => <th key={t.id} style={s.th}>{t.label} validés</th>)}
+                  <th style={s.th}>Total validé</th>
                   <th style={s.th}>En attente</th>
                 </tr>
               </thead>
@@ -236,8 +249,10 @@ export default function IadeGestion() {
                       {!a.actif && <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--color-text-tertiary)' }}>(désactivé)</span>}
                     </td>
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{a.email}</td>
-                    <td style={s.td}>{a.validees}</td>
-                    <td style={s.td}>{a.jours}</td>
+                    {TYPES_CONGE.map(t => <td key={t.id} style={s.td}>{a.valides[t.id]}</td>)}
+                    <td style={{ ...s.td, fontWeight: 500 }}>
+                      {TYPES_CONGE.reduce((n, t) => n + a.valides[t.id], 0)}
+                    </td>
                     <td style={s.td}>{a.attente > 0 ? <span style={badgeStatut('en_attente')}>{a.attente}</span> : '—'}</td>
                   </tr>
                 ))}
@@ -249,9 +264,9 @@ export default function IadeGestion() {
 
       {/* ── Historique ── */}
       <div style={s.section}>
-        <div style={s.titre}>Demandes traitées — {annee} ({traitees.length})</div>
+        <div style={s.titre}>Jours traités — {annee} ({traitees.reduce((n, p) => n + p.nb, 0)} jour(s))</div>
         {traitees.length === 0 ? (
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande traitée sur l'année.</div>
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune décision sur l'année.</div>
         ) : (
           <div style={s.card}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
@@ -259,27 +274,29 @@ export default function IadeGestion() {
                 <tr style={s.tr}>
                   <th style={s.th}>Agent</th>
                   <th style={s.th}>Période</th>
-                  <th style={s.th}>Motif</th>
+                  <th style={s.th}>Nature</th>
+                  <th style={s.th}>Jours</th>
                   <th style={s.th}>Réponse</th>
                   <th style={s.th}>Commentaire</th>
                   <th style={s.th}>Revenir dessus</th>
                 </tr>
               </thead>
               <tbody>
-                {traitees.map(d => (
-                  <tr key={d.id} style={s.tr}>
-                    <td style={{ ...s.td, fontWeight: 500 }}>{nomDe(d.user_id)}</td>
-                    <td style={s.td}>{formatPeriode(d.date_debut, d.date_fin)}</td>
-                    <td style={s.td}>{libelleType(d.type_conge)}</td>
-                    <td style={s.td}><span style={badgeStatut(d.statut)}>{libelleStatut(d.statut)}</span></td>
-                    <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{d.motif_reponse || '—'}</td>
+                {traitees.map(p => (
+                  <tr key={p.ids[0]} style={s.tr}>
+                    <td style={{ ...s.td, fontWeight: 500 }}>{nomDe(p.user_id)}</td>
+                    <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
+                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{p.nb}</td>
+                    <td style={s.td}><span style={badgeStatut(p.statut)}>{libelleStatut(p.statut)}</span></td>
+                    <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{p.motif_reponse || '—'}</td>
                     <td style={s.td}>
                       <button
-                        style={d.statut === 'validee' ? s.boutonRefuser : s.boutonValider}
-                        disabled={enCours === d.id}
-                        onClick={() => decider(d, d.statut === 'validee' ? 'refusee' : 'validee')}
+                        style={p.statut === 'validee' ? s.boutonRefuser : s.boutonValider}
+                        disabled={enCours === p.ids[0]}
+                        onClick={() => decider(p, p.statut === 'validee' ? 'refusee' : 'validee')}
                       >
-                        {d.statut === 'validee' ? 'Refuser finalement' : 'Valider finalement'}
+                        {p.statut === 'validee' ? 'Refuser finalement' : 'Valider finalement'}
                       </button>
                     </td>
                   </tr>

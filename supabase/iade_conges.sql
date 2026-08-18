@@ -1,13 +1,24 @@
 -- ============================================================
 -- SARM — Module « Congés IADE »
--- À exécuter dans Supabase Dashboard → SQL Editor APRÈS schema.sql et planning.sql.
+-- À exécuter dans Supabase Dashboard → SQL Editor APRÈS schema.sql et planning.sql,
+-- et AVANT securite_aal2.sql / connexion_google.sql (qui durcissent ensuite les
+-- politiques de lecture du cabinet — cf. « ordre d'exécution » en fin de fichier).
 -- Réutilise public.touch_updated_at(), public.is_admin(), public.is_faiseur().
 -- Idempotent (réexécutable sans erreur).
 --
+-- MODÈLE : une ligne = UN JOUR posé par UN agent, avec sa nature :
+--   • 'cp'          → jour de congé payé ;
+--   • 'recup_ferie' → récupération d'un jour férié travaillé.
+-- L'agent pose ses jours un par un en cliquant dans un calendrier ; les jours
+-- envoyés ensemble partagent un même `lot`, ce qui permet à la gestion de
+-- répondre d'un coup à une demande sans perdre le détail jour par jour.
+-- On ne demande AUCUN motif à l'agent : la raison d'un congé ne regarde pas
+-- l'employeur. Seule la réponse (`motif_reponse`) peut être commentée.
+--
 -- Trois populations :
---   • IADE (profiles.is_iade)            → dépose SES demandes de congé, voit le
---                                          calendrier de l'équipe. RIEN d'autre.
---   • Gestion IADE (is_gestion_iade)     → valide / refuse les demandes.
+--   • IADE (profiles.is_iade)            → pose SES jours, voit le calendrier
+--                                          de l'équipe. RIEN d'autre.
+--   • Gestion IADE (is_gestion_iade)     → valide / refuse.
 --   • Faiseur de planning (is_faiseur)   → même visibilité + validation
 --                                          (les congés IADE conditionnent le planning).
 --   • Admin                              → tout (super-utilisateur de l'app).
@@ -95,60 +106,57 @@ create policy profiles_select
     or (public.is_gestion_iade() and is_iade)
   );
 
--- ---- 5. handle_new_user : propager is_iade depuis les métadonnées ----
--- Le drapeau est posé par /api/accept (service_role) d'après l'invitation ;
--- un client ne peut pas créer d'auth.users, donc pas s'auto-attribuer un rôle.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_role public.user_role;
-  v_iade boolean;
+-- ---- 5. Reprise de l'ancien modèle « période » (v1) ----
+-- La v1 stockait une ligne par PÉRIODE (date_debut → date_fin) avec un motif
+-- libre. Le modèle est maintenant « une ligne = un jour ». La conversion n'a
+-- jamais eu à tourner sur des données réelles (module mis en service après le
+-- changement) : par prudence on REFUSE de détruire des lignes existantes plutôt
+-- que de les convertir à l'aveugle.
+do $$
 begin
-  v_role := coalesce(
-    (new.raw_user_meta_data ->> 'role')::public.user_role,
-    'user'
-  );
-  v_iade := coalesce((new.raw_user_meta_data ->> 'is_iade')::boolean, false);
+  if to_regclass('public.iade_conges') is not null
+     and exists (
+       select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = 'iade_conges' and column_name = 'date_debut'
+     )
+  then
+    if exists (select 1 from public.iade_conges) then
+      raise exception
+        'iade_conges contient des demandes au format « période » : convertissez-les en jours avant de relancer ce fichier.';
+    end if;
+    drop table public.iade_conges;
+  end if;
+end $$;
 
-  -- Un IADE reste un compte restreint : jamais admin.
-  if v_iade then v_role := 'user'; end if;
-
-  insert into public.profiles (id, email, role, status, is_iade)
-  values (new.id, new.email, v_role, 'active', v_iade)
-  on conflict (id) do nothing;
-
-  return new;
-end;
-$$;
-
--- ---- 6. Table iade_conges ----
--- Une ligne = une demande d'absence d'un IADE sur une période [date_debut, date_fin].
+-- ---- 6. Table iade_conges — une ligne = un jour ----
 -- ⚠️ La liste des types doit rester alignée sur TYPES_CONGE (src/utils/iadeConges.js).
 create table if not exists public.iade_conges (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references auth.users(id) on delete cascade,
-  date_debut    date not null,
-  date_fin      date not null,
-  type_conge    text not null default 'conges'
-                check (type_conge in ('conges','rtt','sans_solde','formation','enfant_malade','autre')),
-  commentaire   text,
+  jour          date not null,
+  type_conge    text not null default 'cp'
+                check (type_conge in ('cp','recup_ferie')),
+  -- Jours envoyés dans le même geste : permet de répondre à « la demande »
+  -- d'un seul clic tout en gardant une décision par jour.
+  lot           uuid not null default gen_random_uuid(),
   statut        text not null default 'en_attente'
                 check (statut in ('en_attente','validee','refusee')),
   motif_reponse text,
   decide_par    uuid references auth.users(id) on delete set null,
   decide_le     timestamptz,
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now(),
-  check (date_fin >= date_debut)
+  updated_at    timestamptz not null default now()
 );
 
 create index if not exists iade_conges_user_idx   on public.iade_conges (user_id);
-create index if not exists iade_conges_debut_idx  on public.iade_conges (date_debut);
+create index if not exists iade_conges_jour_idx   on public.iade_conges (jour);
+create index if not exists iade_conges_lot_idx    on public.iade_conges (lot);
 create index if not exists iade_conges_statut_idx on public.iade_conges (statut);
+
+-- Un même jour ne peut être posé qu'une fois par agent — sauf s'il a été refusé :
+-- un refus doit pouvoir être re-demandé (et l'historique du refus est conservé).
+create unique index if not exists iade_conges_jour_unique
+  on public.iade_conges (user_id, jour) where statut <> 'refusee';
 
 alter table public.iade_conges enable row level security;
 
@@ -168,13 +176,13 @@ as $$
 begin
   if tg_op = 'INSERT' then
     if new.statut = 'en_attente' then
-      -- Demande déposée par l'agent : aucune décision.
+      -- Jour posé par l'agent : aucune décision.
       new.decide_par := null;
       new.decide_le  := null;
     else
       -- Absence saisie directement par la gestion : déjà décidée.
       if not public.peut_gerer_iade() then
-        raise exception 'Une demande est créée « en attente ».';
+        raise exception 'Un jour posé est créé « en attente ».';
       end if;
       new.decide_par := auth.uid();
       new.decide_le  := now();
@@ -208,15 +216,15 @@ create trigger iade_conges_decision
   for each row execute function public.iade_conges_stamp_decision();
 
 -- ---- 8. RLS iade_conges ----
--- SELECT (table brute, commentaires compris) : sa propre ligne, ou la gestion.
--- Les IADE voient les absences de leurs collègues via la RPC iade_calendrier()
--- ci-dessous, qui n'expose ni commentaire ni motif de refus.
+-- SELECT : ses propres jours, ou la gestion. Les IADE voient les absences de
+-- leurs collègues via la RPC iade_calendrier() ci-dessous, qui n'expose ni motif
+-- de refus ni demande refusée.
 drop policy if exists iade_conges_select on public.iade_conges;
 create policy iade_conges_select
   on public.iade_conges for select to authenticated
-  using ( user_id = auth.uid() or public.peut_gerer_iade() );
+  using ( (user_id = auth.uid() and public.est_actif()) or public.peut_gerer_iade() );
 
--- INSERT : un IADE dépose SA demande ; la gestion peut saisir pour un agent.
+-- INSERT : un IADE pose SES jours ; la gestion peut saisir pour un agent.
 drop policy if exists iade_conges_insert on public.iade_conges;
 create policy iade_conges_insert
   on public.iade_conges for insert to authenticated
@@ -225,13 +233,13 @@ create policy iade_conges_insert
     or public.peut_gerer_iade()
   );
 
--- UPDATE : l'IADE ne modifie que SA demande encore « en attente »
+-- UPDATE : l'IADE ne modifie que SES jours encore « en attente »
 -- (il ne peut donc pas se valider lui-même — cf. aussi le trigger).
 drop policy if exists iade_conges_update_self on public.iade_conges;
 create policy iade_conges_update_self
   on public.iade_conges for update to authenticated
-  using      ( user_id = auth.uid() and statut = 'en_attente' )
-  with check ( user_id = auth.uid() and statut = 'en_attente' );
+  using      ( user_id = auth.uid() and statut = 'en_attente' and public.is_iade() )
+  with check ( user_id = auth.uid() and statut = 'en_attente' and public.is_iade() );
 
 drop policy if exists iade_conges_update_gestion on public.iade_conges;
 create policy iade_conges_update_gestion
@@ -239,11 +247,11 @@ create policy iade_conges_update_gestion
   using      ( public.peut_gerer_iade() )
   with check ( public.peut_gerer_iade() );
 
--- DELETE : sa demande tant qu'elle est en attente ; la gestion sans restriction.
+-- DELETE : ses jours tant qu'ils sont en attente ; la gestion sans restriction.
 drop policy if exists iade_conges_delete_self on public.iade_conges;
 create policy iade_conges_delete_self
   on public.iade_conges for delete to authenticated
-  using ( user_id = auth.uid() and statut = 'en_attente' );
+  using ( user_id = auth.uid() and statut = 'en_attente' and public.is_iade() );
 
 drop policy if exists iade_conges_delete_gestion on public.iade_conges;
 create policy iade_conges_delete_gestion
@@ -251,16 +259,16 @@ create policy iade_conges_delete_gestion
   using ( public.peut_gerer_iade() );
 
 -- ---- 9. RPC iade_calendrier() — calendrier d'équipe, sans données sensibles ----
--- Renvoie les absences demandées ou validées d'une plage de dates, avec le nom
--- de l'agent. N'expose ni commentaire ni motif de refus, et ne renvoie pas les
--- demandes refusées. Réservée aux IADE et à la gestion.
-create or replace function public.iade_calendrier(p_debut date, p_fin date)
+-- Renvoie les jours demandés ou validés d'une plage de dates, avec le nom de
+-- l'agent. N'expose pas les motifs de refus ni les jours refusés.
+-- Réservée aux IADE et à la gestion.
+drop function if exists public.iade_calendrier(date, date);
+create function public.iade_calendrier(p_debut date, p_fin date)
 returns table (
   id         uuid,
   user_id    uuid,
   nom        text,
-  date_debut date,
-  date_fin   date,
+  jour       date,
   type_conge text,
   statut     text
 )
@@ -272,75 +280,34 @@ as $$
   select c.id,
          c.user_id,
          coalesce(nullif(btrim(p.nom_complet), ''), split_part(p.email, '@', 1)) as nom,
-         c.date_debut,
-         c.date_fin,
+         c.jour,
          c.type_conge,
          c.statut
   from public.iade_conges c
   join public.profiles    p on p.id = c.user_id
   where c.statut in ('en_attente', 'validee')
-    and c.date_debut <= p_fin
-    and c.date_fin   >= p_debut
+    and c.jour between p_debut and p_fin
     and ( public.is_iade() or public.peut_gerer_iade() )
   -- Tri sur l'expression, pas sur l'alias « nom » : dans une fonction RETURNS TABLE,
   -- les colonnes de sortie sont des variables et un alias non qualifié serait ambigu.
-  order by c.date_debut, coalesce(nullif(btrim(p.nom_complet), ''), split_part(p.email, '@', 1));
+  order by c.jour, coalesce(nullif(btrim(p.nom_complet), ''), split_part(p.email, '@', 1));
 $$;
 
 revoke all    on function public.iade_calendrier(date, date) from public, anon, authenticated;
 grant execute on function public.iade_calendrier(date, date) to authenticated;
 
--- ---- 10. Cloisonnement : un compte IADE ne lit AUCUNE donnée du cabinet ----
--- Les tables du planning et des consultations sont en `select using (true)` pour
--- tout compte authentifié : on y ajoute `not public.is_iade()`. Le blocage est
--- ainsi côté base, pas seulement côté écran.
---
--- ⚠️ Si l'un des fichiers supabase/planning_*.sql est réexécuté plus tard, il
---    restaure `using (true)` : relancer CE fichier ensuite (il est idempotent).
-do $$
-declare
-  paires text[][] := array[
-    ['planning_associes',         'planning_associes_select'],
-    ['planning_compteurs_ref',    'planning_compteurs_ref_select'],
-    ['planning_consultations',    'planning_consultations_select'],
-    ['planning_calendrier',       'planning_calendrier_select'],
-    ['planning_archives',         'planning_archives_select'],
-    ['planning_noel',             'planning_noel_select'],
-    ['planning_recueils',         'planning_recueils_select'],
-    ['planning_toussaint',        'planning_toussaint_select'],
-    ['planning_agenda_evenements','pae_select'],
-    ['planning_objectifs',        'planning_objectifs_select'],
-    ['planning_semaines',         'planning_semaines_select'],
-    ['planning_trame_ete',        'planning_trame_ete_select'],
-    ['planning_trames',           'planning_trames_select'],
-    ['planning_rea',              'planning_rea_select'],
-    ['planning_weekends',         'planning_weekends_select'],
-    ['planning_vacances',         'planning_vacances_select'],
-    ['planning_ref',              'planning_ref_select'],
-    ['planning_remplacants',      'planning_remplacants_select']
-  ];
-  i int;
-begin
-  for i in 1 .. array_length(paires, 1) loop
-    -- Table absente (fichier SQL correspondant pas encore exécuté) → on passe.
-    if to_regclass('public.' || paires[i][1]) is null then
-      continue;
-    end if;
-    execute format('drop policy if exists %I on public.%I', paires[i][2], paires[i][1]);
-    execute format(
-      'create policy %I on public.%I for select to authenticated using ( not public.is_iade() )',
-      paires[i][2], paires[i][1]
-    );
-  end loop;
-end $$;
-
--- Archives Excel des plannings (bucket privé) : idem.
-drop policy if exists planning_archives_obj_select on storage.objects;
-create policy planning_archives_obj_select
-  on storage.objects for select to authenticated
-  using ( bucket_id = 'planning-archives' and not public.is_iade() );
-
 -- ============================================================
+-- ORDRE D'EXÉCUTION — à respecter sur un nouvel environnement :
+--   schema.sql → planning*.sql → iade_conges.sql → securite_aal2.sql → connexion_google.sql
+--
+-- Ce fichier ne touche volontairement PAS :
+--   • handle_new_user()  → version de référence dans connexion_google.sql
+--     (le rôle vient de la table invitations, pas des métadonnées) ;
+--   • les politiques de lecture du planning et des consultations
+--     → connexion_google.sql les pose en `using ( acces_cabinet() )`,
+--       qui exige déjà 2FA + compte actif + non-IADE.
+-- Les relancer depuis ici affaiblirait la sécurité.
+--
 -- APRÈS exécution :
 --   • Onglet « Comptes » → cocher « Gestion IADE » sur le compte qui gérera les IADE.
 --   • Onglet « Comptes » → inviter chaque IADE avec le rôle « IADE (congés) ».

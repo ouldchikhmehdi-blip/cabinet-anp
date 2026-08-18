@@ -1,18 +1,24 @@
 // ============================================================
-// IadeMesConges — page IADE : déposer une demande de congé et suivre ses demandes.
-// Seule page où un compte IADE écrit. Tant qu'une demande est « en attente »,
-// l'agent peut la retirer ; une fois décidée, elle est figée (RLS).
+// IadeMesConges — page IADE : poser ses jours de congé et suivre ses demandes.
+// Seule page où un compte IADE écrit.
+//
+// L'agent choisit la nature du jour (congé payé / récupération de jour férié)
+// puis clique les jours dans le calendrier. Aucun motif ne lui est demandé : la
+// raison d'un congé ne regarde pas l'employeur. Tant qu'un jour est « en
+// attente », l'agent peut le retirer ; une fois décidé, il est figé (RLS).
 //
 // Prop `apercu` = { userId, nom } : rend le MÊME écran en lecture seule pour la
 // gestion (« Aperçu compte IADE ») — c'est ce que voit l'agent, sans pouvoir agir
 // à sa place. `userId` peut être null : on montre alors l'écran vierge.
 // ============================================================
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { chargerMesConges, creerDemande, supprimerDemande } from '../utils/iadeCongesApi'
+import CalendrierSaisie from '../components/iade/CalendrierSaisie'
+import { chargerMesConges, poserJours, supprimerJours } from '../utils/iadeCongesApi'
 import {
-  TYPES_CONGE, STATUTS, libelleType, libelleStatut,
-  nbJours, nbJoursOuvres, formatPeriode, verifierDemande,
+  TYPES_CONGE, TYPE_DEFAUT, STATUTS,
+  libelleType, libelleStatut, formatPeriode, resumeTypes,
+  plages, indexJoursPoses, verifierSelection,
 } from '../utils/iadeConges'
 
 export default function IadeMesConges({ apercu = null }) {
@@ -20,16 +26,18 @@ export default function IadeMesConges({ apercu = null }) {
   const lectureSeule = apercu !== null
   const userId = lectureSeule ? apercu.userId : session?.user?.id
 
+  const maintenant = new Date()
+  const [annee, setAnnee] = useState(maintenant.getFullYear())
+  const [mois,  setMois]  = useState(maintenant.getMonth())
+
   const [demandes, setDemandes] = useState([])
   const [charge,   setCharge]   = useState(true)
   const [erreur,   setErreur]   = useState(null)
   const [succes,   setSucces]   = useState(null)
   const [envoi,    setEnvoi]    = useState(false)
 
-  const [type,        setType]        = useState('conges')
-  const [dateDebut,   setDateDebut]   = useState('')
-  const [dateFin,     setDateFin]     = useState('')
-  const [commentaire, setCommentaire] = useState('')
+  const [typeActif, setTypeActif] = useState(TYPE_DEFAUT)
+  const [selection, setSelection] = useState(new Map()) // iso → type
 
   const charger = useCallback(async () => {
     if (!userId) { setDemandes([]); setCharge(false); return }
@@ -38,7 +46,7 @@ export default function IadeMesConges({ apercu = null }) {
       setDemandes(await chargerMesConges(userId))
       setErreur(null)
     } catch {
-      setErreur('Impossible de charger vos demandes.')
+      setErreur('Impossible de charger vos congés.')
     } finally {
       setCharge(false)
     }
@@ -48,38 +56,70 @@ export default function IadeMesConges({ apercu = null }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { charger() }, [charger])
 
-  // La date de fin suit la date de début tant qu'elle n'a pas été saisie ou qu'elle précède.
-  function majDebut(v) {
-    setDateDebut(v)
-    if (!dateFin || dateFin < v) setDateFin(v)
+  const dejaPoses = useMemo(() => indexJoursPoses(demandes), [demandes])
+
+  const enAttente = useMemo(
+    () => plages(demandes.filter(d => d.statut === 'en_attente')),
+    [demandes]
+  )
+  // Le motif de refus entre dans la clé : deux refus motivés différemment ne
+  // doivent pas être fondus dans une seule ligne.
+  const traitees = useMemo(
+    () => plages(demandes.filter(d => d.statut !== 'en_attente'), ['type_conge', 'statut', 'motif_reponse']),
+    [demandes]
+  )
+
+  const listeSelection = useMemo(
+    () => [...selection.entries()].map(([jour, type]) => ({ jour, type })).sort((a, b) => a.jour.localeCompare(b.jour)),
+    [selection]
+  )
+
+  function naviguer(delta) {
+    const d = new Date(Date.UTC(annee, mois + delta, 1))
+    setAnnee(d.getUTCFullYear())
+    setMois(d.getUTCMonth())
   }
 
-  async function envoyer(e) {
-    e.preventDefault()
+  // Un clic pose le jour dans la nature active ; le même clic sur la même nature
+  // l'enlève ; sur l'autre nature, il la remplace.
+  function basculerJour(iso) {
+    setSelection(prev => {
+      const suivant = new Map(prev)
+      if (suivant.get(iso) === typeActif) suivant.delete(iso)
+      else suivant.set(iso, typeActif)
+      return suivant
+    })
+    setSucces(null)
+  }
+
+  async function envoyer() {
     setErreur(null); setSucces(null)
 
-    const probleme = verifierDemande({ dateDebut, dateFin, type }, demandes)
+    const probleme = verifierSelection(listeSelection, dejaPoses)
     if (probleme) { setErreur(probleme); return }
 
     setEnvoi(true)
     try {
-      await creerDemande({ userId, dateDebut, dateFin, type, commentaire })
-      setSucces(`Demande transmise (${formatPeriode(dateDebut, dateFin)}). Vous serez informé de la réponse ici.`)
-      setDateDebut(''); setDateFin(''); setCommentaire(''); setType('conges')
+      await poserJours({ userId, jours: listeSelection })
+      setSucces(`Demande transmise : ${listeSelection.length} jour(s) — ${resumeTypes(listeSelection.map(j => ({ type_conge: j.type })))}.`)
+      setSelection(new Map())
       await charger()
-    } catch {
-      setErreur("Envoi impossible. Réessayez ; si le problème persiste, prévenez la personne qui gère les congés.")
+    } catch (err) {
+      // 23505 = index unique (user_id, jour) : le jour a été posé entre-temps.
+      setErreur(err?.code === '23505'
+        ? 'Un de ces jours a déjà été posé entre-temps. Rechargez la page.'
+        : "Envoi impossible. Réessayez ; si le problème persiste, prévenez la personne qui gère les congés.")
     } finally {
       setEnvoi(false)
     }
   }
 
-  async function retirer(d) {
-    if (!confirm(`Retirer votre demande ${formatPeriode(d.date_debut, d.date_fin)} ?`)) return
+  async function retirer(plage) {
+    if (!confirm(`Retirer ${plage.nb} jour(s) — ${libelleType(plage.type_conge)}, ${formatPeriode(plage.debut, plage.fin)} ?`)) return
     setErreur(null); setSucces(null)
     try {
-      await supprimerDemande(d.id)
-      setSucces('Demande retirée.')
+      await supprimerJours(plage.ids)
+      setSucces('Jours retirés.')
       await charger()
     } catch {
       setErreur('Retrait impossible (la demande a peut-être déjà été traitée).')
@@ -98,16 +138,6 @@ export default function IadeMesConges({ apercu = null }) {
       // se consultent en glissant le doigt au lieu de déborder de l'écran.
       overflowX: 'auto',
     },
-    label: { fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 },
-    input: {
-      padding: '8px 12px',
-      fontSize: 13,
-      border: '0.5px solid var(--color-border)',
-      borderRadius: 'var(--radius-md)',
-      background: 'var(--color-bg)',
-      color: 'var(--color-text)',
-      outline: 'none',
-    },
     tr: { borderBottom: '0.5px solid var(--color-border)' },
     th: { padding: '10px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em' },
     td: { padding: '10px 14px', fontSize: 13, color: 'var(--color-text)', verticalAlign: 'top' },
@@ -116,13 +146,6 @@ export default function IadeMesConges({ apercu = null }) {
       border: '0.5px solid var(--color-border)', background: 'transparent',
       color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap',
     },
-    boutonPrimary: {
-      padding: '8px 16px',
-      background: 'var(--color-primary)', color: '#fff',
-      border: 'none', borderRadius: 'var(--radius-md)',
-      fontSize: 13, fontWeight: 500,
-      cursor: envoi ? 'wait' : 'pointer', opacity: envoi ? 0.7 : 1,
-    },
   }
 
   const badgeStatut = (statut) => ({
@@ -130,8 +153,25 @@ export default function IadeMesConges({ apercu = null }) {
     background: STATUTS[statut]?.fond, color: STATUTS[statut]?.couleur, whiteSpace: 'nowrap',
   })
 
-  const enAttente = demandes.filter(d => d.statut === 'en_attente')
-  const traitees  = demandes.filter(d => d.statut !== 'en_attente')
+  // Sélecteur de nature : deux gros boutons, plus sûrs au doigt qu'une liste
+  // déroulante et toujours visibles pendant qu'on clique dans le calendrier.
+  const boutonType = (t) => {
+    const actif = typeActif === t.id
+    return {
+      flex: '1 1 160px',
+      padding: '10px 14px',
+      fontSize: 13,
+      fontWeight: actif ? 600 : 500,
+      textAlign: 'left',
+      borderRadius: 'var(--radius-md)',
+      border: `1px solid ${actif ? t.couleur : 'var(--color-border)'}`,
+      background: actif ? t.fond : 'var(--color-bg)',
+      color: actif ? t.couleur : 'var(--color-text-secondary)',
+      cursor: lectureSeule ? 'default' : 'pointer',
+      opacity: lectureSeule ? 0.6 : 1,
+    }
+  }
+
   const nom = lectureSeule ? apercu.nom : (profile?.nom_complet?.trim() || profile?.email)
 
   return (
@@ -146,85 +186,99 @@ export default function IadeMesConges({ apercu = null }) {
       {erreur && <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{erreur}</div>}
       {succes && <div style={{ fontSize: 13, color: 'var(--color-success)', background: 'var(--color-success-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{succes}</div>}
 
-      {/* ── Nouvelle demande ── */}
+      {/* ── Poser des jours ── */}
       <div style={s.section}>
-        <div style={s.titre}>Nouvelle demande</div>
-        <div style={s.card}>
-          {/* En aperçu, le formulaire est montré tel que l'agent le voit, mais inerte. */}
-          <form onSubmit={envoyer} style={{ padding: 20, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div>
-              <label style={s.label} htmlFor="iade-type">Motif</label>
-              <select id="iade-type" value={type} disabled={lectureSeule} onChange={e => setType(e.target.value)} style={s.input}>
-                {TYPES_CONGE.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.label} htmlFor="iade-debut">Du</label>
-              <input id="iade-debut" type="date" required={!lectureSeule} disabled={lectureSeule} value={dateDebut} onChange={e => majDebut(e.target.value)} style={s.input} />
-            </div>
-            <div>
-              <label style={s.label} htmlFor="iade-fin">Au (inclus)</label>
-              <input id="iade-fin" type="date" required={!lectureSeule} disabled={lectureSeule} value={dateFin} min={dateDebut || undefined} onChange={e => setDateFin(e.target.value)} style={s.input} />
-            </div>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <label style={s.label} htmlFor="iade-com">Précision (facultatif)</label>
-              <input
-                id="iade-com"
-                type="text"
-                value={commentaire}
+        <div style={s.titre}>Poser des jours</div>
+        <div style={{ ...s.card, padding: 20 }}>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+            1. Choisissez la nature du jour · 2. Cliquez les jours dans le calendrier · 3. Envoyez.
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+            {TYPES_CONGE.map(t => (
+              <button
+                key={t.id}
+                type="button"
                 disabled={lectureSeule}
-                onChange={e => setCommentaire(e.target.value)}
-                placeholder="ex. mariage, garde d'enfant…"
-                style={{ ...s.input, width: '100%' }}
-              />
+                aria-pressed={typeActif === t.id}
+                onClick={() => setTypeActif(t.id)}
+                style={boutonType(t)}
+              >
+                <span style={{ fontWeight: 700, marginRight: 8 }}>{t.court}</span>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <CalendrierSaisie
+            annee={annee}
+            mois={mois}
+            onNaviguer={naviguer}
+            typeActif={typeActif}
+            selection={selection}
+            dejaPoses={dejaPoses}
+            onBasculerJour={basculerJour}
+            lectureSeule={lectureSeule}
+          />
+
+          <div style={{
+            borderTop: '0.5px solid var(--color-border)',
+            marginTop: 18, paddingTop: 14,
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <div style={{ flex: '1 1 220px', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              {listeSelection.length === 0
+                ? 'Aucun jour sélectionné.'
+                : <><strong style={{ color: 'var(--color-text)' }}>{listeSelection.length} jour(s)</strong> — {resumeTypes(listeSelection.map(j => ({ type_conge: j.type })))}</>}
             </div>
-            <button type="submit" disabled={envoi || lectureSeule} style={{ ...s.boutonPrimary, opacity: lectureSeule ? 0.5 : s.boutonPrimary.opacity }}>
+            {listeSelection.length > 0 && !lectureSeule && (
+              <button type="button" style={s.boutonSec} onClick={() => setSelection(new Map())}>Tout effacer</button>
+            )}
+            <button
+              type="button"
+              disabled={envoi || lectureSeule || listeSelection.length === 0}
+              onClick={envoyer}
+              style={{
+                padding: '10px 18px',
+                background: 'var(--color-primary)', color: '#fff',
+                border: 'none', borderRadius: 'var(--radius-md)',
+                fontSize: 14, fontWeight: 500,
+                cursor: envoi ? 'wait' : 'pointer',
+                opacity: (lectureSeule || listeSelection.length === 0) ? 0.45 : envoi ? 0.7 : 1,
+              }}
+            >
               {envoi ? 'Envoi…' : 'Envoyer la demande'}
             </button>
-          </form>
-
-          {dateDebut && dateFin && dateFin >= dateDebut && (
-            <div style={{
-              borderTop: '0.5px solid var(--color-border)',
-              padding: '10px 20px',
-              fontSize: 12,
-              color: 'var(--color-text-secondary)',
-            }}>
-              {formatPeriode(dateDebut, dateFin)} — {nbJours(dateDebut, dateFin)} jour(s) calendaire(s),
-              dont <strong>{nbJoursOuvres(dateDebut, dateFin)}</strong> jour(s) ouvré(s).
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* ── Demandes en attente ── */}
+      {/* ── En attente ── */}
       <div style={s.section}>
-        <div style={s.titre}>En attente de réponse ({enAttente.length})</div>
+        <div style={s.titre}>En attente de réponse ({enAttente.reduce((n, p) => n + p.nb, 0)} jour(s))</div>
         {charge ? (
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Chargement…</div>
         ) : enAttente.length === 0 ? (
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande en attente.</div>
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucun jour en attente.</div>
         ) : (
           <div style={s.card}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Période</th>
-                  <th style={s.th}>Motif</th>
-                  <th style={s.th}>Jours ouvrés</th>
-                  <th style={s.th}>Précision</th>
+                  <th style={s.th}>Nature</th>
+                  <th style={s.th}>Jours</th>
                   <th style={s.th}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {enAttente.map(d => (
-                  <tr key={d.id} style={s.tr}>
-                    <td style={s.td}>{formatPeriode(d.date_debut, d.date_fin)}</td>
-                    <td style={s.td}>{libelleType(d.type_conge)}</td>
-                    <td style={s.td}>{nbJoursOuvres(d.date_debut, d.date_fin)}</td>
-                    <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{d.commentaire || '—'}</td>
+                {enAttente.map(p => (
+                  <tr key={p.ids[0]} style={s.tr}>
+                    <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
+                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{p.nb}</td>
                     <td style={s.td}>
-                      <button style={s.boutonSec} disabled={lectureSeule} onClick={() => retirer(d)}>Retirer</button>
+                      <button style={s.boutonSec} disabled={lectureSeule} onClick={() => retirer(p)}>Retirer</button>
                     </td>
                   </tr>
                 ))}
@@ -236,29 +290,29 @@ export default function IadeMesConges({ apercu = null }) {
 
       {/* ── Historique ── */}
       <div style={s.section}>
-        <div style={s.titre}>Demandes traitées ({traitees.length})</div>
+        <div style={s.titre}>Jours traités ({traitees.reduce((n, p) => n + p.nb, 0)} jour(s))</div>
         {traitees.length === 0 ? (
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune demande traitée pour le moment.</div>
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>Aucune réponse pour le moment.</div>
         ) : (
           <div style={s.card}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>Période</th>
-                  <th style={s.th}>Motif</th>
-                  <th style={s.th}>Jours ouvrés</th>
+                  <th style={s.th}>Nature</th>
+                  <th style={s.th}>Jours</th>
                   <th style={s.th}>Réponse</th>
-                  <th style={s.th}>Commentaire de la réponse</th>
+                  <th style={s.th}>Commentaire</th>
                 </tr>
               </thead>
               <tbody>
-                {traitees.map(d => (
-                  <tr key={d.id} style={s.tr}>
-                    <td style={s.td}>{formatPeriode(d.date_debut, d.date_fin)}</td>
-                    <td style={s.td}>{libelleType(d.type_conge)}</td>
-                    <td style={s.td}>{nbJoursOuvres(d.date_debut, d.date_fin)}</td>
-                    <td style={s.td}><span style={badgeStatut(d.statut)}>{libelleStatut(d.statut)}</span></td>
-                    <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{d.motif_reponse || '—'}</td>
+                {traitees.map(p => (
+                  <tr key={p.ids[0]} style={s.tr}>
+                    <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
+                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{p.nb}</td>
+                    <td style={s.td}><span style={badgeStatut(p.statut)}>{libelleStatut(p.statut)}</span></td>
+                    <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{p.motif_reponse || '—'}</td>
                   </tr>
                 ))}
               </tbody>
