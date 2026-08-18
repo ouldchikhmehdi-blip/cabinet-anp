@@ -60,14 +60,29 @@ plus lu dans `raw_user_meta_data` (que le client peut renseigner) mais dans la t
 
 ### Configuration
 
-1. **Google Cloud Console** → *APIs & Services → Credentials* → **Create OAuth client ID**
-   → type **Web application**.
-2. Dans **Authorized redirect URIs**, coller l'URI affichée par Supabase à l'étape suivante
-   (de la forme `https://<ref>.supabase.co/auth/v1/callback`).
-3. **Supabase → Authentication → Sign In / Providers → Google** : activer, coller le
+Côté Google, tout se passe dans la **Google Auth Platform** (`console.cloud.google.com/auth`) —
+l'ancien chemin *APIs & Services → Credentials* a été renommé.
+
+1. **Audience** (`/auth/audience`) : type **External**, puis **Publier l'application**.
+   Laissée en « Testing », seuls les comptes inscrits comme testeurs peuvent se connecter
+   (100 maximum, à maintenir à la main) — inutilement pénible pour une équipe.
+   Les scopes utilisés n'étant pas sensibles, la publication ne déclenche **aucune
+   vérification** de Google.
+2. **Data Access / Scopes** (`/auth/scopes`) : `openid` (à ajouter à la main),
+   `.../auth/userinfo.email` et `.../auth/userinfo.profile` (présents par défaut).
+   N'en ajouter aucun autre : les scopes sensibles déclenchent une validation longue.
+3. **Clients** (`/auth/clients`) → **Create client** → type **Web application** :
+   - *Authorized JavaScript origins* : `https://sarm-dashboard.vercel.app`
+     (+ `http://localhost:5173` pour le développement) ;
+   - *Authorized redirect URIs* : `https://oapebydqgsbgtwsqzpbf.supabase.co/auth/v1/callback`.
+4. **Supabase → Authentication → Sign In / Providers → Google** : activer, coller le
    **Client ID** et le **Client Secret**, enregistrer.
-4. Vérifier que **Redirect URLs** (étape 2) contient bien l'URL du site : c'est là que
+5. Vérifier que **Redirect URLs** (étape 2) contient bien l'URL du site : c'est là que
    l'utilisateur revient après Google.
+
+> L'écran de consentement Google affichera `oapebydqgsbgtwsqzpbf.supabase.co` tant qu'un
+> domaine personnalisé n'est pas configuré côté Supabase. Sans conséquence technique,
+> mais un nom de domaine reconnaissable rend une tentative d'hameçonnage plus facile à repérer.
 
 Rien à changer côté code : les boutons sont déjà présents sur l'écran de connexion et sur
 l'écran d'acceptation d'invitation (ce dernier n'apparaît que pour une adresse `@gmail.com`).
