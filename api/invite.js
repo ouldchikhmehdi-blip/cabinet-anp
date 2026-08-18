@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { supabaseAdmin } from './_lib/supabaseAdmin.js'
 import { requireAdmin, sendError, setCorsHeaders } from './_lib/auth.js'
+import { emailInvitationAssocie, emailInvitationIade } from './_lib/emails.js'
 
 /**
  * POST /api/invite
@@ -101,10 +102,17 @@ export default async function handler(req, res) {
   const appUrl = process.env.VITE_APP_URL ?? ''
   const lien   = `${appUrl}/?invite=${encodeURIComponent(token)}`
 
-  // Tente l'envoi de l'e-mail via Resend (best-effort : sans domaine vérifié,
-  // l'envoi échoue pour les adresses autres que celle du compte Resend, mais
-  // l'invitation reste valable et le lien est affiché dans l'interface admin).
+  // Message adapté au public : un IADE ne doit pas lire une procédure 2FA qui ne
+  // le concerne pas, un associé doit au contraire l'avoir sous les yeux (cf. emails.js).
+  const message = iade
+    ? emailInvitationIade({ lien, nom })
+    : emailInvitationAssocie({ lien, nom })
+
+  // Tente l'envoi via Resend (best-effort : sans domaine vérifié, l'envoi échoue
+  // pour les adresses autres que celle du compte Resend, mais l'invitation reste
+  // valable et le lien est affiché dans l'interface admin pour un envoi manuel).
   let emailSent = false
+  let emailErreur = null
   try {
     const resendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -115,36 +123,31 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         from:    process.env.INVITE_FROM_EMAIL,
         to:      email,
-        subject: iade ? 'Invitation — Congés IADE (SARM)' : 'Invitation — Dashboard SARM',
-        html: `
-          <p>Bonjour,</p>
-          <p>${iade
-            ? 'Vous avez été invité(e) à créer votre compte pour déposer et suivre vos demandes de congés au SARM (Service Anesthésie Réanimation Millénaire).'
-            : 'Vous avez été invité(e) à accéder au dashboard financier du SARM (Service Anesthésie Réanimation Millénaire).'}</p>
-          <p>
-            <a href="${lien}" style="display:inline-block;padding:10px 20px;background:#534AB7;color:#fff;border-radius:8px;text-decoration:none;font-weight:500;">
-              Créer mon compte
-            </a>
-          </p>
-          <p style="color:#888;font-size:12px;">Ce lien expire dans 48 heures et ne peut être utilisé qu'une seule fois.<br>Si vous n'attendiez pas cette invitation, ignorez cet e-mail.</p>
-        `,
+        subject: message.subject,
+        html:    message.html,
+        text:    message.text,
       }),
     })
     emailSent = resendRes.ok
     if (!resendRes.ok) {
       const detail = await resendRes.text()
       console.error('Erreur Resend (non bloquante):', detail)
+      // Remontée à l'admin : sans cela, un domaine non vérifié se manifeste par un
+      // silence, et on croit l'e-mail parti (cf. AUTH.md § Resend).
+      emailErreur = detail?.slice(0, 200) ?? null
     }
   } catch (err) {
     console.error('Erreur Resend (exception, non bloquante):', err)
+    emailErreur = 'Service d\'envoi injoignable.'
   }
 
   return res.status(201).json({
     ok:        true,
     link:      lien,
     emailSent,
+    emailErreur,
     message: emailSent
-      ? `Invitation envoyée par e-mail à ${email}.`
-      : `Lien d'invitation généré pour ${email}. Copiez-le et transmettez-le manuellement.`,
+      ? `Invitation envoyée par e-mail à ${email}${nom ? ` (${nom})` : ''}.`
+      : `Lien d'invitation généré pour ${email}. L'e-mail n'est pas parti : copiez le lien ci-dessous et transmettez-le.`,
   })
 }

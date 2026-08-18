@@ -101,7 +101,13 @@ export default function AdminUsers() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setLienGenere({ email: emailInvit.trim(), url: data.link, emailSent: data.emailSent })
+      setLienGenere({
+        email: emailInvit.trim(),
+        url: data.link,
+        emailSent: data.emailSent,
+        emailErreur: data.emailErreur ?? null,
+        iade: estIade,
+      })
       flash(data.message)
       setEmailInvit(''); setRoleInvit('user'); setNomInvit('')
       charger()
@@ -401,16 +407,34 @@ export default function AdminUsers() {
               background: 'var(--color-primary-light)',
             }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>
-                Lien d'invitation pour {lienGenere.email}
+                {lienGenere.emailSent
+                  ? `E-mail envoyé à ${lienGenere.email}`
+                  : `Lien d'invitation pour ${lienGenere.email}`}
               </div>
               <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
-                {lienGenere.emailSent
-                  ? 'Un e-mail a aussi été envoyé. '
-                  : ''}
-                Transmettez ce lien à la personne (WhatsApp, SMS, e-mail perso).
-                Il est valable <strong>48 h</strong>, <strong>à usage unique</strong>, et
+                {lienGenere.emailSent ? (
+                  <>
+                    Le message explique la marche à suivre
+                    {lienGenere.iade
+                      ? ' (création du compte, connexion Google si adresse Gmail, aucun code de sécurité).'
+                      : ' (création du compte puis mise en place de la double authentification).'}
+                    {' '}Le lien ci-dessous reste disponible si la personne ne reçoit rien.
+                  </>
+                ) : (
+                  <>Transmettez ce lien à la personne (WhatsApp, SMS, e-mail perso).</>
+                )}
+                {' '}Il est valable <strong>48 h</strong>, <strong>à usage unique</strong>, et
                 ne sera <strong>plus affiché</strong> après avoir quitté cette page.
               </div>
+
+              {/* L'échec d'envoi est silencieux côté Resend : on l'affiche, sinon
+                  on croit l'e-mail parti alors que le domaine n'est pas vérifié. */}
+              {!lienGenere.emailSent && (
+                <div style={{ fontSize: 12, color: 'var(--color-amber)', background: 'var(--color-amber-light)', borderRadius: 6, padding: '8px 10px', marginBottom: 10 }}>
+                  L'e-mail n'a pas pu être envoyé{lienGenere.emailErreur ? ` — ${lienGenere.emailErreur}` : ''}.
+                  Vérifiez la clé Resend et le domaine vérifié (cf. AUTH.md), ou transmettez le lien à la main.
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <input
                   type="text"

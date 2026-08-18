@@ -155,7 +155,15 @@ Contrainte **`profiles_iade_exclusif`** : un compte IADE est forcément `role='u
 2. **Désigner le gestionnaire** — onglet « Comptes » → ligne de la personne → colonne
    « Congés IADE » → cocher **Gestion**. (Le faiseur de planning a l'accès d'office.)
 3. **Créer les comptes IADE** — onglet « Comptes » → « Inviter un nouvel utilisateur » →
-   rôle **« IADE (congés uniquement) »** → transmettre le lien (48 h, usage unique).
+   rôle **« IADE (congés uniquement) »** + nom complet → « Générer l'invitation ».
+   L'agent reçoit **automatiquement un e-mail** expliquant la marche à suivre
+   (modèle dans `api/_lib/emails.js`, fonction `emailInvitationIade`) : création du
+   compte, connexion Google si adresse Gmail, **aucun code de sécurité**, invitation
+   à le faire depuis son téléphone. Le lien reste affiché à l'écran pour un envoi
+   manuel si l'e-mail ne part pas.
+   > Les associés reçoivent un message **différent** (`emailInvitationAssocie`), qui
+   > détaille l'enrôlement de la double authentification. Ne pas mélanger les deux :
+   > un IADE qui lit une procédure 2FA cherchera une étape qui n'existe pas chez lui.
 4. **Nommer les agents** — renseigner leur **Nom complet** dans la ligne du compte :
    c'est ce nom qui apparaît dans le calendrier et les demandes (sinon, la partie
    gauche de l'e-mail est utilisée).
