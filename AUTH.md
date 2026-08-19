@@ -5,7 +5,7 @@
 - **Accès sur invitation seulement** : aucune inscription publique possible.
 - **2FA TOTP obligatoire** : code 6 chiffres via Google Authenticator, Authy, ou toute app TOTP. Requis pour chaque compte, à la création et à chaque connexion.
 - **Sessions sécurisées** : JWT signés par Supabase, renouvellement automatique, révocation immédiate sur désactivation.
-- **Liens d'invitation** : token 256 bits, haché en base, expiration 48h, usage unique, envoi via Resend.
+- **Liens d'invitation** : token 256 bits, haché en base, expiration 48h, usage unique, envoi via Gmail (SMTP).
 - **Mot de passe oublié (libre-service)** : depuis l'écran de connexion, l'associé demande un lien de réinitialisation par e-mail (envoi **natif Supabase**, voir plus bas), clique le lien, définit un nouveau mot de passe, puis se reconnecte (mot de passe + son code 2FA habituel). Aucune intervention admin.
 - **Couche serveur** : les opérations sensibles (inviter, promouvoir, révoquer) passent par des fonctions Vercel `/api` avec la clé `service_role` — jamais exposée dans le front.
 - **Rôle en base** : champ `role` (`admin` / `user`) dans la table `profiles`, prêt pour les permissions fines à l'étape suivante.
@@ -138,11 +138,26 @@ Le premier admin doit être créé manuellement car personne ne peut encore l'in
 
 ---
 
-## Étape 5 — Configurer Resend (envoi d'e-mails)
+## Étape 5 — Configurer l'envoi d'e-mails (Gmail)
 
-1. Créer un compte sur [resend.com](https://resend.com).
-2. **Domains** → ajouter votre domaine et vérifier les enregistrements DNS.
-3. **API Keys** → créer une clé → noter la valeur (`re_...`).
+L'invitation part de **ta boîte Gmail** vers n'importe quel destinataire, **sans domaine à
+vérifier**. Il faut un **mot de passe d'application** Google (≠ ton mot de passe habituel) :
+
+1. Le compte Google doit avoir la **validation en deux étapes (2FA) activée**
+   (myaccount.google.com → Sécurité).
+2. Aller sur **Mots de passe des applications** (https://myaccount.google.com/apppasswords)
+   → en créer un (nom libre, ex. « SARM dashboard »).
+3. Google affiche un mot de passe de **16 caractères** → le noter (il ne sera plus réaffiché).
+   C'est la valeur de `GMAIL_APP_PASSWORD` (le coller **sans les espaces**).
+4. `GMAIL_USER` = l'adresse Gmail émettrice (ex. `ouldchikh.mehdi@gmail.com`).
+
+L'envoi utilise SMTP `smtp.gmail.com:465` (cf. `api/invite.js`). Limite Gmail ~500 e-mails/jour,
+largement suffisant. Si l'envoi échoue, **l'invitation reste valable** et le lien s'affiche
+pour un envoi manuel.
+
+> Ancien fournisseur **Resend** abandonné le 2026-08-19 : il exigeait un domaine vérifié
+> (payant) pour écrire à d'autres que le titulaire du compte. Les variables `RESEND_API_KEY`
+> et `INVITE_FROM_EMAIL` ne sont plus utilisées.
 
 ---
 
@@ -162,7 +177,7 @@ Récupérer les valeurs dans le dashboard Supabase → **Project Settings → AP
 - `SUPABASE_URL` = même valeur
 - `SUPABASE_SERVICE_ROLE_KEY` = **service_role secret** (garder absolument secret)
 
-Remplir `RESEND_API_KEY` et `INVITE_FROM_EMAIL`.
+Remplir `GMAIL_USER` et `GMAIL_APP_PASSWORD`.
 
 ### Sur Vercel
 
@@ -175,8 +190,8 @@ Remplir `RESEND_API_KEY` et `INVITE_FROM_EMAIL`.
 | `VITE_APP_URL` | Production | `https://sarm-dashboard.vercel.app` |
 | `SUPABASE_URL` | Production, Preview | Sans préfixe VITE_ |
 | `SUPABASE_SERVICE_ROLE_KEY` | Production, Preview | **Secret — ne jamais exposer** |
-| `RESEND_API_KEY` | Production, Preview | Secret |
-| `INVITE_FROM_EMAIL` | Production, Preview | Domaine vérifié Resend |
+| `GMAIL_USER` | Production, Preview | Adresse Gmail émettrice |
+| `GMAIL_APP_PASSWORD` | Production, Preview | **Secret** — mot de passe d'application (16 car.) |
 
 Après avoir ajouté les variables → **Redeploy** (le build doit relire les variables).
 

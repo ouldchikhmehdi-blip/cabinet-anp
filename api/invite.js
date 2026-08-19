@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import nodemailer from 'nodemailer'
 import { supabaseAdmin } from './_lib/supabaseAdmin.js'
 import { requireAdmin, sendError, setCorsHeaders } from './_lib/auth.js'
 import { emailInvitationAssocie, emailInvitationIade } from './_lib/emails.js'
@@ -7,7 +8,7 @@ import { emailInvitationAssocie, emailInvitationIade } from './_lib/emails.js'
  * POST /api/invite
  * Body : { email: string, role?: 'user' | 'admin', isIade?: boolean }
  *
- * Crée une invitation (48h, usage unique) et envoie un e-mail via Resend.
+ * Crée une invitation (48h, usage unique) et envoie un e-mail via Gmail (SMTP).
  * Réservé aux administrateurs authentifiés.
  *
  * isIade = compte restreint « congés IADE » (cf. IADE.md) : le drapeau est porté
@@ -108,37 +109,37 @@ export default async function handler(req, res) {
     ? emailInvitationIade({ lien, nom })
     : emailInvitationAssocie({ lien, nom })
 
-  // Tente l'envoi via Resend (best-effort : sans domaine vérifié, l'envoi échoue
-  // pour les adresses autres que celle du compte Resend, mais l'invitation reste
-  // valable et le lien est affiché dans l'interface admin pour un envoi manuel).
+  // Tente l'envoi via SMTP Gmail (best-effort : si les identifiants manquent ou que
+  // Google refuse, l'invitation reste valable et le lien est affiché dans l'interface
+  // admin pour un envoi manuel). L'envoi part de GMAIL_USER vers n'importe quel
+  // destinataire — pas besoin de domaine vérifié. Création du mot de passe
+  // d'application : cf. AUTH.md § Envoi d'e-mails (Gmail).
   let emailSent = false
   let emailErreur = null
   try {
-    const resendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type':  'application/json',
-      },
-      body: JSON.stringify({
-        from:    process.env.INVITE_FROM_EMAIL,
-        to:      email,
-        subject: message.subject,
-        html:    message.html,
-        text:    message.text,
-      }),
-    })
-    emailSent = resendRes.ok
-    if (!resendRes.ok) {
-      const detail = await resendRes.text()
-      console.error('Erreur Resend (non bloquante):', detail)
-      // Remontée à l'admin : sans cela, un domaine non vérifié se manifeste par un
-      // silence, et on croit l'e-mail parti (cf. AUTH.md § Resend).
-      emailErreur = detail?.slice(0, 200) ?? null
+    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+      throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD non configurés.')
     }
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    })
+    await transporter.sendMail({
+      from:    `"SARM Dashboard" <${process.env.GMAIL_USER}>`,
+      to:      email,
+      subject: message.subject,
+      html:    message.html,
+      text:    message.text,
+    })
+    emailSent = true
   } catch (err) {
-    console.error('Erreur Resend (exception, non bloquante):', err)
-    emailErreur = 'Service d\'envoi injoignable.'
+    console.error('Erreur envoi Gmail (non bloquante):', err)
+    emailErreur = (err?.message ?? 'Service d\'envoi injoignable.').slice(0, 200)
   }
 
   return res.status(201).json({

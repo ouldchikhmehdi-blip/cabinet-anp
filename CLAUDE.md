@@ -70,7 +70,7 @@ Fonctionnalités transverses : **filtres par période** et **comparaison année 
 ### Backend / API
 - **Vercel Functions** (`/api`) pour les opérations sensibles, avec clé `service_role` côté serveur :
   `/api/invite` · `/api/accept` · `/api/promote` · `/api/revoke`
-- **Resend** — envoi des e-mails d'invitation
+- **Gmail (SMTP via Nodemailer)** — envoi des e-mails d'invitation, sans domaine à vérifier (cf. `AUTH.md` § Étape 5)
 
 ### Hébergement
 - **Vercel** — front + fonctions serverless (`vercel.json`)
@@ -190,8 +190,8 @@ Modèle dans `.env.example`. Ne **jamais** committer `.env`.
 | `VITE_APP_URL` | front (build) | URL du site (prod) |
 | `SUPABASE_URL` | serveur | sans préfixe `VITE_` |
 | `SUPABASE_SERVICE_ROLE_KEY` | serveur | **secret — jamais exposé** |
-| `RESEND_API_KEY` | serveur | secret |
-| `INVITE_FROM_EMAIL` | serveur | domaine vérifié Resend |
+| `GMAIL_USER` | serveur | adresse Gmail émettrice |
+| `GMAIL_APP_PASSWORD` | serveur | **secret** — mot de passe d'application Google (16 car.) |
 
 Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les variables).
 
@@ -219,7 +219,8 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [ ] Schéma **exécuté** dans un projet Supabase (tables `profiles`/`invitations` visibles + RLS active)
 - [ ] Auth de bout en bout testée (login → TOTP → dashboard)
 - [ ] Vercel Functions opérationnelles (`invite`/`accept`/`promote`/`revoke`)
-- [ ] **Resend configuré** (clé + domaine vérifié)
+- [x] **Envoi e-mail basculé Resend → Gmail** (SMTP/Nodemailer, code livré 2026-08-19)
+- [ ] Poser `GMAIL_USER` + `GMAIL_APP_PASSWORD` sur Vercel puis **Redeploy** (cf. `AUTH.md` § Étape 5)
 - [ ] **Déploiement Vercel** + variables d'env + protection mot de passe intérimaire
 - [ ] **Migration `src/data/*` (mock) → tables Supabase** + RLS avec exigence **AAL2** pour les données sensibles
 - [ ] Suppression de la protection intérimaire Vercel une fois les données en base
