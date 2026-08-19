@@ -4,11 +4,10 @@
 // en dur), et s'ABONNE à un flux iCal vivant (Apple / Google / Outlook) — son agenda se
 // met à jour tout seul. Les mois se CUMULENT (recoller un mois le met à jour). Un jour de
 // congé devient une journée « Congé » sans poste (le poste affiché est pour le remplaçant).
-// Un téléchargement .ics ponctuel reste disponible en secours.
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
-import { lignesDepuisTexte, listerIades, genererIcs, extraireEvenementsIade } from '../utils/planningColle'
+import { lignesDepuisTexte, listerIades, extraireEvenementsIade } from '../utils/planningColle'
 import {
   chargerAbonnementIade, activerSyncIade, desactiverSyncIade, reactiverSyncIade, viderSyncIade,
 } from '../utils/iadeAgendaApi'
@@ -18,16 +17,6 @@ const PLATEFORMES = [
   { id: 'google', label: '🟢 Android / Google' },
   { id: 'outlook', label: '🔷 Outlook' },
 ]
-
-function telechargerFichier(texte, nomFichier, mime) {
-  const blob = new Blob([texte], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nomFichier
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 export default function IadeAgendaPerso() {
   const { session, profile } = useAuth()
@@ -84,16 +73,6 @@ export default function IadeAgendaPerso() {
       setErreur(e.message || 'Synchronisation impossible.')
     } finally {
       setBusy(false)
-    }
-  }
-
-  function telechargerIcs(nom) {
-    try {
-      const { ics, nom: trouve, moisSlug } = genererIcs(lignesDepuisTexte(texte), nom)
-      telechargerFichier(ics, `agenda-${trouve.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${moisSlug}.ics`,
-        'text/calendar;charset=utf-8')
-    } catch (e) {
-      setErreur(e.message || 'Génération impossible.')
     }
   }
 
@@ -179,17 +158,13 @@ export default function IadeAgendaPerso() {
         </div>
         {noms && (
           <div>
-            <div style={{ ...s.aide, marginBottom: 8 }}>Clique sur ton nom (synchronise + peut aussi télécharger) :</div>
+            <div style={{ ...s.aide, marginBottom: 8 }}>Clique sur ton nom pour synchroniser ce mois :</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {noms.map(nom => (
-                <div key={nom} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button onClick={() => choisirNom(nom)} disabled={busy}
-                    style={{ ...s.onglet(choix?.nom === nom), padding: '10px 16px', fontSize: 14 }}>
-                    {nom}
-                  </button>
-                  <button onClick={() => telechargerIcs(nom)} disabled={busy} title="Télécharger le .ics de ce mois"
-                    style={{ ...s.boutonSec, padding: '9px 10px' }}>⤓</button>
-                </div>
+                <button key={nom} onClick={() => choisirNom(nom)} disabled={busy}
+                  style={{ ...s.onglet(choix?.nom === nom), padding: '10px 16px', fontSize: 14 }}>
+                  {nom}
+                </button>
               ))}
             </div>
           </div>

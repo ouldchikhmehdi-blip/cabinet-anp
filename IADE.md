@@ -328,7 +328,7 @@ l'en-tête, noms de remplaçants lus comme texte libre.
 | Écran | Page | Accès | Ce que ça fait |
 |---|---|---|---|
 | **Récap planning** | `src/pages/IadeRecapPlanning.jsx` | `peutGererIade` (gestion / faiseur / admin) | colle le mois → récap congés (+ remplaçant / HS du même jour), remplaçants hors congé, heures sup ; export `.txt` |
-| **Sync agenda** | `src/pages/IadeAgendaPerso.jsx` | comptes **IADE** (+ gestion) | colle le mois → clique son nom → `.ics` du mois à importer (Apple / Outlook / Google) |
+| **Sync agenda** | `src/pages/IadeAgendaPerso.jsx` | comptes **IADE** (+ gestion) | colle le mois → clique son nom → s'abonne au flux iCal vivant (Apple / Google / Outlook), cf. §10 bis |
 
 Logique partagée : **`src/utils/planningColle.js`** (`analyserEntete`, `listerIades`,
 `genererRecapTexte`, `genererIcs`), testée dans `planningColle.test.js`.
@@ -358,7 +358,7 @@ tout seul (rafraîchi par l'app cliente, jusqu'à ~1 h). Les mois se **cumulent*
 | Flux public | `api/agenda-iade.js` | `GET /api/agenda-iade?token=…` → ICS via service_role. Token inconnu / `actif=false` → calendrier **vide**. Événements **à l'heure** (congé / poste sans horaire = journée entière). |
 | API client | `src/utils/iadeAgendaApi.js` | charger / activer (fusion par mois) / désactiver / vider — RLS `user_id = auth.uid()`. |
 | Extraction | `src/utils/planningColle.js` | `extraireEvenementsIade` (JSON stockable) → réutilisé par le `.ics` téléchargé **et** par le flux. |
-| UI | `src/pages/IadeAgendaPerso.jsx` | coller → clic sur son nom → bloc d'abonnement Apple / Google / Outlook + activer/désactiver + copier l'adresse. Téléchargement `.ics` ponctuel en secours. |
+| UI | `src/pages/IadeAgendaPerso.jsx` | coller → clic sur son nom → bloc d'abonnement Apple / Google / Outlook + activer/désactiver + copier l'adresse. |
 
 **⚠️ Mise en service** : exécuter `supabase/iade_agenda.sql` dans Supabase (SQL Editor)
 **avant** usage — sans la table, l'activation échoue et le flux renvoie un agenda vide.
