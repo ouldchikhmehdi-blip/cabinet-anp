@@ -23,7 +23,7 @@
 | Authentification, 2FA (TOTP/AAL2), invitations, connexion Google, gestion des comptes | **`AUTH.md`** | `src/auth/`, `src/pages/AdminUsers.jsx`, `api/{invite,accept,promote,revoke}.js` |
 | Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
 | Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
-| Congés IADE (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `supabase/iade_conges.sql` |
+| Congés IADE (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/planningColle.js`, `supabase/iade_conges.sql` |
 | Schéma DB, RLS, triggers, sécurité en base | **`supabase/schema.sql`** (+ `securite_aal2.sql`, `connexion_google.sql`) | `supabase/*.sql` |
 
 Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « fait foi ») ; ce tableau est le point d'entrée rapide.
@@ -237,6 +237,7 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
       sur l'écran de connexion et sur l'invitation) ; tant que ce réglage n'est pas fait, le bouton
       répond « Connexion Google indisponible » et tout le reste fonctionne normalement.
 - [x] **Notifications e-mail congés IADE** (pose/retrait → gestion ; décision → agent) — 2026-08-19 (cf. `IADE.md` § 9)
+- [x] **Planning collé → récap gestion + sync agenda IADE (.ics)**, 100 % côté client — 2026-08-19 (cf. `IADE.md` § 10)
 - [ ] Désigner le gestionnaire IADE et inviter les agents (onglet « Comptes »)
 
 ---

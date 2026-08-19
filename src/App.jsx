@@ -29,11 +29,13 @@ import IadeMesConges from './pages/IadeMesConges'
 import IadeCalendrier from './pages/IadeCalendrier'
 import IadeGestion from './pages/IadeGestion'
 import IadeApercu from './pages/IadeApercu'
+import IadeRecapPlanning from './pages/IadeRecapPlanning'
+import IadeAgendaPerso from './pages/IadeAgendaPerso'
 import './index.css'
 
 // Seules pages ouvertes à un compte IADE (cf. IADE.md). Tout le reste — financier,
 // planning, comptes — lui est fermé côté écran ET côté base (RLS).
-const PAGES_IADE = ['iade-mes-conges', 'iade-calendrier']
+const PAGES_IADE = ['iade-mes-conges', 'iade-calendrier', 'iade-agenda-perso']
 
 export default function App() {
   const { session, profile, aal, nextAal, loading, recovery, siegesPrets, profilCharge } = useAuth()
@@ -218,7 +220,9 @@ export default function App() {
           isIade
         />
         <main style={{ flex: 1, overflow: 'auto', padding: '24px', background: 'var(--color-bg)' }}>
-          {pageIade === 'iade-calendrier' ? <IadeCalendrier /> : <IadeMesConges />}
+          {pageIade === 'iade-calendrier' ? <IadeCalendrier />
+            : pageIade === 'iade-agenda-perso' ? <IadeAgendaPerso />
+              : <IadeMesConges />}
         </main>
       </div>
     )
@@ -251,6 +255,8 @@ export default function App() {
       case 'iade-gestion':        return peutGererIade ? <IadeGestion /> : <VueGlobale />
       case 'iade-calendrier':     return peutGererIade ? <IadeCalendrier /> : <VueGlobale />
       case 'iade-apercu':         return peutGererIade ? <IadeApercu /> : <VueGlobale />
+      case 'iade-recap-planning': return peutGererIade ? <IadeRecapPlanning /> : <VueGlobale />
+      case 'iade-agenda-perso':   return peutGererIade ? <IadeAgendaPerso /> : <VueGlobale />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }

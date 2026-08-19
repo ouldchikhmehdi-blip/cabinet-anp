@@ -29,12 +29,15 @@ const iadeGestionItems = [
   { id: 'iade-gestion', label: 'Demandes IADE', icon: '🗓' },
   { id: 'iade-calendrier', label: 'Absences IADE', icon: '🌴' },
   { id: 'iade-apercu', label: 'Aperçu compte IADE', icon: '👁', sub: true },
+  { id: 'iade-recap-planning', label: 'Récap planning', icon: '📄' },
+  { id: 'iade-agenda-perso', label: 'Sync agenda', icon: '📲', sub: true },
 ]
 
 // Congés IADE — côté agent : sa navigation ENTIÈRE (rien d'autre ne lui est ouvert)
 const iadeAgentItems = [
   { id: 'iade-mes-conges', label: 'Mes congés', icon: '🌴' },
   { id: 'iade-calendrier', label: "Congés de l'équipe", icon: '📆' },
+  { id: 'iade-agenda-perso', label: 'Sync agenda', icon: '📲' },
 ]
 
 export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur, hasInitiales, peutGererIade, isIade }) {

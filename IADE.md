@@ -315,3 +315,31 @@ Garde-fous :
 - Le **retrait notifie AVANT la suppression** (sinon les lignes n'existent plus à relire) :
   ordre respecté dans `IadeMesConges.jsx`.
 - Le refus embarque le **motif** (`motif_reponse`) dans l'e-mail à l'agent.
+
+## 10. Planning collé — récap gestion & sync agenda IADE
+
+Ajouté le 2026-08-19. Deux écrans **100 % côté client** (aucune donnée envoyée au
+serveur, aucune écriture DB), branchés sur le fichier **visuel du planning IADE**
+(généré hors-app : `vault/Projects/outils-planning/`). L'utilisateur copie tout le
+tableau d'un mois depuis ce fichier et le colle ; le parsing lit les colonnes
+séparées par tabulations. **Rien n'est codé en dur** : noms d'IADE lus dans
+l'en-tête, noms de remplaçants lus comme texte libre.
+
+| Écran | Page | Accès | Ce que ça fait |
+|---|---|---|---|
+| **Récap planning** | `src/pages/IadeRecapPlanning.jsx` | `peutGererIade` (gestion / faiseur / admin) | colle le mois → récap congés (+ remplaçant / HS du même jour), remplaçants hors congé, heures sup ; export `.txt` |
+| **Sync agenda** | `src/pages/IadeAgendaPerso.jsx` | comptes **IADE** (+ gestion) | colle le mois → clique son nom → `.ics` du mois à importer (Apple / Outlook / Google) |
+
+Logique partagée : **`src/utils/planningColle.js`** (`analyserEntete`, `listerIades`,
+`genererRecapTexte`, `genererIcs`), testée dans `planningColle.test.js`.
+
+Garde-fous :
+
+- **Congé = pas de travail** : dans l'agenda, un jour marqué « Congé » devient une
+  journée entière « Congé » ; le poste affiché ce jour-là (pour le remplaçant) **ne
+  crée aucun événement** de travail pour l'IADE.
+- Le compte IADE atteint « Sync agenda » via `PAGES_IADE` (shell cloisonné dans
+  `App.jsx`) ; le reste de l'app lui reste fermé.
+- Données de planning (noms de salariés, postes) : **traitées uniquement dans le
+  navigateur**, jamais postées à une API — cohérent avec la règle « pas de données
+  réelles vers un backend/IA » (§4 `CLAUDE.md`).
