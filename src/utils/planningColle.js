@@ -184,10 +184,7 @@ function esc(s) {
 
 const pad = (n) => String(n).padStart(2, '0')
 
-// Génère le contenu .ics de l'agenda d'un IADE pour le mois collé.
-// Renvoie { nom, ics, nbEvents, moisLabel }. Lève si le nom est introuvable.
-export function genererIcs(rows, cible) {
-  const { h, dcol, iades } = analyserEntete(rows)
+function resoudreIade(iades, cible) {
   const c = String(cible).trim().toLowerCase()
   const exact = iades.filter(x => x.nom.toLowerCase() === c)
   const partiel = iades.filter(x => x.nom.toLowerCase().includes(c) || c.includes(x.nom.toLowerCase()))
@@ -198,44 +195,35 @@ export function genererIcs(rows, cible) {
       ? `« ${cible} » correspond à plusieurs colonnes. Précise. Noms : ${dispo}`
       : `IADE « ${cible} » introuvable. Noms : ${dispo}`)
   }
-  const { nom, col } = choix[0]
+  return choix[0]
+}
 
-  const now = new Date()
-  const dtstamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}`
-    + `T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`
+// Événements « agenda » d'un IADE pour le mois collé, sous forme JSON stockable
+// (indépendante de tout fuseau) — réutilisée par le téléchargement .ics ET par le
+// flux d'abonnement serveur.
+//   timed  : { d:'YYYYMMDD', slot:'m'|'a', ts:'HHMM', te:'HHMM', titre, desc }
+//   allday : { d:'YYYYMMDD', slot:'m'|'a'|'conge', allday:true, fin:'YYYYMMDD', titre, desc }
+// Congé = journée entière « Congé », sans poste (le poste affiché est pour le remplaçant).
+export function extraireEvenementsIade(rows, cible) {
+  const { h, dcol, iades } = analyserEntete(rows)
+  const { nom, col } = resoudreIade(iades, cible)
 
-  const events = []
+  const evenements = []
   let premierMois = null
-  const uidBase = nom.replace(/[^a-zA-Z0-9]/g, '')
-
-  const pousser = (uid, dstart, dend, allDay, summary, desc) => {
-    events.push('BEGIN:VEVENT', `UID:${uid}`, `DTSTAMP:${dtstamp}`)
-    if (allDay) {
-      events.push(`DTSTART;VALUE=DATE:${dstart}`, `DTEND;VALUE=DATE:${dend}`)
-    } else {
-      events.push(`DTSTART:${dstart}`, `DTEND:${dend}`)
-    }
-    events.push(`SUMMARY:${esc(summary)}`)
-    if (desc) events.push(`DESCRIPTION:${esc(desc)}`)
-    events.push('END:VEVENT')
-  }
-
   for (let r = h + 1; r < rows.length; r++) {
     const dstr = cell(rows[r], dcol)
     if (!RE_DATE.test(dstr)) continue
     const [dd, mm, yy] = dstr.split('/').map(Number)
     if (premierMois == null) premierMois = { mm, yy }
     const ymd = `${yy}${pad(mm)}${pad(dd)}`
-    const demain = (() => {
-      const t = new Date(Date.UTC(yy, mm - 1, dd + 1))
-      return `${t.getUTCFullYear()}${pad(t.getUTCMonth() + 1)}${pad(t.getUTCDate())}`
-    })()
+    const t = new Date(Date.UTC(yy, mm - 1, dd + 1))
+    const demain = `${t.getUTCFullYear()}${pad(t.getUTCMonth() + 1)}${pad(t.getUTCDate())}`
     const matin = cell(rows[r], col)
     const aprem = cell(rows[r], col + 1)
     const note = cell(rows[r], col + 2)
 
-    if (note.toLowerCase().includes('cong')) {   // congé -> journée entière, pas de travail
-      pousser(`${ymd}-${uidBase}-conge@planning-iade`, ymd, demain, true, 'Congé', '')
+    if (note.toLowerCase().includes('cong')) {
+      evenements.push({ d: ymd, slot: 'conge', allday: true, fin: demain, titre: 'Congé', desc: '' })
       continue
     }
     const hs = (RE_HS.test(note) || note.toLowerCase() === 'hs') ? note : ''
@@ -243,28 +231,46 @@ export function genererIcs(rows, cible) {
       if (!txt || txt.toUpperCase() === 'OFF') continue
       const { debut, fin, label } = parsePlage(txt)
       const desc = txt + (hs ? `  (HS ${hs})` : '')
-      const uid = `${ymd}-${uidBase}-${slot}@planning-iade`
       if (debut == null) {
-        pousser(uid, ymd, demain, true, label, desc)      // poste sans horaire -> journée entière
+        evenements.push({ d: ymd, slot, allday: true, fin: demain, titre: label, desc })
       } else {
-        const ds = `${ymd}T${pad(debut[0])}${pad(debut[1])}00`
-        const de = `${ymd}T${pad(fin[0])}${pad(fin[1])}00`
-        pousser(uid, ds, de, false, label, desc)
+        evenements.push({ d: ymd, slot, ts: `${pad(debut[0])}${pad(debut[1])}`, te: `${pad(fin[0])}${pad(fin[1])}`, titre: label, desc })
       }
     }
   }
-
-  const cal = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//sarm-dashboard//planning-iade//FR',
-    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', ...events, 'END:VCALENDAR']
-  const moisLabel = premierMois
-    ? `${MOIS_FR[premierMois.mm]} ${premierMois.yy}`
-    : ''
+  const moisLabel = premierMois ? `${MOIS_FR[premierMois.mm]} ${premierMois.yy}` : ''
   const moisSlug = premierMois ? `${premierMois.yy}-${pad(premierMois.mm)}` : 'mois'
-  return {
-    nom,
-    ics: cal.join('\r\n') + '\r\n',
-    nbEvents: events.filter(l => l === 'BEGIN:VEVENT').length,
-    moisLabel,
-    moisSlug,
+  const moisPrefixe = premierMois ? `${premierMois.yy}${pad(premierMois.mm)}` : ''
+  return { nom, mois: premierMois, moisLabel, moisSlug, moisPrefixe, evenements }
+}
+
+// Événements JSON -> lignes VEVENT (uidBase distingue les agendas ; congé/poste sans horaire = journée entière).
+export function evenementsVersVevents(evenements, uidBase, dtstamp) {
+  const lignes = []
+  for (const e of evenements) {
+    lignes.push('BEGIN:VEVENT', `UID:${e.d}-${uidBase}-${e.slot}@planning-iade`, `DTSTAMP:${dtstamp}`)
+    if (e.allday) {
+      lignes.push(`DTSTART;VALUE=DATE:${e.d}`, `DTEND;VALUE=DATE:${e.fin}`)
+    } else {
+      lignes.push(`DTSTART:${e.d}T${e.ts}00`, `DTEND:${e.d}T${e.te}00`)
+    }
+    lignes.push(`SUMMARY:${esc(e.titre)}`)
+    if (e.desc) lignes.push(`DESCRIPTION:${esc(e.desc)}`)
+    lignes.push('END:VEVENT')
   }
+  return lignes
+}
+
+// Génère le contenu .ics de l'agenda d'un IADE pour le mois collé (téléchargement ponctuel).
+// Renvoie { nom, ics, nbEvents, moisLabel, moisSlug }. Lève si le nom est introuvable.
+export function genererIcs(rows, cible) {
+  const { nom, moisLabel, moisSlug, evenements } = extraireEvenementsIade(rows, cible)
+  const now = new Date()
+  const dtstamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}`
+    + `T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`
+  const uidBase = nom.replace(/[^a-zA-Z0-9]/g, '')
+  const cal = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//sarm-dashboard//planning-iade//FR',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    ...evenementsVersVevents(evenements, uidBase, dtstamp), 'END:VCALENDAR']
+  return { nom, ics: cal.join('\r\n') + '\r\n', nbEvents: evenements.length, moisLabel, moisSlug }
 }
