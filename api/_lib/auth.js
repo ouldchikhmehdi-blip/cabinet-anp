@@ -45,6 +45,43 @@ export async function requireAdmin(req) {
 }
 
 /**
+ * requireUser(req) — vérifie que l'appelant est authentifié et actif (tout rôle).
+ *
+ * Renvoie { user, profile } où profile porte role, status et les drapeaux IADE
+ * (is_iade, is_gestion_iade, is_faiseur) + nom_complet + email. À l'appelant de
+ * décider ce qu'il autorise à partir de là (cf. api/iade-conges-notify.js).
+ * Lance { status, message } si non authentifié ou compte désactivé.
+ */
+export async function requireUser(req) {
+  const authHeader = req.headers['authorization'] ?? ''
+  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+  if (!jwt) {
+    throw { status: 401, message: 'Non authentifié.' }
+  }
+
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(jwt)
+  if (error || !user) {
+    throw { status: 401, message: 'Session invalide ou expirée.' }
+  }
+
+  const { data: profile, error: profErr } = await supabaseAdmin
+    .from('profiles')
+    .select('id, role, status, is_iade, is_gestion_iade, is_faiseur, nom_complet, email')
+    .eq('id', user.id)
+    .single()
+
+  if (profErr || !profile) {
+    throw { status: 403, message: 'Accès refusé.' }
+  }
+  if (profile.status !== 'active') {
+    throw { status: 403, message: 'Compte désactivé.' }
+  }
+
+  return { user, profile }
+}
+
+/**
  * sendError(res, status, message) — réponse d'erreur JSON standard.
  */
 export function sendError(res, status, message) {

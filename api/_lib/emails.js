@@ -18,7 +18,7 @@ const VALIDITE = '48 heures'
 
 // Coquille HTML commune. `apercu` = texte affiché dans la liste des messages,
 // avant ouverture (masqué dans le corps).
-function coquille({ apercu, titre, corps }) {
+function coquille({ apercu, titre, corps, pied }) {
   return `<!doctype html>
 <html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -33,7 +33,7 @@ function coquille({ apercu, titre, corps }) {
           <h1 style="font-size:20px;font-weight:600;margin:20px 0 0;">${titre}</h1>
           ${corps}
           <div style="margin-top:28px;padding-top:16px;border-top:1px solid rgba(0,0,0,.08);font-size:11px;color:#888780;line-height:1.6;">
-            Si vous n'attendiez pas cette invitation, ignorez simplement ce message : sans action de votre part, aucun compte n'est créé.
+            ${pied ?? 'Si vous n\'attendiez pas cette invitation, ignorez simplement ce message : sans action de votre part, aucun compte n\'est créé.'}
           </div>
         </td></tr>
       </table>
@@ -152,6 +152,106 @@ Si vous n'attendiez pas cette invitation, ignorez ce message : aucun compte n'es
       titre: 'Vos congés en ligne',
       corps,
     }),
+    text,
+  }
+}
+
+// ============================================================
+// Notifications « Congés IADE » (cf. IADE.md § Notifications).
+// Public interne (gestion, agent) : pied de page neutre, pas de logique d'invitation.
+// ============================================================
+const PIED_NOTIF = 'Message automatique du dashboard SARM. Inutile de répondre à cet e-mail.'
+const LIBELLE_TYPE = { cp: 'congé payé', recup_ferie: 'récup. jour férié' }
+
+// Met en forme une liste de jours [{ jour: 'YYYY-MM-DD', type_conge }] → { html, text, n }.
+function formaterJours(rows) {
+  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+  const items = tries.map(r => {
+    const d = new Date(`${r.jour}T00:00:00`)
+    const date = d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    return { date, type: LIBELLE_TYPE[r.type_conge] ?? r.type_conge }
+  })
+  const html = `<ul style="font-size:14px;line-height:1.8;color:#2c2c2a;padding-left:20px;margin:8px 0 0;">
+    ${items.map(i => `<li>${i.date} — <strong>${i.type}</strong></li>`).join('')}
+  </ul>`
+  const text = items.map(i => `- ${i.date} — ${i.type}`).join('\n')
+  return { html, text, n: items.length }
+}
+
+// A. L'agent a posé des jours → e-mail au gestionnaire.
+export function emailCongesPoses({ agentNom, rows, lien }) {
+  const j = formaterJours(rows)
+  const corps = `
+    ${p(bonjour())}
+    ${p(`<strong>${agentNom}</strong> vient de déposer <strong>${j.n} jour(s)</strong> de congé, à valider :`)}
+    ${j.html}
+    ${bouton(lien, 'Ouvrir « Congés IADE »')}
+    ${p('Connectez-vous et ouvrez l\'onglet <strong>Congés IADE</strong> pour valider ou refuser.', 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour()}
+
+${agentNom} vient de déposer ${j.n} jour(s) de congé, à valider :
+${j.text}
+
+Ouvrez l'onglet « Congés IADE » du dashboard pour valider ou refuser :
+${lien}`
+  return {
+    subject: `Congés IADE à valider — ${agentNom}`,
+    html: coquille({ apercu: `${agentNom} a posé ${j.n} jour(s) — à valider`, titre: 'Demande de congé à valider', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// B. L'agent a retiré / modifié des jours → e-mail au gestionnaire.
+export function emailCongesRetires({ agentNom, rows, lien }) {
+  const j = formaterJours(rows)
+  const corps = `
+    ${p(bonjour())}
+    ${p(`<strong>${agentNom}</strong> a <strong>retiré</strong> ${j.n} jour(s) de sa demande de congé :`)}
+    ${j.html}
+    ${bouton(lien, 'Ouvrir « Congés IADE »')}
+    ${p('Sa demande a changé — vérifiez l\'onglet <strong>Congés IADE</strong>.', 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour()}
+
+${agentNom} a retiré ${j.n} jour(s) de sa demande de congé :
+${j.text}
+
+Sa demande a changé — vérifiez l'onglet « Congés IADE » :
+${lien}`
+  return {
+    subject: `Congés IADE modifiés — ${agentNom}`,
+    html: coquille({ apercu: `${agentNom} a retiré ${j.n} jour(s)`, titre: 'Demande de congé modifiée', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// C. Le gestionnaire a décidé → e-mail à l'agent (validation ou refus).
+export function emailCongesDecides({ agentNom, rows, statut, motif, lien }) {
+  const j = formaterJours(rows)
+  const valide = statut === 'validee'
+  const verbe = valide ? 'validé(s)' : 'refusé(s)'
+  const corpsMotif = (!valide && motif?.trim())
+    ? p(`Motif : <em>${motif.trim()}</em>`, 'color:#5f5e5a;')
+    : ''
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`Vos congés suivants ont été <strong>${verbe}</strong> :`)}
+    ${j.html}
+    ${corpsMotif}
+    ${bouton(lien, 'Ouvrir « Mes congés »')}
+    ${!valide ? p('Vous pouvez reposer d\'autres jours depuis l\'onglet <strong>Mes congés</strong>.', 'color:#5f5e5a;') : ''}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+Vos congés suivants ont été ${verbe} :
+${j.text}${(!valide && motif?.trim()) ? `\n\nMotif : ${motif.trim()}` : ''}
+
+Ouvrez l'onglet « Mes congés » du dashboard :
+${lien}`
+  return {
+    subject: valide ? 'Vos congés ont été validés' : 'Vos congés — réponse de la gestion',
+    html: coquille({ apercu: `Vos congés ont été ${verbe}`, titre: 'Réponse à votre demande de congé', corps, pied: PIED_NOTIF }),
     text,
   }
 }

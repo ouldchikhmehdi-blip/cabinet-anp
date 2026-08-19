@@ -13,7 +13,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import CalendrierConges from '../components/iade/CalendrierConges'
 import SyntheseMensuelle from '../components/iade/SyntheseMensuelle'
-import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade } from '../utils/iadeCongesApi'
+import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade, notifierConges } from '../utils/iadeCongesApi'
 import {
   bornesMois, libelleType, libelleStatut, formatPeriode,
   plages, compterParType, TYPES_CONGE, STATUTS,
@@ -101,6 +101,7 @@ export default function IadeGestion() {
     setErreur(null); setSucces(null); setEnCours(plage.ids[0])
     try {
       await deciderJours(plage.ids, statut, motif)
+      await notifierConges({ type: 'decision', ids: plage.ids })
       setSucces(`${plage.nb} jour(s) ${statut === 'validee' ? 'validé(s)' : 'refusé(s)'} — ${quoi}.`)
       await charger()
     } catch {

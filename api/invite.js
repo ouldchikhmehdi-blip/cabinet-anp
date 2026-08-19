@@ -1,8 +1,8 @@
 import crypto from 'crypto'
-import nodemailer from 'nodemailer'
 import { supabaseAdmin } from './_lib/supabaseAdmin.js'
 import { requireAdmin, sendError, setCorsHeaders } from './_lib/auth.js'
 import { emailInvitationAssocie, emailInvitationIade } from './_lib/emails.js'
+import { envoyerEmail } from './_lib/mailer.js'
 
 /**
  * POST /api/invite
@@ -109,38 +109,15 @@ export default async function handler(req, res) {
     ? emailInvitationIade({ lien, nom })
     : emailInvitationAssocie({ lien, nom })
 
-  // Tente l'envoi via SMTP Gmail (best-effort : si les identifiants manquent ou que
-  // Google refuse, l'invitation reste valable et le lien est affiché dans l'interface
-  // admin pour un envoi manuel). L'envoi part de GMAIL_USER vers n'importe quel
-  // destinataire — pas besoin de domaine vérifié. Création du mot de passe
-  // d'application : cf. AUTH.md § Envoi d'e-mails (Gmail).
-  let emailSent = false
-  let emailErreur = null
-  try {
-    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-      throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD non configurés.')
-    }
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
-    })
-    await transporter.sendMail({
-      from:    `"SARM Dashboard" <${process.env.GMAIL_USER}>`,
-      to:      email,
-      subject: message.subject,
-      html:    message.html,
-      text:    message.text,
-    })
-    emailSent = true
-  } catch (err) {
-    console.error('Erreur envoi Gmail (non bloquante):', err)
-    emailErreur = (err?.message ?? 'Service d\'envoi injoignable.').slice(0, 200)
-  }
+  // Envoi via Gmail (best-effort : si l'envoi échoue, l'invitation reste valable et
+  // le lien est affiché dans l'interface admin pour un envoi manuel). Détails et
+  // configuration du mot de passe d'application : cf. AUTH.md § Étape 5 et api/_lib/mailer.js.
+  const { sent: emailSent, error: emailErreur } = await envoyerEmail({
+    to:      email,
+    subject: message.subject,
+    html:    message.html,
+    text:    message.text,
+  })
 
   return res.status(201).json({
     ok:        true,

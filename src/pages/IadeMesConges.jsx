@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import CalendrierSaisie from '../components/iade/CalendrierSaisie'
-import { chargerMesConges, poserJours, supprimerJours } from '../utils/iadeCongesApi'
+import { chargerMesConges, poserJours, supprimerJours, notifierConges } from '../utils/iadeCongesApi'
 import {
   TYPES_CONGE, TYPE_DEFAUT, STATUTS,
   libelleType, libelleStatut, formatPeriode, resumeTypes,
@@ -100,7 +100,8 @@ export default function IadeMesConges({ apercu = null }) {
 
     setEnvoi(true)
     try {
-      await poserJours({ userId, jours: listeSelection })
+      const posees = await poserJours({ userId, jours: listeSelection })
+      await notifierConges({ type: 'pose', lot: posees[0]?.lot })
       setSucces(`Demande transmise : ${listeSelection.length} jour(s) — ${resumeTypes(listeSelection.map(j => ({ type_conge: j.type })))}.`)
       setSelection(new Map())
       await charger()
@@ -118,6 +119,8 @@ export default function IadeMesConges({ apercu = null }) {
     if (!confirm(`Retirer ${plage.nb} jour(s) — ${libelleType(plage.type_conge)}, ${formatPeriode(plage.debut, plage.fin)} ?`)) return
     setErreur(null); setSucces(null)
     try {
+      // Prévient la gestion AVANT la suppression (après, les lignes n'existent plus à relire).
+      await notifierConges({ type: 'retrait', ids: plage.ids })
       await supprimerJours(plage.ids)
       setSucces('Jours retirés.')
       await charger()

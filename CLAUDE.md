@@ -236,6 +236,7 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
       Procédure : `AUTH.md` § Étape 2 bis. **Le code est déjà en place** (boutons « Continuer avec Google »
       sur l'écran de connexion et sur l'invitation) ; tant que ce réglage n'est pas fait, le bouton
       répond « Connexion Google indisponible » et tout le reste fonctionne normalement.
+- [x] **Notifications e-mail congés IADE** (pose/retrait → gestion ; décision → agent) — 2026-08-19 (cf. `IADE.md` § 9)
 - [ ] Désigner le gestionnaire IADE et inviter les agents (onglet « Comptes »)
 
 ---

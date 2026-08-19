@@ -268,9 +268,11 @@ Un compte révoqué apparaît « (désactivé) » dans le récapitulatif par age
 | `POST /api/invite` | admin | `{ email, role, isIade }` — invitation, e-mail adapté si IADE |
 | `POST /api/accept` | invité | applique `is_iade` d'après l'invitation, via les métadonnées |
 | `POST /api/iade-attribuer` | admin | `{ userId, isIade, isGestionIade }` — pose les drapeaux, refuse les cumuls |
+| `POST /api/iade-conges-notify` | agent · gestion | `{ type, lot?, ids? }` — e-mails de notification (cf. § 9) |
 
-Le reste (dépôt, validation, calendrier) passe **directement par Supabase sous RLS** —
-pas de fonction serverless, donc pas de `service_role` en jeu.
+Le **dépôt, la validation et le calendrier** passent **directement par Supabase sous RLS**
+(pas de `service_role`). Seul l'**envoi des e-mails** de notification passe par le serverless
+`iade-conges-notify` (il lui faut le `service_role` pour lire l'adresse du destinataire).
 
 ---
 
@@ -281,6 +283,35 @@ pas de fonction serverless, donc pas de `service_role` en jeu.
   Le modèle « une ligne = un jour, avec sa nature » rend ce calcul possible plus tard
   sans nouvelle migration.
 - **Demi-journées** : non gérées, l'unité est le jour.
-- **Notification e-mail** à l'agent lors de la décision : tout se lit dans l'app.
 - **Saisie d'une absence par la gestion pour un agent** : la RLS l'autorise déjà
   (`iade_conges_insert`), l'écran ne l'expose pas encore.
+
+> La piste « notification e-mail » (autrefois écartée) est désormais **implémentée** —
+> voir § 9 ci-dessous.
+
+---
+
+## 9. Notifications e-mail (via Gmail)
+
+Ajoutées le 2026-08-19. Envoi best-effort par **Gmail SMTP** (`api/_lib/mailer.js`,
+cf. `AUTH.md § Étape 5`) — une notification qui échoue **ne bloque jamais** le congé.
+Endpoint unique **`/api/iade-conges-notify`** ; le front l'appelle après chaque mouvement
+(`src/utils/iadeCongesApi.js` → `notifierConges`).
+
+| Événement | Déclencheur | Destinataire | Gabarit (`emails.js`) |
+|---|---|---|---|
+| **Pose** d'un lot | l'agent | le(s) **gestionnaire(s)** (`is_gestion_iade` actifs) | `emailCongesPoses` |
+| **Retrait / modif** de jours | l'agent | le(s) **gestionnaire(s)** | `emailCongesRetires` |
+| **Décision** (validation **ou** refus) | la gestion | l'**agent** concerné | `emailCongesDecides` |
+
+Garde-fous :
+
+- Le serveur **relit toujours les jours en base** (jamais le contenu envoyé par le client) :
+  ça valide l'appartenance du lot / des ids à l'appelant (pose, retrait) et garantit un
+  e-mail fidèle à l'état réel. Les adresses des destinataires ne sont **jamais** renvoyées
+  au client.
+- **Destinataires = uniquement `is_gestion_iade`** (ni faiseur, ni admin), et c'est
+  **dynamique** : réattribuer le rôle « Gestion » suffit, rien à changer dans le code.
+- Le **retrait notifie AVANT la suppression** (sinon les lignes n'existent plus à relire) :
+  ordre respecté dans `IadeMesConges.jsx`.
+- Le refus embarque le **motif** (`motif_reponse`) dans l'e-mail à l'agent.
