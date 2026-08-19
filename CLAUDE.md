@@ -12,6 +12,24 @@
 
 ---
 
+## 0. Carte des docs — routage (lire en premier)
+
+> Table d'aiguillage : selon ce sur quoi porte la question, le **doc qui fait foi** et les **fichiers clés**. Ouvrir le doc concerné avant toute intervention. Tous les docs sont **à la racine** (convention verrouillée : ne pas les déplacer, les renvois en dépendent).
+
+| La question porte sur… | Doc qui fait foi | Fichiers de code clés |
+|---|---|---|
+| Vue d'ensemble, stack figée, sécurité globale, conventions, état d'avancement | **`CLAUDE.md`** (ce fichier) | `src/App.jsx`, `src/lib/`, `src/components/Sidebar.jsx` |
+| Dashboard financier (CA, dépenses, trésorerie, rétrocessions, règles de virements, remplaçants, salariés CDI) | **`CLAUDE.md`** §1 + §4 (règle données) | `src/pages/{VueGlobale,ChiffreAffaires,Depenses,Tresorerie,Retrocessions,ReglesVirements,RemplacantsMAR,RemplacantsIADE,SalariesCDI}.jsx`, `src/data/` (mock) |
+| Authentification, 2FA (TOTP/AAL2), invitations, connexion Google, gestion des comptes | **`AUTH.md`** | `src/auth/`, `src/pages/AdminUsers.jsx`, `api/{invite,accept,promote,revoke}.js` |
+| Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
+| Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
+| Congés IADE (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `supabase/iade_conges.sql` |
+| Schéma DB, RLS, triggers, sécurité en base | **`supabase/schema.sql`** (+ `securite_aal2.sql`, `connexion_google.sql`) | `supabase/*.sql` |
+
+Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « fait foi ») ; ce tableau est le point d'entrée rapide.
+
+---
+
 ## 1. Présentation du projet
 
 Tableau de bord financier privé pour **SARM** (Service Anesthésie Réanimation Millénaire), cabinet d'anesthésie-réanimation organisé en **8 associés à parts égales**.
