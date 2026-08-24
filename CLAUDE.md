@@ -35,7 +35,7 @@ Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « 
 Tableau de bord financier privé pour **SARM** (Service Anesthésie Réanimation Millénaire), cabinet d'anesthésie-réanimation organisé en **8 associés à parts égales**.
 
 - **Dossier / repo** : `cabinet-anp`
-- **Hébergement** : Vercel (`sarm-dashboard.vercel.app`) — ancien domaine `cabinet-anp-b32k.vercel.app` encore actif
+- **Hébergement** : Vercel — **une seule adresse de référence : `sarm-dashboard.vercel.app`** (cf. § 2 « Hébergement » pour les doublons à supprimer)
 - **Dev** : VS Code, en local (`http://localhost:5173`)
 - **Public** : strictement les 8 associés. **Accès sur invitation seulement, aucune inscription publique.**
 
@@ -80,8 +80,31 @@ Fonctionnalités transverses : **filtres par période** et **comparaison année 
 - **Gmail (SMTP via Nodemailer)** — envoi des e-mails d'invitation, sans domaine à vérifier (cf. `AUTH.md` § Étape 5)
 
 ### Hébergement
-- **Vercel** — front + fonctions serverless (`vercel.json`)
-- **Accès MCP Vercel** (Claude Code) : serveur déclaré dans `.mcp.json` (`https://mcp.vercel.com`, OAuth, sans secret committé). Claude peut donc lire/agir sur Vercel (déploiements, logs de build/runtime, projets). Équipe **« SARM's projects »** `team_I6GzlV55DLnD2JuWePgCpOlf` · projet **`sarm-dashboard`** `prj_qiWMciweUPN567QPSXM5wU1ig69v` (le projet actif ; `cabinet-anp` `prj_sya4JWd19z4wIC5zpH1gDSuOtWbV` est l'ancien). L'auth OAuth est locale à la machine (à refaire si la session MCP se déconnecte).
+- **Vercel** — front + fonctions serverless (`vercel.json`). Équipe **« SARM's projects »** `team_I6GzlV55DLnD2JuWePgCpOlf`, plan *hobby*.
+
+**Adresse de référence, la seule à communiquer :** `https://sarm-dashboard.vercel.app`
+(projet Vercel **`sarm-dashboard`** `prj_qiWMciweUPN567QPSXM5wU1ig69v` — le projet actif).
+C'est aussi la seule adresse déclarée dans Supabase → *Authentication → URL Configuration*
+(cf. `AUTH.md` § 1) et dans `VITE_APP_URL` : **tout lien d'invitation, de réinitialisation
+ou de décision d'heures sup part vers elle**, quelle que soit l'adresse par laquelle on est entré.
+
+⚠️ **Deux doublons subsistent, à supprimer côté Vercel** (relevé le 24/08/2026) :
+
+| Adresse | Ce que c'est | État constaté |
+|---|---|---|
+| `cabinet-anp-b32k.vercel.app` | *alias* du projet actif | sert la bonne application — simple porte d'entrée en double |
+| `cabinet-anp.vercel.app` | **ancien projet** `prj_sya4JWd19z4wIC5zpH1gDSuOtWbV`, branché sur le même dépôt GitHub | build cassé (aucune variable `VITE_*` : le front ne joint pas Supabase) et `/api/*` en erreur 500 |
+
+L'ancien projet **reconstruit le dépôt à chaque `git push`** : deux déploiements par commit,
+deux vérifications GitHub, et **deux e-mails d'échec** quand un build casse. Le supprimer
+(Vercel → projet `cabinet-anp` → *Settings* → *Delete Project*) supprime ce bruit ;
+retirer l'alias `cabinet-anp-b32k` (projet actif → *Settings* → *Domains*) laisse une adresse unique.
+
+- **Accès MCP Vercel** (Claude Code) : serveur déclaré dans `.mcp.json` (`https://mcp.vercel.com`, OAuth,
+  sans secret committé). ⚠️ **En pratique cet accès ne fonctionne pas** : la session OAuth voit l'équipe
+  mais renvoie `403 Forbidden` sur les déploiements et une liste vide sur les projets (vérifié le 24/08/2026).
+  Pour consulter l'état réel d'un déploiement sans le tableau de bord, passer par les statuts GitHub :
+  `gh api repos/:owner/:repo/commits/<sha>/status --jq '.statuses[] | "\(.context) : \(.state)"'`.
 
 ---
 
@@ -231,6 +254,9 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [ ] **Déploiement Vercel** + variables d'env + protection mot de passe intérimaire
 - [ ] **Migration `src/data/*` (mock) → tables Supabase** + RLS avec exigence **AAL2** pour les données sensibles
 - [ ] Suppression de la protection intérimaire Vercel une fois les données en base
+- [ ] ⚠️ **Supprimer l'ancien projet Vercel `cabinet-anp`** (`prj_sya4JWd19z4wIC5zpH1gDSuOtWbV`) et
+      l'alias `cabinet-anp-b32k.vercel.app`, pour ne garder qu'une adresse (cf. § 2 « Hébergement »).
+      Tant qu'il existe, chaque `git push` déclenche deux déploiements et double les e-mails d'échec.
 
 ### Module congés IADE (cf. `IADE.md`)
 - [x] Écrans agent / gestion / aperçu, endpoints, RLS, tests — livré le 2026-08-17
