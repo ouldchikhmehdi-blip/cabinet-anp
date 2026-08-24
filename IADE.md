@@ -71,9 +71,9 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 |---|---|---|
 | **Mes congés** | `src/pages/IadeMesConges.jsx` | Agent IADE |
 | **Mes heures sup** | `src/pages/IadeMesHeuresSup.jsx` | Agent IADE |
-| **Congés de l'équipe** / **Absences IADE** | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
+| **Congés de l'équipe** (agent) / **Congés équipe** (gestion) | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
 | **Heures sup à valider** | `src/pages/HeuresSupAValider.jsx` | **Tout associé** (MAR) |
-| **Congés IADE** (validation + heures sup) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
+| **Congés et HS** (validation des congés + heures sup) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |
 
 **Aperçu compte IADE** : voir l'application telle qu'un agent la voit, pour l'agent choisi

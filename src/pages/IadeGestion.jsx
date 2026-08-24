@@ -174,7 +174,7 @@ export default function IadeGestion() {
   return (
     <div style={{ maxWidth: 1180 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 4, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600 }}>Congés IADE</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600 }}>Congés et HS</h1>
         <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.input}>
           {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
