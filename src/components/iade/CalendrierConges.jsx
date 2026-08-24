@@ -6,13 +6,38 @@
 // Chaque case porte l'abréviation de la NATURE du jour (CP / RF) et prend la
 // couleur de son STATUT (ambre = demandé, vert = validé) : les deux informations
 // se lisent d'un coup d'œil sans dépendre de la seule couleur.
+//
+// `heuresSup` (facultatif) ajoute les jours portant des heures supplémentaires,
+// affichés « +Xh ». Il n'est passé QUE depuis l'écran de gestion : les heures d'un
+// agent ne sont pas montrées à ses collègues dans le calendrier d'équipe.
+// Les lignes attendues portent `nom` (comme celles de la RPC iade_calendrier).
+// Si un jour porte les deux, le congé prime — comme dans le planning Excel.
 // ============================================================
 import { moisAnneeFR } from '../../utils/calendrier'
 import { joursDuMois, grouperParAgent, absenceDuJour, courtType, libelleType, formatJour, libelleStatut, STATUTS } from '../../utils/iadeConges'
 
-export default function CalendrierConges({ annee, mois, absences = [], chargement = false, onNaviguer }) {
+export default function CalendrierConges({ annee, mois, absences = [], heuresSup = [], chargement = false, onNaviguer }) {
   const jours = joursDuMois(annee, mois)
-  const lignes = grouperParAgent(absences)
+
+  // Index des heures sup : agent → jour → ligne.
+  const hsParAgent = new Map()
+  for (const h of heuresSup) {
+    if (h.statut === 'refusee') continue
+    if (!hsParAgent.has(h.user_id)) hsParAgent.set(h.user_id, new Map())
+    const jour = hsParAgent.get(h.user_id)
+    // La ligne validée l'emporte sur celle en attente (même règle que les congés).
+    if (!jour.has(h.jour) || h.statut === 'validee') jour.set(h.jour, h)
+  }
+
+  // Un agent qui n'a que des heures sup ce mois-ci doit apparaître lui aussi.
+  const lignes = [...grouperParAgent(absences)]
+  for (const [userId, parJour] of hsParAgent) {
+    if (lignes.some(l => l.userId === userId)) continue
+    const dansLeMois = [...parJour.values()].some(h => jours.some(j => j.iso === h.jour))
+    if (!dansLeMois) continue
+    lignes.push({ userId, nom: [...parJour.values()][0].nom ?? '—', jours: [] })
+  }
+  lignes.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
 
   const cellule = {
     border: '0.5px solid var(--color-border)',
@@ -103,15 +128,22 @@ export default function CalendrierConges({ annee, mois, absences = [], chargemen
                     {ligne.nom}
                   </td>
                   {jours.map(j => {
-                    const a = absenceDuJour(ligne.jours, j.iso)
-                    const st = a ? STATUTS[a.statut] : null
+                    const a  = absenceDuJour(ligne.jours, j.iso)
+                    const hs = hsParAgent.get(ligne.userId)?.get(j.iso) ?? null
+                    // Le congé prime : la case ne porte qu'une information.
+                    const marque = a ?? hs
+                    const st = marque ? STATUTS[marque.statut] : null
+                    const infobulle = [
+                      a  ? `${libelleType(a.type_conge)} · ${formatJour(a.jour)} · ${libelleStatut(a.statut).toLowerCase()}` : null,
+                      hs ? `${hs.heures} h supplémentaires · ${libelleStatut(hs.statut).toLowerCase()}` : null,
+                    ].filter(Boolean).join(' — ')
                     return (
                       <td
                         key={j.iso}
-                        title={a ? `${libelleType(a.type_conge)} · ${formatJour(a.jour)} · ${libelleStatut(a.statut).toLowerCase()}` : undefined}
+                        title={infobulle || undefined}
                         style={{
                           ...cellule,
-                          background: a
+                          background: marque
                             ? st?.fond
                             : j.weekend || j.ferie ? 'var(--color-bg)' : 'transparent',
                           color: st?.couleur,
@@ -120,7 +152,7 @@ export default function CalendrierConges({ annee, mois, absences = [], chargemen
                           letterSpacing: '0.02em',
                         }}
                       >
-                        {a ? courtType(a.type_conge) : ''}
+                        {a ? courtType(a.type_conge) : hs ? `+${hs.heures}` : ''}
                       </td>
                     )
                   })}

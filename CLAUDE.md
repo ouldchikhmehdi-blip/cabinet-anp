@@ -23,7 +23,7 @@
 | Authentification, 2FA (TOTP/AAL2), invitations, connexion Google, gestion des comptes | **`AUTH.md`** | `src/auth/`, `src/pages/AdminUsers.jsx`, `api/{invite,accept,promote,revoke}.js` |
 | Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
 | Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
-| Congés IADE (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `supabase/iade_conges.sql`, `supabase/iade_agenda.sql` |
+| Congés IADE **et heures supplémentaires** (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/pages/HeuresSupAValider.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/iadeHeuresSup{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `api/iade-hs-notify.js`, `supabase/iade_conges.sql`, `supabase/iade_heures_sup.sql`, `supabase/iade_agenda.sql` |
 | Schéma DB, RLS, triggers, sécurité en base | **`supabase/schema.sql`** (+ `securite_aal2.sql`, `connexion_google.sql`) | `supabase/*.sql` |
 
 Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « fait foi ») ; ce tableau est le point d'entrée rapide.
@@ -229,7 +229,19 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [x] Écrans agent / gestion / aperçu, endpoints, RLS, tests — livré le 2026-08-17
 - [x] Migrations appliquées en base (`iade_conges`, `securite_aal2`, `invitation_nom_complet`, `connexion_google`, `iade_conges_jour_par_jour`)
 - [x] Saisie **jour par jour** (congé payé / récupération de jour férié), **sans motif demandé à l'agent** — 2026-08-24
-- [x] **Synthèse mensuelle** copiable pour la comptable (jours validés uniquement) — 2026-08-24
+- [x] **Synthèse mensuelle** copiable pour la comptable (congés **et** heures sup validés) — 2026-08-24
+- [x] **Heures supplémentaires** : l'agent déclare et désigne le MAR qui les a demandées (ce MAR
+      valide, la gestion tranche en secours) · la gestion peut aussi en ajouter, déjà validées,
+      l'agent est notifié — 2026-08-24 (cf. `IADE.md` § 3 ter)
+- [x] **Validation des heures sup depuis l'e-mail** (page de confirmation sans connexion,
+      `api/hs-decision.js`) + **fenêtre de correction jusqu'à la fin du mois suivant**
+      pour le MAR — 2026-08-24 (cf. `IADE.md` § 3 ter)
+- [x] **Cumul mensuel + calendrier des heures sup** côté agent — 2026-08-24
+- [ ] ⚠️ **Exécuter `supabase/iade_heures_sup.sql`** sur un nouvel environnement
+      (déjà appliqué en production : migrations `iade_heures_sup`,
+      `iade_heures_sup_jeton_et_fenetre`, `iade_hs_decision_par_jeton`)
+- [ ] **Redescente des congés et heures sup dans le planning Excel sur Dropbox** (cf. `IADE.md` § 11) :
+      scripts prêts côté mini PC, reste le remote `rclone dropbox:` et le partage en lecture seule
 - [x] Exigence **AAL2 déplacée dans la RLS** (`est_aal2()`, `acces_cabinet()`) ; comptes IADE dispensés de 2FA
 - [ ] ⏳ **À FAIRE — Authentification Google (Mehdi)** : créer le client OAuth dans Google Cloud Console,
       puis coller Client ID + Secret dans Supabase → Authentication → Providers → Google.

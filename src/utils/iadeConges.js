@@ -13,6 +13,7 @@
 // Accès Supabase : iadeCongesApi.js · Schéma + RLS : supabase/iade_conges.sql
 // ============================================================
 import { parseISO, formatISO, joursFeriesFR, moisAnneeFR } from './calendrier'
+import { sectionHeuresSup } from './iadeHeuresSup'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
 
@@ -265,14 +266,17 @@ export function indexJoursPoses(jours) {
 // ── Synthèse mensuelle pour la comptabilité ──────────────────────────────────
 
 // Texte prêt à copier-coller dans un e-mail à la comptable : pour le mois demandé,
-// les jours **validés** de chaque agent, détaillés par nature.
+// les jours **validés** de chaque agent détaillés par nature, PUIS les heures
+// supplémentaires **validées**. Un seul texte à envoyer : la paie a besoin des deux.
 //
-// Ne sortent QUE les jours validés : un jour encore en attente n'est pas un congé
-// accordé, l'envoyer en paie serait une erreur. Le nombre de jours en attente est
-// renvoyé à part pour que l'écran puisse alerter la personne qui exporte.
+// Ne sortent QUE les lignes validées : un jour ou des heures en attente ne sont
+// pas accordés, les envoyer en paie serait une erreur. Les compteurs « en attente »
+// sont renvoyés à part pour que l'écran alerte la personne qui exporte.
 //
-// → { texte, valides, enAttente, nbAgents, parType }
-export function syntheseMensuelle({ jours = [], agents = [], annee, mois, genereLe = null }) {
+// → { texte, valides, enAttente, nbAgents, parType, heuresSup }
+export function syntheseMensuelle({
+  jours = [], heuresSup = [], agents = [], annee, mois, genereLe = null,
+}) {
   const { debut, fin } = bornesMois(annee, mois)
   const duMois    = jours.filter(j => j.jour >= debut && j.jour <= fin)
   const valides   = duMois.filter(j => j.statut === 'validee')
@@ -291,7 +295,9 @@ export function syntheseMensuelle({ jours = [], agents = [], annee, mois, genere
 
   const lignes = [
     'SARM — Service Anesthésie Réanimation Millénaire',
-    `Congés IADE validés — ${moisAnneeFR(new Date(Date.UTC(annee, mois, 1)))}`,
+    `Congés et heures supplémentaires IADE — ${moisAnneeFR(new Date(Date.UTC(annee, mois, 1)))}`,
+    '',
+    'CONGÉS VALIDÉS',
     '',
   ]
 
@@ -315,6 +321,11 @@ export function syntheseMensuelle({ jours = [], agents = [], annee, mois, genere
     lignes.push(`Total du mois : ${valides.length} jour${valides.length > 1 ? 's' : ''} — ${resumeTypes(valides)}`)
   }
 
+  const hs = sectionHeuresSup({
+    heuresSup, nomDe, debut, fin, formatJour: formatJourCourt,
+  })
+  lignes.push('', 'HEURES SUPPLÉMENTAIRES VALIDÉES', '', ...hs.lignes)
+
   if (genereLe) {
     lignes.push('', `Édité le ${formatJour(genereLe)} depuis le dashboard SARM.`)
   }
@@ -325,5 +336,6 @@ export function syntheseMensuelle({ jours = [], agents = [], annee, mois, genere
     enAttente,
     nbAgents: lignesAgents.length,
     parType:  compterParType(valides),
+    heuresSup: hs,
   }
 }

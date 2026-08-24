@@ -216,7 +216,7 @@ describe('syntheseMensuelle', () => {
 
   it('trie les agents par nom et détaille chaque nature', () => {
     const lignes = synth.texte.split('\n')
-    expect(lignes[1]).toBe('Congés IADE validés — Septembre 2026')
+    expect(lignes[1]).toBe('Congés et heures supplémentaires IADE — Septembre 2026')
     expect(synth.texte.indexOf('Amar Sophie')).toBeLessThan(synth.texte.indexOf('Dupont Marie'))
     expect(synth.texte).toContain('Dupont Marie — 3 jours')
     expect(synth.texte).toContain('Congés payés (2) : lun. 07/09, mar. 08/09')
@@ -241,5 +241,38 @@ describe('syntheseMensuelle', () => {
   it('n\'invente pas de nom pour un agent supprimé', () => {
     const orphelin = syntheseMensuelle({ jours, agents: [], annee: 2026, mois: 8 })
     expect(orphelin.texte).toContain('Agent inconnu')
+  })
+
+  // La comptable reçoit UN seul texte : congés et heures sup dans le même envoi.
+  describe('heures supplémentaires dans le même texte', () => {
+    const heuresSup = [
+      { id: 'h1', user_id: 'u1', jour: '2026-09-09', heures: 4, statut: 'validee' },
+      { id: 'h2', user_id: 'u1', jour: '2026-09-23', heures: 2, statut: 'validee' },
+      { id: 'h3', user_id: 'u2', jour: '2026-09-10', heures: 6, statut: 'validee' },
+      // à exclure : en attente, refusée, et un mois voisin
+      { id: 'h4', user_id: 'u2', jour: '2026-09-11', heures: 3, statut: 'en_attente' },
+      { id: 'h5', user_id: 'u1', jour: '2026-09-12', heures: 3, statut: 'refusee' },
+      { id: 'h6', user_id: 'u1', jour: '2026-10-02', heures: 5, statut: 'validee' },
+    ]
+    const avecHs = syntheseMensuelle({ jours, heuresSup, agents, annee: 2026, mois: 8 })
+
+    it('détaille les heures validées par agent et par jour', () => {
+      expect(avecHs.texte).toContain('HEURES SUPPLÉMENTAIRES VALIDÉES')
+      expect(avecHs.texte).toContain('Dupont Marie — 6 h : mer. 09/09 (4 h), mer. 23/09 (2 h)')
+      expect(avecHs.texte).toContain('Amar Sophie — 6 h : jeu. 10/09 (6 h)')
+      expect(avecHs.texte).toContain('Total du mois : 12 h pour 2 agents.')
+    })
+
+    it('écarte les heures non validées et celles d\'un autre mois', () => {
+      expect(avecHs.heuresSup.valides).toBe(3)
+      expect(avecHs.heuresSup.heures).toBe(12)
+      expect(avecHs.heuresSup.enAttente).toBe(1)
+      expect(avecHs.texte).not.toMatch(/11\/09|12\/09|02\/10/)
+    })
+
+    it('reste lisible quand il n\'y a aucune heure sup', () => {
+      expect(synth.texte).toContain('Aucune heure supplémentaire validée sur ce mois.')
+      expect(synth.heuresSup.valides).toBe(0)
+    })
   })
 })

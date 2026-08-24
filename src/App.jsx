@@ -26,6 +26,8 @@ import PlanningConstruction from './pages/PlanningConstruction'
 import PlanningParService from './pages/PlanningParService'
 import PlanningAffiche from './pages/PlanningAffiche'
 import IadeMesConges from './pages/IadeMesConges'
+import IadeMesHeuresSup from './pages/IadeMesHeuresSup'
+import HeuresSupAValider from './pages/HeuresSupAValider'
 import IadeCalendrier from './pages/IadeCalendrier'
 import IadeGestion from './pages/IadeGestion'
 import IadeApercu from './pages/IadeApercu'
@@ -35,7 +37,7 @@ import './index.css'
 
 // Seules pages ouvertes à un compte IADE (cf. IADE.md). Tout le reste — financier,
 // planning, comptes — lui est fermé côté écran ET côté base (RLS).
-const PAGES_IADE = ['iade-mes-conges', 'iade-calendrier', 'iade-agenda-perso']
+const PAGES_IADE = ['iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso']
 
 export default function App() {
   const { session, profile, aal, nextAal, loading, recovery, siegesPrets, profilCharge } = useAuth()
@@ -222,7 +224,8 @@ export default function App() {
         <main style={{ flex: 1, overflow: 'auto', padding: '24px', background: 'var(--color-bg)' }}>
           {pageIade === 'iade-calendrier' ? <IadeCalendrier />
             : pageIade === 'iade-agenda-perso' ? <IadeAgendaPerso />
-              : <IadeMesConges />}
+              : pageIade === 'iade-mes-heures-sup' ? <IadeMesHeuresSup />
+                : <IadeMesConges />}
         </main>
       </div>
     )
@@ -257,6 +260,9 @@ export default function App() {
       case 'iade-apercu':         return peutGererIade ? <IadeApercu /> : <VueGlobale />
       case 'iade-recap-planning': return peutGererIade ? <IadeRecapPlanning /> : <VueGlobale />
       case 'iade-agenda-perso':   return peutGererIade ? <IadeAgendaPerso /> : <VueGlobale />
+      // Ouvert à TOUT associé : chacun peut être désigné par un IADE comme
+      // celui qui lui a demandé des heures sup (la RPC ne lui montre que les siennes).
+      case 'heures-sup-a-valider': return <HeuresSupAValider />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }

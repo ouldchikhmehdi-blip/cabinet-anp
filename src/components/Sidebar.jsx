@@ -12,6 +12,10 @@ const navItems = [
   { id: 'retrocessions', label: 'Virements associés', icon: '⇄' },
   { id: 'tresorerie', label: 'Trésorerie', icon: '🏦' },
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
+  // Tout associé peut être désigné par un IADE comme celui qui a demandé des
+  // heures sup : l'entrée est donc ouverte à tous les comptes non-IADE.
+  { section: true, label: 'IADE' },
+  { id: 'heures-sup-a-valider', label: 'Heures sup à valider', icon: '⏱' },
   { section: true, label: 'Planning' },
   { id: 'planning-desiderata', label: 'Mes desiderata', icon: '📝' },
 ]
@@ -36,6 +40,7 @@ const iadeGestionItems = [
 // Congés IADE — côté agent : sa navigation ENTIÈRE (rien d'autre ne lui est ouvert)
 const iadeAgentItems = [
   { id: 'iade-mes-conges', label: 'Mes congés', icon: '🌴' },
+  { id: 'iade-mes-heures-sup', label: 'Mes heures sup', icon: '⏱' },
   { id: 'iade-calendrier', label: "Congés de l'équipe", icon: '📆' },
   { id: 'iade-agenda-perso', label: 'Sync agenda', icon: '📲' },
 ]

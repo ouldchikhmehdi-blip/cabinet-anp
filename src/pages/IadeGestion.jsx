@@ -13,7 +13,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import CalendrierConges from '../components/iade/CalendrierConges'
 import SyntheseMensuelle from '../components/iade/SyntheseMensuelle'
+import HeuresSupGestion from '../components/iade/HeuresSupGestion'
 import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade, notifierConges } from '../utils/iadeCongesApi'
+import { chargerHeuresSupAnnee } from '../utils/iadeHeuresSupApi'
 import {
   bornesMois, libelleType, libelleStatut, formatPeriode,
   plages, compterParType, TYPES_CONGE, STATUTS,
@@ -25,7 +27,8 @@ export default function IadeGestion() {
   const [annee, setAnnee] = useState(maintenant.getFullYear())
   const [mois,  setMois]  = useState(maintenant.getMonth())
 
-  const [demandes, setDemandes] = useState([])   // jours posés sur l'année
+  const [demandes,  setDemandes]  = useState([])   // jours posés sur l'année
+  const [heuresSup, setHeuresSup] = useState([])   // heures sup de l'année
   const [agents,   setAgents]   = useState([])
   const [absences, setAbsences] = useState([])   // calendrier du mois affiché
   const [charge,   setCharge]   = useState(true)
@@ -34,12 +37,14 @@ export default function IadeGestion() {
   const [succes,   setSucces]   = useState(null)
   const [enCours,  setEnCours]  = useState(null) // clé de la plage en cours de décision
 
-  // Jours de l'année + comptes IADE.
+  // Jours de l'année + heures sup de l'année + comptes IADE.
   const charger = useCallback(async () => {
     setCharge(true)
     try {
-      const [d, a] = await Promise.all([chargerDemandes(annee), chargerAgentsIade()])
-      setDemandes(d); setAgents(a); setErreur(null)
+      const [d, h, a] = await Promise.all([
+        chargerDemandes(annee), chargerHeuresSupAnnee(annee), chargerAgentsIade(),
+      ])
+      setDemandes(d); setHeuresSup(h); setAgents(a); setErreur(null)
     } catch {
       setErreur('Impossible de charger les demandes.')
     } finally {
@@ -110,6 +115,12 @@ export default function IadeGestion() {
       setEnCours(null)
     }
   }
+
+  // Le calendrier attend des lignes déjà nommées (comme celles de la RPC des congés).
+  const heuresSupNommees = useMemo(
+    () => heuresSup.map(h => ({ ...h, nom: nomDe(h.user_id) })),
+    [heuresSup, nomDe]
+  )
 
   // Récapitulatif par agent sur l'année : jours validés par nature + jours en attente.
   const recap = useMemo(() => agents.map(a => {
@@ -215,19 +226,31 @@ export default function IadeGestion() {
         )}
       </div>
 
+      {/* ── Heures supplémentaires ── */}
+      <div style={s.section}>
+        <div style={s.titre}>Heures supplémentaires</div>
+        <HeuresSupGestion
+          heuresSup={heuresSup}
+          agents={agents}
+          annee={annee}
+          onChange={charger}
+        />
+      </div>
+
       {/* ── Synthèse mensuelle pour la comptable ── */}
       <div style={s.section}>
         <div style={s.titre}>Synthèse mensuelle pour la comptable</div>
-        <SyntheseMensuelle jours={demandes} agents={agents} annee={annee} />
+        <SyntheseMensuelle jours={demandes} heuresSup={heuresSup} agents={agents} annee={annee} />
       </div>
 
       {/* ── Calendrier d'équipe ── */}
       <div style={s.section}>
-        <div style={s.titre}>Calendrier des absences</div>
+        <div style={s.titre}>Calendrier des absences et des heures sup</div>
         <CalendrierConges
           annee={annee}
           mois={mois}
           absences={absences}
+          heuresSup={heuresSupNommees}
           chargement={chargeCal}
           onNaviguer={naviguer}
         />

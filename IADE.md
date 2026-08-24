@@ -1,9 +1,11 @@
 # IADE.md — Module « Congés IADE »
 
-> Fichier de référence du module congés des infirmiers anesthésistes (IADE). Il **fait foi** :
-> le lire avant toute intervention sur les comptes IADE, les demandes de congés ou leur RLS.
+> Fichier de référence du module congés **et heures supplémentaires** des infirmiers
+> anesthésistes (IADE). Il **fait foi** : le lire avant toute intervention sur les comptes
+> IADE, les demandes de congés, les heures sup ou leur RLS.
 >
-> Schéma + RLS : **`supabase/iade_conges.sql`** · Auth générale : `AUTH.md` · Planning : `PLANNING.md`
+> Schéma + RLS : **`supabase/iade_conges.sql`** et **`supabase/iade_heures_sup.sql`**
+> · Auth générale : `AUTH.md` · Planning : `PLANNING.md`
 
 ---
 
@@ -17,12 +19,17 @@ Trois populations :
 
 | Qui | Drapeau | Ce qu'il voit |
 |---|---|---|
-| **Agent IADE** | `profiles.is_iade` | Uniquement « Mes congés » et « Congés de l'équipe ». Rien d'autre. |
-| **Gestionnaire des IADE** | `profiles.is_gestion_iade` | Les demandes (valider / refuser), le calendrier, le récap par agent. |
+| **Agent IADE** | `profiles.is_iade` | « Mes congés », « Mes heures sup » et « Congés de l'équipe ». Rien d'autre. |
+| **MAR (associé)** | aucun drapeau — voir ci-dessous | « Heures sup à valider » : uniquement les déclarations **qui le désignent**. |
+| **Gestionnaire des IADE** | `profiles.is_gestion_iade` | Les demandes (valider / refuser), les heures sup, le calendrier, le récap par agent. |
 | **Faiseur de planning** | `profiles.is_faiseur` | Idem gestionnaire : les congés IADE conditionnent le planning. |
 | **Admin** | `profiles.role = 'admin'` | Idem, plus la création des comptes (onglet « Comptes »). |
 
 Fonction SQL de référence : **`public.peut_gerer_iade()`** = gestionnaire IADE **ou** faiseur **ou** admin.
+
+**« MAR » n'est pas un nouveau drapeau.** C'est `public.acces_cabinet()`, qui vaut déjà
+« compte actif, 2FA vérifiée, non-IADE » — soit exactement les associés. Ne pas en créer un
+autre : deux définitions du même rôle finiraient par diverger.
 
 ---
 
@@ -107,7 +114,9 @@ Le texte produit (fonction pure `syntheseMensuelle()`, testée) :
 
 ```
 SARM — Service Anesthésie Réanimation Millénaire
-Congés IADE validés — Septembre 2026
+Congés et heures supplémentaires IADE — Septembre 2026
+
+CONGÉS VALIDÉS
 
 Amar Sophie — 2 jours
   Congés payés (2) : lun. 14/09, mar. 15/09
@@ -118,19 +127,114 @@ Dupont Marie — 6 jours
 
 Total du mois : 8 jours — 7 congés payés · 1 récup. jour férié
 
+HEURES SUPPLÉMENTAIRES VALIDÉES
+
+Dupont Marie — 6 h : mer. 09/09 (4 h), mer. 23/09 (2 h)
+
+Total du mois : 6 h pour 1 agent.
+
 Édité le 02/10/2026 depuis le dashboard SARM.
 ```
 
 Règles, à ne pas modifier sans y réfléchir :
 
-- **Seuls les jours `validee` sortent.** Un jour en attente n'est pas un congé accordé :
-  l'envoyer en paie serait une erreur. Les jours refusés n'y sont évidemment pas non plus.
-- Les jours du mois **encore en attente** sont comptés et affichés **au-dessus** du texte,
-  en avertissement — pour qu'on les traite avant d'envoyer — mais jamais dans le texte.
+- **Un seul texte, congés ET heures sup.** La paie a besoin des deux ; deux exports séparés
+  se seraient désynchronisés au premier oubli.
+- **Seules les lignes `validee` sortent.** Ce qui est en attente n'est pas accordé :
+  l'envoyer en paie serait une erreur. Les lignes refusées n'y sont évidemment pas non plus.
+- Ce qui reste **en attente** sur le mois — jours de congé comme déclarations d'heures —
+  est compté et affiché **au-dessus** du texte, en avertissement, jamais dans le texte.
 - Dates listées **une par une** avec le jour de la semaine (`lun. 07/09`), pas en plages :
   la comptable saisit des jours, une plage l'obligerait à les recompter.
 - Agents triés par nom ; un agent supprimé entre-temps apparaît en « Agent inconnu »
   plutôt que de disparaître silencieusement du décompte.
+
+---
+
+## 3 ter. Heures supplémentaires
+
+Deux chemins d'entrée, et un seul aboutissement : une fois validées, les heures partent
+dans la **synthèse comptable** (§ 3 bis) et s'inscrivent dans le **planning** (§ 11).
+
+**Chemin 1 — l'agent déclare.** Écran « Mes heures sup » : il indique le jour, le nombre
+d'heures, et **désigne le MAR qui les lui a demandées**. La ligne naît `en_attente`. Ce MAR
+reçoit un e-mail et la valide (ou la refuse) depuis « Heures sup à valider ». Tant que
+personne n'a tranché, l'agent peut corriger ou retirer sa déclaration.
+
+**Chemin 2 — la gestion ajoute.** Bloc « Heures supplémentaires » de l'écran « Congés IADE » :
+la gestion choisit un agent, un jour, un nombre d'heures. La ligne naît **déjà `validee`** —
+c'est le trigger qui l'impose, pas le front. L'agent est **informé** par e-mail ; il n'a rien
+à approuver.
+
+**Répondre depuis l'e-mail, sans se connecter.** L'e-mail du MAR porte, pour chaque jour,
+deux boutons **Valider** / **Refuser**. Ils ouvrent une page de confirmation (`api/hs-decision.js`)
+qui affiche la déclaration et demande un dernier clic — ni mot de passe, ni 2FA. L'agent est
+prévenu par e-mail comme si la décision avait été prise dans l'app.
+
+> ⚠️ **Pourquoi une page de confirmation et pas un lien qui décide directement.**
+> Les filtres anti-phishing d'Outlook et de Gmail **visitent** les liens des messages entrants
+> pour les inspecter. Un lien qui déciderait en `GET` serait déclenché tout seul, sans que
+> personne n'ait cliqué. Ici le `GET` ne fait que lire ; seul le `POST` du formulaire décide.
+> **Ne jamais transformer ce lien en action directe.**
+
+L'autorisation est le **`jeton`** de la déclaration (une URL-capacité, comme pour l'abonnement
+iCal). Deux verrous : la RPC `iade_hs_decider_par_jeton()` n'est exécutable que par
+`service_role` — donc seulement depuis notre serverless, qui tient le jeton du lien ; et le
+marqueur `app.hs_jeton` qu'elle pose ne donne rien à lui seul, la RLS bloquant toujours un
+tiers qui le poserait à la main. Le jeton **ne sort jamais vers le client** : seul
+`api/iade-hs-notify.js` le lit, pour écrire le lien dans un message adressé au MAR désigné.
+
+**Revenir sur une décision : jusqu'à la fin du mois SUIVANT le jour concerné.**
+Des heures du 14/09 se corrigent jusqu'au 31/10. Ce n'est **pas** « la fin du mois du jour » :
+des heures faites le 30/09 et déclarées le 1er octobre auraient eu une fenêtre déjà fermée.
+La règle vit dans `public.iade_hs_fin_fenetre()` et est appliquée par le trigger ; le front
+(`finFenetre()`) et la page e-mail ne font que l'anticiper pour l'afficher.
+**La gestion IADE n'y est pas soumise** : c'est elle qui rattrape ce qui se découvre tard.
+Une **première** décision n'est jamais bloquée, même très tardive — sinon une déclaration
+oubliée deviendrait impossible à traiter.
+
+Décisions de conception, à ne pas défaire sans y réfléchir :
+
+- **La gestion peut trancher en secours** une déclaration adressée à un MAR qui ne répond
+  pas. Sans cette porte, une déclaration resterait bloquée indéfiniment si le MAR désigné
+  part en vacances — juste avant la paie. Le bloc de gestion le dit à l'écran : c'est un
+  recours, pas le circuit normal.
+- **Le MAR désigné décide, il ne réécrit pas.** La RLS lui ouvre l'`update`, mais le trigger
+  refuse toute modification de `heures`, `jour`, `user_id`, `origine` ou `mar_id` de sa part.
+  Sinon « valider » pourrait vouloir dire « valider autre chose que ce qui a été déclaré ».
+- **Heures entières** (`check heures between 1 and 24`). C'est la forme déjà employée dans
+  le planning (« 10 HS »). Les demi-heures ont été écartées explicitement.
+- **Une seule ligne par agent et par jour** (index unique partiel, hors refus) : sans cela,
+  deux déclarations le même jour se cumuleraient silencieusement en paie.
+- **Aucun nouveau drapeau de rôle** : le MAR, c'est `acces_cabinet()` (cf. § 1).
+
+Deux RPC, parce que la RLS de `profiles` ne suffit pas :
+
+| RPC | Pour qui | Pourquoi |
+|---|---|---|
+| `iade_mars()` | agent, gestion | Un IADE ne peut pas lire les comptes des associés — il lui faut pourtant leurs **noms** pour désigner qui a demandé les heures. N'expose que `id` + `nom`. |
+| `iade_hs_pour_mar(annee)` | MAR | Un associé non gestionnaire ne peut pas lire les profils des agents. La RPC joint le nom de l'agent **aux seules lignes qui le désignent**. |
+
+**Ce que l'agent voit.** Sur « Mes heures sup », en plus de ses déclarations : un **cumul mois
+par mois** (validées / en attente / refusées) et le mois en **calendrier**, chaque jour portant
+« +Xh » à la couleur de son statut. Les heures **refusées** sont comptées en nombre de
+déclarations, jamais en heures : elles ne sont pas dues, les additionner donnerait un total
+trompeur. Côté gestion, le calendrier d'équipe affiche aussi les heures sup — mais **pas**
+dans « Congés de l'équipe » vu par les agents : les heures d'un agent ne regardent pas ses
+collègues.
+
+Fichiers : `supabase/iade_heures_sup.sql` · `src/utils/iadeHeuresSup{,Api}.js` ·
+`src/pages/IadeMesHeuresSup.jsx` · `src/pages/HeuresSupAValider.jsx` ·
+`src/components/iade/{HeuresSupGestion,RecapHeuresSup}.jsx` ·
+`api/iade-hs-notify.js` · `api/hs-decision.js`
+
+> ⚠️ `HeuresSupGestion` et `RecapHeuresSup` sont des composants séparés pour la même raison
+> que `SyntheseMensuelle` : un bloc de cette taille inline dans la page désoptimise tout le
+> reste. Ne pas les réintégrer.
+
+**Pas de bouton d'action dans l'e-mail de l'agent, et c'est délibéré** : lui donner « Valider »
+reviendrait à le laisser valider ses propres heures. Son e-mail l'informe de la décision, il
+n'en prend aucune.
 
 ---
 
@@ -164,6 +268,26 @@ un même jour ne se pose qu'une fois, mais un refus peut être re-demandé.
 > congé) a été abandonné le 2026-08-24. `supabase/iade_conges.sql` supprime la table de
 > l'ancien format **si elle est vide**, et **refuse de tourner** si elle contient des lignes,
 > plutôt que de les convertir à l'aveugle.
+
+**`iade_heures_sup`** — **une ligne = un jour, un nombre d'heures entier** :
+
+| Colonne | Rôle |
+|---|---|
+| `user_id` | l'agent (FK `auth.users`) |
+| `jour` | le jour concerné |
+| `heures` | entier, `between 1 and 24` |
+| `origine` | `iade` (déclarée par l'agent) · `gestion` (ajoutée, née validée) |
+| `mar_id` | le MAR qui a demandé les heures — **obligatoire si `origine = 'iade'`** (contrainte `iade_heures_sup_mar_requis`) ; c'est lui qui valide |
+| `commentaire` | précision libre de celui qui saisit |
+| `statut` | `en_attente` · `validee` · `refusee` |
+| `motif_reponse` | commentaire **de la décision**, visible par l'agent |
+| `decide_par` · `decide_le` | posés par le trigger `iade_heures_sup_decision` |
+
+Index unique partiel **`iade_heures_sup_jour_unique`** sur `(user_id, jour) where statut <> 'refusee'`.
+
+> ⚠️ Les bornes d'heures et la liste `origine` sont dupliquées côté front dans
+> `src/utils/iadeHeuresSup.js` (`MIN_HEURES`, `MAX_HEURES`, `ORIGINES`) : **modifier les
+> deux ensemble**. Le `statut`, lui, est partagé avec les congés (`STATUTS`).
 
 ---
 
@@ -269,10 +393,17 @@ Un compte révoqué apparaît « (désactivé) » dans le récapitulatif par age
 | `POST /api/accept` | invité | applique `is_iade` d'après l'invitation, via les métadonnées |
 | `POST /api/iade-attribuer` | admin | `{ userId, isIade, isGestionIade }` — pose les drapeaux, refuse les cumuls |
 | `POST /api/iade-conges-notify` | agent · gestion | `{ type, lot?, ids? }` — e-mails de notification (cf. § 9) |
+| `POST /api/iade-hs-notify` | agent · MAR · gestion | `{ type: 'declaration' \| 'decision' \| 'ajout', ids }` — e-mails des heures sup |
+| `GET\|POST /api/hs-decision` | **personne d'authentifié** | `?jeton=…&action=valider\|refuser` — décider depuis l'e-mail. Le GET **affiche**, le POST décide (cf. § 3 ter). |
 
 Le **dépôt, la validation et le calendrier** passent **directement par Supabase sous RLS**
 (pas de `service_role`). Seul l'**envoi des e-mails** de notification passe par le serverless
-`iade-conges-notify` (il lui faut le `service_role` pour lire l'adresse du destinataire).
+(il lui faut le `service_role` pour lire l'adresse du destinataire).
+
+`iade-hs-notify` **relit toujours les lignes en base** avant d'écrire un e-mail, et pour le
+type `declaration` il restreint la relecture à `user_id = <appelant>` : un agent ne peut pas
+déclencher d'e-mail sur la déclaration d'un collègue. Pour `decision`, il n'accepte que le
+**MAR désigné** ou la gestion.
 
 ---
 
@@ -363,3 +494,35 @@ tout seul (rafraîchi par l'app cliente, jusqu'à ~1 h). Les mois se **cumulent*
 **⚠️ Mise en service** : exécuter `supabase/iade_agenda.sql` dans Supabase (SQL Editor)
 **avant** usage — sans la table, l'activation échoue et le flux renvoie un agenda vide.
 `gen_random_uuid()` et `public.touch_updated_at()` sont déjà présents (schéma de base).
+
+---
+
+## 11. Redescente dans le planning Excel (Dropbox)
+
+Décidé le 2026-08-24. Le fichier de référence de l'équipe est un **`.xlsx` sur Dropbox**,
+**en lecture seule** pour les IADE et les MAR. L'écriture reste dans le dashboard, réservée
+au rôle **gestion IADE**. Raison : Dropbox ne sait pas co-éditer un `.xlsx` — deux
+enregistrements simultanés produisent une « copie en conflit », et avec une dizaine de
+personnes c'est hebdomadaire.
+
+La chaîne tourne sur le mini PC (hors de ce dépôt, dans `~/vault/Projects/outils-planning/`) :
+
+```
+dashboard (Supabase)  →  sync_planning.py  →  convertir_mois.py  →  rclone  →  Dropbox
+   congés validés          conges-valides.json   Planning-IADE-…-visuel.xlsx
+   heures sup validées
+```
+
+- Seules les lignes **`validee`** descendent. Les congés s'affichent « Congé CP » /
+  « Congé récup. » en rouge, les heures sup « **+Xh** » en orange, dans la colonne
+  « Congé / HS » **à côté** du poste — qui reste visible, pour que le remplaçant sache où aller.
+- **Le congé prime** si un jour porte les deux : la colonne ne tient qu'une annotation.
+  Le cas est **signalé** en fin de génération plutôt que passé sous silence.
+- L'appariement se fait sur le **prénom** (`profiles.nom_complet` → en-tête de colonne du
+  fichier). Toute ligne qui ne trouve pas sa case est **nommée** dans la sortie, et
+  l'envoi Dropbox est **annulé** — une disparition silencieuse avait déjà effacé un mois
+  entier d'un agent.
+- Base injoignable → arrêt **sans envoi** : mieux vaut le fichier d'hier qu'un fichier neuf
+  où les congés auraient disparu.
+
+Détail d'exploitation et configuration : `outils-planning/LISEZ-MOI.md` § 5.

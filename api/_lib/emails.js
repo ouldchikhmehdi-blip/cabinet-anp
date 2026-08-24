@@ -255,3 +255,156 @@ ${lien}`
     text,
   }
 }
+
+// ============================================================
+// Notifications « Heures supplémentaires IADE » (cf. IADE.md § Heures sup).
+// Trois moments : l'agent déclare → le MAR désigné ; le MAR décide → l'agent ;
+// la gestion ajoute des heures → l'agent (informé, il n'a rien à approuver).
+// ============================================================
+
+// Met en forme une liste de lignes [{ jour: 'YYYY-MM-DD', heures }] → { html, text, n, total }.
+function formaterHeures(rows) {
+  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+  const items = tries.map(r => {
+    const d = new Date(`${r.jour}T00:00:00`)
+    const date = d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    return { date, heures: `${r.heures} h`, commentaire: r.commentaire?.trim() || null }
+  })
+  const html = `<ul style="font-size:14px;line-height:1.8;color:#2c2c2a;padding-left:20px;margin:8px 0 0;">
+    ${items.map(i => `<li>${i.date} — <strong>${i.heures}</strong>${i.commentaire ? ` <span style="color:#5f5e5a;">(${i.commentaire})</span>` : ''}</li>`).join('')}
+  </ul>`
+  const text = items.map(i => `- ${i.date} — ${i.heures}${i.commentaire ? ` (${i.commentaire})` : ''}`).join('\n')
+  return { html, text, n: items.length, total: rows.reduce((s, r) => s + (Number(r.heures) || 0), 0) }
+}
+
+// Lien d'action porté par l'e-mail. Il ouvre une PAGE DE CONFIRMATION, il ne
+// décide pas tout seul : les filtres anti-phishing d'Outlook et Gmail visitent les
+// liens des messages entrants, un lien qui déciderait en GET partirait sans clic.
+// Cf. api/hs-decision.js.
+// Sans URL absolue (VITE_APP_URL absent côté serveur), un lien d'e-mail serait
+// relatif — donc mort. On préfère alors ne pas afficher de bouton du tout.
+function baseUtilisable(base) {
+  return /^https?:\/\//i.test(String(base ?? ''))
+}
+
+function lienDecision(base, jeton, action) {
+  return `${String(base ?? '').replace(/\/+$/, '')}/api/hs-decision`
+    + `?jeton=${encodeURIComponent(jeton)}&action=${action}`
+}
+
+function boutonsDecision(base, jeton) {
+  const style = (fond) => `display:inline-block;padding:11px 22px;font-size:14px;font-weight:500;`
+    + `color:#ffffff;text-decoration:none;border-radius:8px;background:${fond};`
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 4px;">
+    <tr>
+      <td style="padding-right:8px;">
+        <a href="${lienDecision(base, jeton, 'valider')}" style="${style('#2E7D46')}">Valider</a>
+      </td>
+      <td>
+        <a href="${lienDecision(base, jeton, 'refuser')}" style="${style('#C0392B')}">Refuser</a>
+      </td>
+    </tr>
+  </table>`
+}
+
+// D. L'agent a déclaré des heures → e-mail au MAR qu'il a désigné.
+// Chaque jour porte ses deux boutons : on répond depuis l'e-mail, sans se connecter.
+export function emailHsDeclarees({ agentNom, rows, lien }) {
+  const h = formaterHeures(rows)
+  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+  const boutonsPossibles = baseUtilisable(lien)
+
+  const blocs = tries.map(r => {
+    const date = new Date(`${r.jour}T00:00:00`).toLocaleDateString('fr-FR',
+      { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    return `<div style="margin:18px 0;padding:14px 16px;background:#f7f6f2;border-radius:8px;">
+      <div style="font-size:14px;color:#2c2c2a;">${date} — <strong>${r.heures} h</strong>${
+        r.commentaire?.trim() ? `<br><span style="color:#5f5e5a;font-size:13px;">${r.commentaire.trim()}</span>` : ''}</div>
+      ${(boutonsPossibles && r.jeton) ? boutonsDecision(lien, r.jeton) : ''}
+    </div>`
+  }).join('')
+
+  const corps = `
+    ${p(bonjour())}
+    ${p(`<strong>${agentNom}</strong> déclare <strong>${h.total} h</strong> supplémentaires et indique que <strong>vous</strong> les lui avez demandées.`)}
+    ${blocs}
+    ${boutonsPossibles
+      ? p('Un clic ouvre une page de confirmation — ni mot de passe ni code à saisir. Vous pourrez revenir sur votre réponse jusqu\'à la fin du mois suivant.', 'color:#5f5e5a;font-size:13px;')
+      : ''}
+    ${p(`${boutonsPossibles ? 'Vous préférez le dashboard ? Onglet' : 'Rendez-vous dans l\'onglet'} <strong>Heures sup à valider</strong>${lien ? ` : ${lien}` : ' du dashboard.'}`, 'color:#5f5e5a;font-size:13px;')}`
+
+  const text = `${bonjour()}
+
+${agentNom} déclare ${h.total} h supplémentaires et indique que vous les lui avez demandées :
+${h.text}
+
+${boutonsPossibles ? `Répondre directement (une page de confirmation s'ouvre, aucune connexion demandée) :
+${tries.filter(r => r.jeton).map(r =>
+  `- ${r.jour} (${r.heures} h)\n    Valider : ${lienDecision(lien, r.jeton, 'valider')}\n    Refuser : ${lienDecision(lien, r.jeton, 'refuser')}`
+).join('\n')}
+
+Vous pourrez revenir sur votre réponse jusqu'à la fin du mois suivant.
+Sinon, onglet` : 'Rendez-vous dans l\'onglet'} « Heures sup à valider » du dashboard${lien ? ` : ${lien}` : '.'}`
+
+  return {
+    subject: `Heures sup à valider — ${agentNom}`,
+    html: coquille({ apercu: `${agentNom} déclare ${h.total} h — à valider`, titre: 'Heures supplémentaires à valider', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// E. Le MAR (ou la gestion) a décidé → e-mail à l'agent.
+export function emailHsDecidees({ agentNom, rows, statut, motif, lien }) {
+  const h = formaterHeures(rows)
+  const valide = statut === 'validee'
+  const verbe = valide ? 'validées' : 'refusées'
+  const corpsMotif = (!valide && motif?.trim())
+    ? p(`Motif : <em>${motif.trim()}</em>`, 'color:#5f5e5a;')
+    : ''
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`Vos heures supplémentaires ont été <strong>${verbe}</strong> :`)}
+    ${h.html}
+    ${corpsMotif}
+    ${bouton(lien, 'Ouvrir « Mes heures sup »')}
+    ${valide ? p('Elles seront reportées dans le planning et transmises à la comptabilité.', 'color:#5f5e5a;') : ''}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+Vos heures supplémentaires ont été ${verbe} :
+${h.text}${(!valide && motif?.trim()) ? `\n\nMotif : ${motif.trim()}` : ''}
+
+Ouvrez l'onglet « Mes heures sup » du dashboard :
+${lien}`
+  return {
+    subject: valide ? 'Vos heures supplémentaires ont été validées' : 'Vos heures supplémentaires — réponse',
+    html: coquille({ apercu: `Vos heures supplémentaires ont été ${verbe}`, titre: 'Réponse à votre déclaration', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// F. La gestion a ajouté des heures → e-mail d'information à l'agent.
+// Rien à approuver de son côté : ces heures naissent validées (cf. le SQL).
+export function emailHsAjoutees({ agentNom, rows, lien }) {
+  const h = formaterHeures(rows)
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`<strong>${h.total} h</strong> supplémentaires viennent de vous être ajoutées :`)}
+    ${h.html}
+    ${bouton(lien, 'Ouvrir « Mes heures sup »')}
+    ${p('Ces heures sont déjà actées : elles seront reportées dans le planning et transmises à la comptabilité. Si quelque chose vous semble inexact, signalez-le à la personne qui gère les IADE.', 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+${h.total} h supplémentaires viennent de vous être ajoutées :
+${h.text}
+
+Ces heures sont déjà actées. En cas d'erreur, signalez-le à la personne qui gère les IADE.
+Ouvrez l'onglet « Mes heures sup » du dashboard :
+${lien}`
+  return {
+    subject: `Heures supplémentaires ajoutées — ${h.total} h`,
+    html: coquille({ apercu: `${h.total} h supplémentaires vous ont été ajoutées`, titre: 'Heures supplémentaires ajoutées', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}

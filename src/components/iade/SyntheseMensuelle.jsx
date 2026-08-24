@@ -1,13 +1,14 @@
 // ============================================================
 // SyntheseMensuelle — l'export mensuel destiné à la comptable.
 //
-// On choisit un mois, on obtient un texte brut prêt à coller dans un e-mail :
+// On choisit un mois, on obtient UN texte brut prêt à coller dans un e-mail :
 // pour chaque agent, ses jours validés détaillés par nature (congé payé /
-// récupération de jour férié).
+// récupération de jour férié), PUIS ses heures supplémentaires validées.
+// La paie a besoin des deux : un seul envoi, pas deux.
 //
-// Seuls les jours VALIDÉS y figurent : un jour en attente n'est pas un congé
-// accordé, l'envoyer en paie serait une erreur. Les jours encore en attente sur
-// le mois sont signalés à part, pour qu'on les traite avant d'envoyer.
+// Seules les lignes VALIDÉES y figurent : ce qui est en attente n'est pas
+// accordé, l'envoyer en paie serait une erreur. Ce qui reste en attente sur le
+// mois est signalé à part, pour qu'on le traite avant d'envoyer.
 //
 // Composant à part et sans mémoïsation manuelle : gardé dans IadeGestion, ce
 // bloc empêchait le compilateur React d'optimiser toute la page.
@@ -16,15 +17,15 @@ import { useState, useMemo } from 'react'
 import { syntheseMensuelle } from '../../utils/iadeConges'
 import { MOIS_FR, formatISO } from '../../utils/calendrier'
 
-export default function SyntheseMensuelle({ jours = [], agents = [], annee }) {
+export default function SyntheseMensuelle({ jours = [], heuresSup = [], agents = [], annee }) {
   const maintenant = new Date()
   const [mois, setMois]   = useState(maintenant.getMonth())
   const [copie, setCopie] = useState(false)
   const [erreur, setErreur] = useState(null)
 
   const synthese = useMemo(
-    () => syntheseMensuelle({ jours, agents, annee, mois, genereLe: formatISO(new Date()) }),
-    [jours, agents, annee, mois]
+    () => syntheseMensuelle({ jours, heuresSup, agents, annee, mois, genereLe: formatISO(new Date()) }),
+    [jours, heuresSup, agents, annee, mois]
   )
 
   async function copier() {
@@ -100,17 +101,24 @@ export default function SyntheseMensuelle({ jours = [], agents = [], annee }) {
         {synthese.valides === 0
           ? 'Aucun congé validé sur ce mois. '
           : `${synthese.valides} jour(s) validé(s) pour ${synthese.nbAgents} agent(s). `}
-        Seuls les jours <strong>validés</strong> figurent dans le texte : un jour en attente
-        n'est pas un congé accordé.
+        {synthese.heuresSup.valides === 0
+          ? 'Aucune heure supplémentaire validée. '
+          : `${synthese.heuresSup.heures} h supplémentaires validées pour ${synthese.heuresSup.nbAgents} agent(s). `}
+        Seules les lignes <strong>validées</strong> figurent dans le texte : ce qui est
+        en attente n'est pas accordé.
       </div>
 
-      {synthese.enAttente > 0 && (
+      {(synthese.enAttente > 0 || synthese.heuresSup.enAttente > 0) && (
         <div style={{
           fontSize: 12, color: 'var(--color-amber)', background: 'var(--color-amber-light)',
           borderRadius: 8, padding: '8px 12px', marginBottom: 10,
         }}>
-          {synthese.enAttente} jour(s) de ce mois sont <strong>encore en attente</strong> de
-          votre décision : ils n'apparaissent pas ci-dessous. Traitez-les avant d'envoyer.
+          Sur ce mois, {[
+            synthese.enAttente > 0 ? `${synthese.enAttente} jour(s) de congé` : null,
+            synthese.heuresSup.enAttente > 0 ? `${synthese.heuresSup.enAttente} déclaration(s) d'heures sup` : null,
+          ].filter(Boolean).join(' et ')} {' '}
+          <strong>restent en attente</strong> : ils n'apparaissent pas ci-dessous.
+          Traitez-les avant d'envoyer.
         </div>
       )}
 
