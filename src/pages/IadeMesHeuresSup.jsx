@@ -9,6 +9,10 @@
 // Les heures ajoutées directement par la gestion apparaissent ici aussi, déjà
 // validées : l'agent en est informé, il n'a rien à approuver.
 //
+// Prop `apercu` = { userId, nom } : rend le MÊME écran en lecture seule pour la
+// gestion (« Aperçu compte IADE ») — c'est ce que voit l'agent, sans pouvoir agir
+// à sa place. `userId` peut être null : on montre alors l'écran vierge.
+//
 // Schéma + RLS : supabase/iade_heures_sup.sql
 // ============================================================
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -26,9 +30,10 @@ import { STATUTS, libelleStatut, formatJour } from '../utils/iadeConges'
 
 const VIDE = { jour: '', heures: '', marId: '', commentaire: '' }
 
-export default function IadeMesHeuresSup() {
+export default function IadeMesHeuresSup({ apercu = null }) {
   const { session, profile } = useAuth()
-  const userId = session?.user?.id
+  const lectureSeule = apercu !== null
+  const userId = lectureSeule ? apercu.userId : session?.user?.id
   const maintenant = new Date()
   const annee = maintenant.getFullYear()
   const [mois, setMois] = useState(maintenant.getMonth())
@@ -180,13 +185,15 @@ export default function IadeMesHeuresSup() {
     background: STATUTS[statut]?.fond, color: STATUTS[statut]?.couleur, whiteSpace: 'nowrap',
   })
 
-  const nom = profile?.nom_complet?.trim() || profile?.email
+  const nom = lectureSeule ? apercu.nom : (profile?.nom_complet?.trim() || profile?.email)
 
   return (
     <div style={{ maxWidth: 1000 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Mes heures sup</h1>
       <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 24 }}>
-        {nom} — indiquez le MAR qui vous a demandé ces heures : c'est lui qui les valide.
+        {lectureSeule
+          ? `${nom ?? 'Aucun agent sélectionné'} — le MAR qu'il désigne valide ses heures.`
+          : `${nom} — indiquez le MAR qui vous a demandé ces heures : c'est lui qui les valide.`}
       </div>
 
       {erreur && <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{erreur}</div>}
@@ -200,7 +207,7 @@ export default function IadeMesHeuresSup() {
             <div style={{ flex: '1 1 160px' }}>
               <label style={s.label} htmlFor="hs-jour">Jour concerné</label>
               <input
-                id="hs-jour" type="date" style={s.champ}
+                id="hs-jour" type="date" style={s.champ} disabled={lectureSeule}
                 min={`${annee - 1}-01-01`} max={`${annee + 1}-12-31`}
                 value={saisie.jour} onChange={e => changer('jour', e.target.value)}
               />
@@ -209,13 +216,14 @@ export default function IadeMesHeuresSup() {
               <label style={s.label} htmlFor="hs-heures">Heures ({MIN_HEURES} à {MAX_HEURES})</label>
               <input
                 id="hs-heures" type="number" step="1" min={MIN_HEURES} max={MAX_HEURES} style={s.champ}
+                disabled={lectureSeule}
                 value={saisie.heures} onChange={e => changer('heures', e.target.value)}
               />
             </div>
             <div style={{ flex: '1 1 220px' }}>
               <label style={s.label} htmlFor="hs-mar">MAR qui vous les a demandées</label>
               <select
-                id="hs-mar" style={s.champ}
+                id="hs-mar" style={s.champ} disabled={lectureSeule}
                 value={saisie.marId} onChange={e => changer('marId', e.target.value)}
               >
                 <option value="">Choisir…</option>
@@ -227,7 +235,7 @@ export default function IadeMesHeuresSup() {
           <div style={{ marginBottom: 16 }}>
             <label style={s.label} htmlFor="hs-com">Précision (facultatif)</label>
             <input
-              id="hs-com" type="text" style={s.champ} maxLength={200}
+              id="hs-com" type="text" style={s.champ} maxLength={200} disabled={lectureSeule}
               placeholder="Ex. : bloc prolongé, urgence en fin de programme"
               value={saisie.commentaire} onChange={e => changer('commentaire', e.target.value)}
             />
@@ -238,16 +246,18 @@ export default function IadeMesHeuresSup() {
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           }}>
             <div style={{ flex: '1 1 200px', fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-              {mars.length === 0 && !charge
-                ? 'Aucun MAR à désigner pour le moment.'
-                : 'Le MAR désigné reçoit un e-mail et valide depuis son dashboard.'}
+              {lectureSeule
+                ? "Aperçu : les commandes sont inertes, on n'agit pas à la place de l'agent."
+                : mars.length === 0 && !charge
+                  ? 'Aucun MAR à désigner pour le moment.'
+                  : 'Le MAR désigné reçoit un e-mail et valide depuis son dashboard.'}
             </div>
-            {editeId && (
+            {editeId && !lectureSeule && (
               <button type="button" style={s.boutonSec} onClick={annulerEdition}>Annuler la correction</button>
             )}
             <button
               type="button"
-              disabled={envoi}
+              disabled={envoi || lectureSeule}
               onClick={envoyer}
               style={{
                 padding: '10px 18px',
@@ -255,7 +265,7 @@ export default function IadeMesHeuresSup() {
                 border: 'none', borderRadius: 'var(--radius-md)',
                 fontSize: 14, fontWeight: 500,
                 cursor: envoi ? 'wait' : 'pointer',
-                opacity: envoi ? 0.7 : 1,
+                opacity: lectureSeule ? 0.45 : envoi ? 0.7 : 1,
               }}
             >
               {envoi ? 'Envoi…' : editeId ? 'Enregistrer la correction' : 'Déclarer'}
@@ -302,8 +312,8 @@ export default function IadeMesHeuresSup() {
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{l.commentaire || '—'}</td>
                     <td style={s.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button style={s.boutonSec} onClick={() => corriger(l)}>Corriger</button>
-                        <button style={s.boutonSec} onClick={() => retirer(l)}>Retirer</button>
+                        <button style={s.boutonSec} disabled={lectureSeule} onClick={() => corriger(l)}>Corriger</button>
+                        <button style={s.boutonSec} disabled={lectureSeule} onClick={() => retirer(l)}>Retirer</button>
                       </div>
                     </td>
                   </tr>

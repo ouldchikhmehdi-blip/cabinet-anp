@@ -243,7 +243,7 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [x] **Validation des heures sup depuis l'e-mail** (page de confirmation sans connexion,
       `api/hs-decision.js`) + **fenêtre de correction jusqu'à la fin du mois suivant**
       pour le MAR — 2026-08-24 (cf. `IADE.md` § 3 ter)
-- [x] **Cumul mensuel + calendrier des heures sup** côté agent — 2026-08-24
+- [x] **Cumul mensuel + calendrier des heures sup** côté agent, repris dans « Aperçu compte IADE » — 2026-08-24
 - [ ] ⚠️ **Exécuter `supabase/iade_heures_sup.sql`** sur un nouvel environnement
       (déjà appliqué en production : migrations `iade_heures_sup`,
       `iade_heures_sup_jeton_et_fenetre`, `iade_hs_decision_par_jeton`)

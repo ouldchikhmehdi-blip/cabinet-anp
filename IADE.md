@@ -70,15 +70,26 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 | Page | Fichier | Qui y accède |
 |---|---|---|
 | **Mes congés** | `src/pages/IadeMesConges.jsx` | Agent IADE |
+| **Mes heures sup** | `src/pages/IadeMesHeuresSup.jsx` | Agent IADE |
 | **Congés de l'équipe** / **Absences IADE** | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
-| **Congés IADE** (validation) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
+| **Heures sup à valider** | `src/pages/HeuresSupAValider.jsx` | **Tout associé** (MAR) |
+| **Congés IADE** (validation + heures sup) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |
 
-**Aperçu compte IADE** : voir l'application telle qu'un agent la voit (ses deux écrans, pour
-l'agent choisi dans la liste) **sans créer de second compte** et **sans pouvoir agir à sa place**.
-C'est la même page `IadeMesConges` rendue avec la prop `apercu={{ userId, nom }}` : calendrier
-et boutons inertes. Une personne de la gestion dispose donc des deux perspectives depuis
-son propre compte : celle qui valide (« Congés IADE ») et celle de l'agent (« Aperçu »).
+**Aperçu compte IADE** : voir l'application telle qu'un agent la voit, pour l'agent choisi
+dans la liste, **sans créer de second compte** et **sans pouvoir agir à sa place**. Trois
+onglets : **Mes congés**, **Mes heures sup**, **Congés de l'équipe**. Ce sont les mêmes pages
+`IadeMesConges` et `IadeMesHeuresSup` rendues avec la prop `apercu={{ userId, nom }}` :
+calendriers, champs et boutons inertes. Une personne de la gestion dispose donc des deux
+perspectives depuis son propre compte : celle qui valide (« Congés IADE ») et celle de
+l'agent (« Aperçu »).
+
+Le quatrième écran d'un agent, **Sync agenda**, n'est pas repris dans l'aperçu : la gestion
+l'ouvre directement depuis sa propre navigation.
+
+> ⚠️ **Tout écran ajouté à `iadeAgentItems` (Sidebar.jsx) doit l'être aussi dans
+> `IadeApercu.jsx`**, sinon l'aperçu ment par omission — il a affiché deux écrans sur trois
+> pendant un temps, ce qui donnait à croire qu'un agent n'avait accès qu'à ceux-là.
 
 Composants :
 
@@ -215,7 +226,7 @@ Deux RPC, parce que la RLS de `profiles` ne suffit pas :
 | `iade_mars()` | agent, gestion | Un IADE ne peut pas lire les comptes des associés — il lui faut pourtant leurs **noms** pour désigner qui a demandé les heures. N'expose que `id` + `nom`. |
 | `iade_hs_pour_mar(annee)` | MAR | Un associé non gestionnaire ne peut pas lire les profils des agents. La RPC joint le nom de l'agent **aux seules lignes qui le désignent**. |
 
-**Ce que l'agent voit.** Sur « Mes heures sup », en plus de ses déclarations : un **cumul mois
+**Ce que l'agent voit** (et que la gestion retrouve dans « Aperçu compte IADE »)**.** Sur « Mes heures sup », en plus de ses déclarations : un **cumul mois
 par mois** (validées / en attente / refusées) et le mois en **calendrier**, chaque jour portant
 « +Xh » à la couleur de son statut. Les heures **refusées** sont comptées en nombre de
 déclarations, jamais en heures : elles ne sont pas dues, les additionner donnerait un total
