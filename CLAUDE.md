@@ -228,8 +228,8 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 ### Module congés IADE (cf. `IADE.md`)
 - [x] Écrans agent / gestion / aperçu, endpoints, RLS, tests — livré le 2026-08-17
 - [x] Migrations appliquées en base (`iade_conges`, `securite_aal2`, `invitation_nom_complet`, `connexion_google`, `iade_conges_jour_par_jour`)
-- [x] Saisie **jour par jour** (congé payé / récupération de jour férié), **sans motif demandé à l'agent** — 2026-08-18
-- [x] **Synthèse mensuelle** copiable pour la comptable (jours validés uniquement) — 2026-08-18
+- [x] Saisie **jour par jour** (congé payé / récupération de jour férié), **sans motif demandé à l'agent** — 2026-08-24
+- [x] **Synthèse mensuelle** copiable pour la comptable (jours validés uniquement) — 2026-08-24
 - [x] Exigence **AAL2 déplacée dans la RLS** (`est_aal2()`, `acces_cabinet()`) ; comptes IADE dispensés de 2FA
 - [ ] ⏳ **À FAIRE — Authentification Google (Mehdi)** : créer le client OAuth dans Google Cloud Console,
       puis coller Client ID + Secret dans Supabase → Authentication → Providers → Google.

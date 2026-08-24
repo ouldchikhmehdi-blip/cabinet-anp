@@ -161,7 +161,7 @@ un même jour ne se pose qu'une fois, mais un refus peut être re-demandé.
 > `src/utils/iadeConges.js` (`TYPES_CONGE`, `STATUTS`) : **modifier les deux ensemble**.
 >
 > ℹ️ Le modèle précédent (une ligne = une **période**, avec un motif libre et six types de
-> congé) a été abandonné le 2026-08-18. `supabase/iade_conges.sql` supprime la table de
+> congé) a été abandonné le 2026-08-24. `supabase/iade_conges.sql` supprime la table de
 > l'ancien format **si elle est vide**, et **refuse de tourner** si elle contient des lignes,
 > plutôt que de les convertir à l'aveugle.
 
@@ -212,7 +212,7 @@ un même jour ne se pose qu'une fois, mais un refus peut être re-demandé.
 
    Ce qu'un compte IADE compromis expose, à connaître : les **noms et dates** d'absence de
    l'équipe IADE, et la nature des jours (CP / récupération). Depuis l'abandon des motifs
-   (2026-08-18), plus aucune donnée personnelle sensible n'y transite — un congé « enfant
+   (2026-08-24), plus aucune donnée personnelle sensible n'y transite — un congé « enfant
    malade » ne se distingue plus d'un congé payé.
    Si un jour cela paraît trop, la 2FA se réactive pour eux en supprimant le test
    `profile?.is_iade` dans le routage de `src/App.jsx` — rien d'autre à changer.
@@ -221,7 +221,7 @@ un même jour ne se pose qu'une fois, mais un refus peut être re-demandé.
 
 ## 6. Mise en service
 
-1. **Base** — ✅ **fait le 2026-08-17**, modèle « jour par jour » appliqué le **2026-08-18**,
+1. **Base** — ✅ **fait le 2026-08-17**, modèle « jour par jour » appliqué le **2026-08-24**,
    sur le projet Supabase `SARM dashboard` (migrations `iade_conges`,
    `iade_conges_revoke_trigger_function`, `iade_conges_jour_par_jour`).
    Sur un nouvel environnement : exécuter **`supabase/iade_conges.sql`** dans
