@@ -49,7 +49,7 @@ export async function requireAdmin(req) {
  *
  * Renvoie { user, profile } où profile porte role, status et les drapeaux IADE
  * (is_iade, is_gestion_iade, is_faiseur) + nom_complet + email. À l'appelant de
- * décider ce qu'il autorise à partir de là (cf. api/iade-conges-notify.js).
+ * décider ce qu'il autorise à partir de là (cf. api/iade-notify.js).
  * Lance { status, message } si non authentifié ou compte désactivé.
  */
 export async function requireUser(req) {

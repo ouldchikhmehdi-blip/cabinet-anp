@@ -182,7 +182,7 @@ iCal). Deux verrous : la RPC `iade_hs_decider_par_jeton()` n'est exécutable que
 `service_role` — donc seulement depuis notre serverless, qui tient le jeton du lien ; et le
 marqueur `app.hs_jeton` qu'elle pose ne donne rien à lui seul, la RLS bloquant toujours un
 tiers qui le poserait à la main. Le jeton **ne sort jamais vers le client** : seul
-`api/iade-hs-notify.js` le lit, pour écrire le lien dans un message adressé au MAR désigné.
+`api/iade-notify.js` le lit, pour écrire le lien dans un message adressé au MAR désigné.
 
 **Revenir sur une décision : jusqu'à la fin du mois SUIVANT le jour concerné.**
 Des heures du 14/09 se corrigent jusqu'au 31/10. Ce n'est **pas** « la fin du mois du jour » :
@@ -226,7 +226,7 @@ collègues.
 Fichiers : `supabase/iade_heures_sup.sql` · `src/utils/iadeHeuresSup{,Api}.js` ·
 `src/pages/IadeMesHeuresSup.jsx` · `src/pages/HeuresSupAValider.jsx` ·
 `src/components/iade/{HeuresSupGestion,RecapHeuresSup}.jsx` ·
-`api/iade-hs-notify.js` · `api/hs-decision.js`
+`api/iade-notify.js` · `api/hs-decision.js`
 
 > ⚠️ `HeuresSupGestion` et `RecapHeuresSup` sont des composants séparés pour la même raison
 > que `SyntheseMensuelle` : un bloc de cette taille inline dans la page désoptimise tout le
@@ -392,15 +392,14 @@ Un compte révoqué apparaît « (désactivé) » dans le récapitulatif par age
 | `POST /api/invite` | admin | `{ email, role, isIade }` — invitation, e-mail adapté si IADE |
 | `POST /api/accept` | invité | applique `is_iade` d'après l'invitation, via les métadonnées |
 | `POST /api/iade-attribuer` | admin | `{ userId, isIade, isGestionIade }` — pose les drapeaux, refuse les cumuls |
-| `POST /api/iade-conges-notify` | agent · gestion | `{ type, lot?, ids? }` — e-mails de notification (cf. § 9) |
-| `POST /api/iade-hs-notify` | agent · MAR · gestion | `{ type: 'declaration' \| 'decision' \| 'ajout', ids }` — e-mails des heures sup |
+| `POST /api/iade-notify` | agent · MAR · gestion | `{ type, lot?, ids? }` — **toutes** les notifications IADE : congés (`pose`/`retrait`/`decision`) et heures sup (`hs_declaration`/`hs_decision`/`hs_ajout`) |
 | `GET\|POST /api/hs-decision` | **personne d'authentifié** | `?jeton=…&action=valider\|refuser` — décider depuis l'e-mail. Le GET **affiche**, le POST décide (cf. § 3 ter). |
 
 Le **dépôt, la validation et le calendrier** passent **directement par Supabase sous RLS**
 (pas de `service_role`). Seul l'**envoi des e-mails** de notification passe par le serverless
 (il lui faut le `service_role` pour lire l'adresse du destinataire).
 
-`iade-hs-notify` **relit toujours les lignes en base** avant d'écrire un e-mail, et pour le
+`iade-notify` **relit toujours les lignes en base** avant d'écrire un e-mail, et pour le
 type `declaration` il restreint la relecture à `user_id = <appelant>` : un agent ne peut pas
 déclencher d'e-mail sur la déclaration d'un collègue. Pour `decision`, il n'accepte que le
 **MAR désigné** ou la gestion.
@@ -426,7 +425,7 @@ déclencher d'e-mail sur la déclaration d'un collègue. Pour `decision`, il n'a
 
 Ajoutées le 2026-08-19. Envoi best-effort par **Gmail SMTP** (`api/_lib/mailer.js`,
 cf. `AUTH.md § Étape 5`) — une notification qui échoue **ne bloque jamais** le congé.
-Endpoint unique **`/api/iade-conges-notify`** ; le front l'appelle après chaque mouvement
+Endpoint unique **`/api/iade-notify`** ; le front l'appelle après chaque mouvement
 (`src/utils/iadeCongesApi.js` → `notifierConges`).
 
 | Événement | Déclencheur | Destinataire | Gabarit (`emails.js`) |

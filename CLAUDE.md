@@ -23,7 +23,7 @@
 | Authentification, 2FA (TOTP/AAL2), invitations, connexion Google, gestion des comptes | **`AUTH.md`** | `src/auth/`, `src/pages/AdminUsers.jsx`, `api/{invite,accept,promote,revoke}.js` |
 | Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
 | Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
-| Congés IADE **et heures supplémentaires** (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/pages/HeuresSupAValider.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/iadeHeuresSup{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `api/iade-hs-notify.js`, `supabase/iade_conges.sql`, `supabase/iade_heures_sup.sql`, `supabase/iade_agenda.sql` |
+| Congés IADE **et heures supplémentaires** (comptes restreints, dépôt / validation) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/pages/HeuresSupAValider.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/iadeHeuresSup{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `api/iade-notify.js`, `supabase/iade_conges.sql`, `supabase/iade_heures_sup.sql`, `supabase/iade_agenda.sql` |
 | Schéma DB, RLS, triggers, sécurité en base | **`supabase/schema.sql`** (+ `securite_aal2.sql`, `connexion_google.sql`) | `supabase/*.sql` |
 
 Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « fait foi ») ; ce tableau est le point d'entrée rapide.
@@ -70,6 +70,13 @@ Fonctionnalités transverses : **filtres par période** et **comparaison année 
 ### Backend / API
 - **Vercel Functions** (`/api`) pour les opérations sensibles, avec clé `service_role` côté serveur :
   `/api/invite` · `/api/accept` · `/api/promote` · `/api/revoke`
+- ⚠️ **Plafond de 12 fonctions serverless par déploiement** (plan Vercel *hobby* de l'équipe
+  « SARM's projects »). Le dossier `api/` en contient **12** : la limite est atteinte.
+  **Ajouter un 13ᵉ fichier fait échouer le déploiement**, et `npm run build` en local n'y voit
+  rien — il ne compile que le front. Une nouvelle route se **greffe sur un endpoint existant**
+  (c'est pourquoi `/api/iade-notify` porte les notifications congés *et* heures sup), sauf à
+  passer le compte en plan payant. Les fichiers de `api/_lib/` ne comptent pas : Vercel ignore
+  ce qui commence par `_`.
 - **Gmail (SMTP via Nodemailer)** — envoi des e-mails d'invitation, sans domaine à vérifier (cf. `AUTH.md` § Étape 5)
 
 ### Hébergement

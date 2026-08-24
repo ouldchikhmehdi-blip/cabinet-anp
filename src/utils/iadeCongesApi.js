@@ -109,7 +109,7 @@ export async function chargerCalendrierIade(debut, fin) {
 }
 
 // ── Notifications e-mail (best-effort) ───────────────────────────────────────
-// Prévient par e-mail autour d'un mouvement de congé (cf. api/iade-conges-notify.js
+// Prévient par e-mail autour d'un mouvement de congé (cf. api/iade-notify.js
 // et IADE.md § Notifications). Ne bloque JAMAIS l'action : toute erreur est avalée.
 //   type 'pose'     → { lot } : prévient le(s) gestionnaire(s)
 //   type 'retrait'  → { ids } : prévient le(s) gestionnaire(s) — À APPELER AVANT la suppression
@@ -119,7 +119,7 @@ export async function notifierConges({ type, lot, ids }) {
     const { data: { session } } = await supabase.auth.getSession()
     const jwt = session?.access_token
     if (!jwt) return
-    await fetch('/api/iade-conges-notify', {
+    await fetch('/api/iade-notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwt}` },
       body: JSON.stringify({ type, lot, ids }),

@@ -135,7 +135,8 @@ export async function deciderHeures(ids, statut, motif) {
 }
 
 // ── Notifications e-mail (best-effort) ───────────────────────────────────────
-// Ne bloque JAMAIS l'action : toute erreur est avalée (cf. api/iade-hs-notify.js).
+// Ne bloque JAMAIS l'action : toute erreur est avalée (cf. api/iade-notify.js,
+// endpoint commun aux congés et aux heures sup — d'où le préfixe « hs_ »).
 //   type 'declaration' → { ids } : prévient le MAR désigné
 //   type 'decision'    → { ids } : prévient l'agent
 //   type 'ajout'       → { ids } : prévient l'agent des heures ajoutées par la gestion
@@ -144,10 +145,10 @@ export async function notifierHeuresSup({ type, ids }) {
     const { data: { session } } = await supabase.auth.getSession()
     const jwt = session?.access_token
     if (!jwt) return
-    await fetch('/api/iade-hs-notify', {
+    await fetch('/api/iade-notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwt}` },
-      body: JSON.stringify({ type, ids }),
+      body: JSON.stringify({ type: `hs_${type}`, ids }),
     })
   } catch (err) {
     console.error('Notification heures sup (non bloquante):', err)
