@@ -72,6 +72,7 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 | **Mes congés** | `src/pages/IadeMesConges.jsx` | Agent IADE |
 | **Mes heures sup** | `src/pages/IadeMesHeuresSup.jsx` | Agent IADE |
 | **Congés de l'équipe** (agent) / **Congés équipe** (gestion) | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
+| **Planning IADE** (lecture seule) | `src/pages/IadePlanning.jsx` | Agent IADE **et** tout associé (cf. § 12) |
 | **Heures sup à valider** | `src/pages/HeuresSupAValider.jsx` | **Tout associé** (MAR) |
 | **Congés et HS** (validation des congés + heures sup) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |
@@ -536,3 +537,58 @@ dashboard (Supabase)  →  sync_planning.py  →  convertir_mois.py  →  rclone
   où les congés auraient disparu.
 
 Détail d'exploitation et configuration : `outils-planning/LISEZ-MOI.md` § 5.
+
+---
+
+## 12. Onglet « Planning IADE » — le même écran pour les agents et les MAR
+
+Décidé le 2026-08-25. Jusqu'ici, savoir qui était au bloc supposait d'ouvrir le fichier
+Dropbox. L'onglet **Planning IADE** met ce même planning dans le dashboard, **en lecture
+seule**, avec **un seul écran pour tout le monde** : agents IADE et associés MAR voient la
+même page, les mêmes données. Deux écrans auraient fini par afficher deux vérités.
+
+**Le fichier Excel fait foi.** Les tables ne sont qu'un **miroir** : personne n'écrit
+dedans depuis l'application — pas même la gestion IADE. Une correction se fait dans le
+fichier, sinon les deux versions divergent et plus personne ne sait laquelle croire.
+
+### Le chemin de la donnée
+
+```
+Planning IADE 2026.xlsx (vault, mini PC)     ← le fichier fait foi
+   └─ convertir_mois.py        → fichier visuel .xlsx + planning-iade.json (même passage)
+        ├─ rclone copyto       → Dropbox (lecture seule, 19 membres)
+        └─ pousser_planning.py → Supabase : iade_planning, iade_planning_jour, iade_planning_maj
+                                    └─ onglet « Planning IADE » (agents + MAR)
+```
+
+Le `.json` est produit **au même passage** que le fichier visuel, volontairement : deux
+lectures séparées du fichier source finiraient par diverger. Le tout tourne dans le cron
+de 5h du mini PC (`publier-dropbox.sh`).
+
+### Écran et fichiers
+
+| Quoi | Fichier |
+|---|---|
+| Page (bandeau du jour + grille du mois) | `src/pages/IadePlanning.jsx` |
+| Logique pure (couleurs, colonnes, index par jour) — testée | `src/utils/iadePlanning.js` |
+| Lecture Supabase (aucune écriture) | `src/utils/iadePlanningApi.js` |
+| Tables, RLS | `supabase/iade_planning.sql` |
+| Publication depuis le mini PC | `vault/Projects/outils-planning/pousser_planning.py` |
+
+- **Bandeau du jour** : qui est où, en cartes — lisible sur téléphone sans faire défiler la
+  grille. Cliquer une ligne de la grille change le jour affiché.
+- **Grille du mois** : une ligne par jour, une colonne par IADE **dans l'ordre du fichier**
+  (pas alphabétique : l'équipe cherche la colonne là où elle est dans le fichier), couleurs
+  des postes identiques à celles de l'Excel, jours de vacances scolaires en jaune.
+- **« À jour au … »** est affiché en haut : un planning figé par un cron en panne doit se
+  voir, pas se deviner.
+
+### Sécurité
+
+- Lecture : `public.is_iade() or public.acces_cabinet()` — les agents (sans 2FA, comptes
+  restreints) et les associés (2FA exigée par la RLS).
+- Écriture : **aucune politique**. Seule la clé de service, sur le mini PC, écrit — elle
+  contourne la RLS. Cette clé vit dans `~/.config/planning-iade/env` (`chmod 600`),
+  **jamais dans le vault ni dans le dépôt**.
+- Republication par **fusion puis ménage** (`maj < horodatage du passage`) : la table n'est
+  jamais vidée, personne ne tombe sur un planning vide pendant la republication nocturne.

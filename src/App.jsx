@@ -33,11 +33,14 @@ import IadeGestion from './pages/IadeGestion'
 import IadeApercu from './pages/IadeApercu'
 import IadeRecapPlanning from './pages/IadeRecapPlanning'
 import IadeAgendaPerso from './pages/IadeAgendaPerso'
+import IadePlanning from './pages/IadePlanning'
 import './index.css'
 
 // Seules pages ouvertes à un compte IADE (cf. IADE.md). Tout le reste — financier,
 // planning, comptes — lui est fermé côté écran ET côté base (RLS).
-const PAGES_IADE = ['iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso']
+// « iade-planning » est le seul écran commun aux agents et aux associés : même
+// page, mêmes données, en lecture seule des deux côtés.
+const PAGES_IADE = ['iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso', 'iade-planning']
 
 export default function App() {
   const { session, profile, aal, nextAal, loading, recovery, siegesPrets, profilCharge } = useAuth()
@@ -225,7 +228,8 @@ export default function App() {
           {pageIade === 'iade-calendrier' ? <IadeCalendrier />
             : pageIade === 'iade-agenda-perso' ? <IadeAgendaPerso />
               : pageIade === 'iade-mes-heures-sup' ? <IadeMesHeuresSup />
-                : <IadeMesConges />}
+                : pageIade === 'iade-planning' ? <IadePlanning />
+                  : <IadeMesConges />}
         </main>
       </div>
     )
@@ -263,6 +267,9 @@ export default function App() {
       // Ouvert à TOUT associé : chacun peut être désigné par un IADE comme
       // celui qui lui a demandé des heures sup (la RPC ne lui montre que les siennes).
       case 'heures-sup-a-valider': return <HeuresSupAValider />
+      // Même écran que celui des agents IADE : savoir qui est au bloc concerne
+      // autant les MAR que les IADE, et un seul écran évite deux vérités.
+      case 'iade-planning':        return <IadePlanning />
       case 'admin-users':      return profile?.role === 'admin' ? <AdminUsers /> : <VueGlobale />
       default:                 return <VueGlobale />
     }

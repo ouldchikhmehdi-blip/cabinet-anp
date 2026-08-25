@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react'
 import IadeMesConges from './IadeMesConges'
 import IadeMesHeuresSup from './IadeMesHeuresSup'
+import IadePlanning from './IadePlanning'
 import CalendrierConges from '../components/iade/CalendrierConges'
 import { chargerAgentsIade, chargerCalendrierIade } from '../utils/iadeCongesApi'
 import { bornesMois } from '../utils/iadeConges'
@@ -132,6 +133,11 @@ export default function IadeApercu() {
           <button type="button" style={onglet(ecran === 'equipe')} onClick={() => setEcran('equipe')}>
             📆 Congés de l'équipe
           </button>
+          {/* Le planning est identique pour tous : pas de prop `apercu`, il n'y a
+              rien à personnaliser par agent. */}
+          <button type="button" style={onglet(ecran === 'planning')} onClick={() => setEcran('planning')}>
+            📋 Planning IADE
+          </button>
         </div>
       </div>
 
@@ -159,6 +165,8 @@ export default function IadeApercu() {
             key={agentId || 'vide'}
             apercu={{ userId: agentId || null, nom: agent?.nom ?? null }}
           />
+        ) : ecran === 'planning' ? (
+          <IadePlanning />
         ) : (
           <div style={{ maxWidth: 1000 }}>
             <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Congés de l'équipe</h1>

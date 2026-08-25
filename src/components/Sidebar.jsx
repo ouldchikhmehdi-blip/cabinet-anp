@@ -15,6 +15,8 @@ const navItems = [
   // Tout associé peut être désigné par un IADE comme celui qui a demandé des
   // heures sup : l'entrée est donc ouverte à tous les comptes non-IADE.
   { section: true, label: 'IADE' },
+  // Même écran que celui des agents : un seul planning IADE, lu par tous.
+  { id: 'iade-planning', label: 'Planning IADE', icon: '📋' },
   { id: 'heures-sup-a-valider', label: 'Heures sup à valider', icon: '⏱' },
   { section: true, label: 'Planning' },
   { id: 'planning-desiderata', label: 'Mes desiderata', icon: '📝' },
@@ -39,6 +41,7 @@ const iadeGestionItems = [
 
 // Congés IADE — côté agent : sa navigation ENTIÈRE (rien d'autre ne lui est ouvert)
 const iadeAgentItems = [
+  { id: 'iade-planning', label: 'Planning IADE', icon: '📋' },
   { id: 'iade-mes-conges', label: 'Mes congés', icon: '🌴' },
   { id: 'iade-mes-heures-sup', label: 'Mes heures sup', icon: '⏱' },
   { id: 'iade-calendrier', label: "Congés de l'équipe", icon: '📆' },
