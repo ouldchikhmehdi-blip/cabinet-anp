@@ -569,17 +569,20 @@ de 5h du mini PC (`publier-dropbox.sh`).
 
 | Quoi | Fichier |
 |---|---|
-| Page (bandeau du jour + grille du mois) | `src/pages/IadePlanning.jsx` |
+| Page (grille du mois) | `src/pages/IadePlanning.jsx` |
 | Logique pure (couleurs, colonnes, index par jour) — testée | `src/utils/iadePlanning.js` |
 | Lecture Supabase (aucune écriture) | `src/utils/iadePlanningApi.js` |
 | Tables, RLS | `supabase/iade_planning.sql` |
 | Publication depuis le mini PC | `vault/Projects/outils-planning/pousser_planning.py` |
 
-- **Bandeau du jour** : qui est où, en cartes — lisible sur téléphone sans faire défiler la
-  grille. Cliquer une ligne de la grille change le jour affiché.
-- **Grille du mois** : une ligne par jour, une colonne par IADE **dans l'ordre du fichier**
-  (pas alphabétique : l'équipe cherche la colonne là où elle est dans le fichier), couleurs
-  des postes identiques à celles de l'Excel, jours de vacances scolaires en jaune.
+- **Grille du mois**, et rien d'autre : une ligne par jour, une colonne par IADE **dans
+  l'ordre du fichier** (pas alphabétique : l'équipe cherche la colonne là où elle est dans
+  le fichier), couleurs des postes identiques à celles de l'Excel, jours de vacances
+  scolaires en jaune, jour courant marqué d'un liseré à gauche. Un **espace vide sépare les
+  semaines**, comme la ligne vide du fichier : sans elle, le mois se lit comme un seul bloc.
+- Sur les fonds jaunes, l'encre est **imposée en sombre** (`#2C2C2A`) : le jaune ne change
+  pas avec le thème, le texte ne doit pas changer non plus — en mode sombre,
+  `var(--color-text)` y devenait illisible.
 - **« À jour au … »** est affiché en haut : un planning figé par un cron en panne doit se
   voir, pas se deviner.
 

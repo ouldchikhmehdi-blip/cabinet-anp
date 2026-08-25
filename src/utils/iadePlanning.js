@@ -84,10 +84,14 @@ export function texteCase(c) {
   return { haut: c.matin || c.apres_midi || '', bas: '', pleine: true }
 }
 
-// Le jour à ouvrir par défaut : aujourd'hui s'il est dans le mois affiché,
-// sinon le premier jour travaillé du mois.
-export function jourParDefaut(index, aujourdHui) {
-  if (index.has(aujourdHui)) return aujourdHui
-  const cles = [...index.keys()].sort()
-  return cles[0] ?? null
+// Numéro de semaine ISO. Il sert à séparer visuellement les semaines dans la
+// grille, comme le fichier Excel le fait avec une ligne vide : sans cette
+// respiration, un mois entier se lit comme un seul bloc.
+export function semaineISO(iso) {
+  const [a, m, j] = iso.split('-').map(Number)
+  const d = new Date(Date.UTC(a, m - 1, j))
+  const jourSemaine = d.getUTCDay() || 7          // dimanche = 7, comme la norme ISO
+  d.setUTCDate(d.getUTCDate() + 4 - jourSemaine)  // on se cale sur le jeudi de la semaine
+  const debutAnnee = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((d - debutAnnee) / 86400000 + 1) / 7)
 }

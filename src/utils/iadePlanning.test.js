@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   couleurPoste, decrire, bornesDuMois, colonnesDuMois,
-  indexerParJour, texteCase, jourParDefaut,
+  indexerParJour, texteCase, semaineISO,
 } from './iadePlanning'
 
 const c = (jour, iade, rang, extra = {}) => ({
@@ -74,19 +74,22 @@ describe('contenu d\'une case', () => {
   })
 })
 
-describe('jour par défaut', () => {
-  const index = indexerParJour([c('2026-09-01', 'Cathy', 0), c('2026-09-02', 'Cathy', 0)], [])
-
-  it('ouvre aujourd\'hui quand il est dans le mois', () => {
-    expect(jourParDefaut(index, '2026-09-02')).toBe('2026-09-02')
+describe('semaine ISO', () => {
+  it('groupe les jours d\'une même semaine', () => {
+    // Lundi 7 au vendredi 11 septembre 2026 : une seule et même semaine.
+    const semaine = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11'].map(semaineISO)
+    expect(new Set(semaine).size).toBe(1)
   })
 
-  it('ouvre le premier jour sinon', () => {
-    expect(jourParDefaut(index, '2026-12-25')).toBe('2026-09-01')
+  it('change de numéro d\'un vendredi au lundi suivant', () => {
+    expect(semaineISO('2026-09-11')).not.toBe(semaineISO('2026-09-14'))
   })
 
-  it('ne renvoie rien sur un mois vide', () => {
-    expect(jourParDefaut(new Map(), '2026-09-02')).toBe(null)
+  it('reste cohérent au passage d\'année', () => {
+    // Le 1er janvier 2026 est un jeudi : il appartient à la semaine 1.
+    expect(semaineISO('2026-01-01')).toBe(1)
+    // Le 31 décembre 2026 est un jeudi : semaine 53, pas la semaine 1 de 2027.
+    expect(semaineISO('2026-12-31')).toBe(53)
   })
 })
 

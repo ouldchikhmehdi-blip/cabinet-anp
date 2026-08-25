@@ -10,13 +10,17 @@
 // Deux niveaux de lecture : le bandeau du jour (qui est où — lisible sur
 // téléphone) et la grille du mois (la vue d'ensemble que l'équipe connaît).
 // ============================================================
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
 import {
-  POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
-  couleurPoste, decrire, colonnesDuMois, indexerParJour, texteCase, jourParDefaut,
+  POSTES, COULEUR_CONGE, COULEUR_VACANCES,
+  couleurPoste, decrire, colonnesDuMois, indexerParJour, texteCase, semaineISO,
 } from '../utils/iadePlanning'
 import { moisAnneeFR } from '../utils/calendrier'
+
+// Encre sombre imposée sur les fonds jaunes : ils ne changent pas avec le thème,
+// le texte ne doit pas changer non plus.
+const ENCRE_SUR_JAUNE = '#2C2C2A'
 
 // Date du jour en heure locale : construire l'ISO depuis les champs locaux
 // évite qu'un fuseau décale « aujourd'hui » d'une journée.
@@ -36,7 +40,6 @@ export default function IadePlanning() {
   const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [] })
   const [maj, setMaj] = useState(null)
   const [echec, setEchec] = useState(null)
-  const [jourChoisi, setJourChoisi] = useState(null)
 
   useEffect(() => {
     let vivant = true
@@ -62,13 +65,6 @@ export default function IadePlanning() {
   const colonnes = useMemo(() => colonnesDuMois(cases), [cases])
   const index = useMemo(() => indexerParJour(cases, jours), [cases, jours])
   const joursTries = useMemo(() => [...index.keys()].sort(), [index])
-
-  // Le jour du bandeau suit le mois affiché : celui que l'on a cliqué s'il est
-  // dans le mois, sinon aujourd'hui, sinon le premier jour — jamais un jour d'un
-  // autre mois, qui n'aurait pas de sens ici.
-  const jourOuvert = jourChoisi && index.has(jourChoisi)
-    ? jourChoisi
-    : jourParDefaut(index, aujourdHui)
 
   function naviguer(pas) {
     const m = mois + pas
@@ -97,7 +93,6 @@ export default function IadePlanning() {
     background: 'var(--color-bg)', fontWeight: 600, color: 'var(--color-text)',
   }
 
-  const jour = jourOuvert ? index.get(jourOuvert) : null
   const vide = !chargement && !erreur && joursTries.length === 0
 
   return (
@@ -139,68 +134,6 @@ export default function IadePlanning() {
         </div>
       )}
 
-      {/* ── Bandeau du jour : qui est où, lisible sans faire défiler la grille ── */}
-      {jour && (
-        <div style={carte}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>
-              {decrire(jour.infos.jour).libelleJour} {decrire(jour.infos.jour).jour}
-            </span>
-            {jour.infos.jour === aujourdHui && (
-              <span style={{
-                fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-                background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)',
-              }}>aujourd'hui</span>
-            )}
-            {jour.infos.vacances && (
-              <span style={{
-                fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
-                background: COULEUR_VACANCES, color: '#2C2C2A',
-              }}>vacances scolaires</span>
-            )}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-            {colonnes.map(nom => {
-              const c = jour.cases.get(nom)
-              const t = texteCase(c)
-              const fond = couleurPoste(c?.poste)
-              return (
-                <div key={nom} style={{
-                  border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{
-                    padding: '4px 8px', fontSize: 11, fontWeight: 600,
-                    color: 'var(--color-text-secondary)', background: 'var(--color-bg)',
-                  }}>{nom}</div>
-                  <div style={{
-                    padding: '8px', fontSize: 12, fontWeight: 600, textAlign: 'center',
-                    background: fond ?? 'transparent',
-                    color: fond ? '#fff' : 'var(--color-text-secondary)',
-                  }}>
-                    {t.haut || '—'}{t.bas && <><br />{t.bas}</>}
-                  </div>
-                  {c?.note && (
-                    <div style={{
-                      padding: '3px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center',
-                      background: c.note.startsWith('Congé') ? COULEUR_CONGE : COULEUR_HS,
-                      color: c.note.startsWith('Congé') ? '#fff' : '#9A5B12',
-                    }}>{c.note}</div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <div style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-            Remplaçants : {jour.infos.remplacants?.length
-              ? <strong style={{ color: 'var(--color-text)' }}>{jour.infos.remplacants.join(' · ')}</strong>
-              : 'aucun'}
-          </div>
-        </div>
-      )}
-
       {/* ── Grille du mois : la vue d'ensemble, comme dans le fichier ── */}
       {joursTries.length > 0 && (
         <div style={{ ...carte, padding: 0, overflowX: 'auto' }}>
@@ -213,18 +146,28 @@ export default function IadePlanning() {
               </tr>
             </thead>
             <tbody>
-              {joursTries.map(iso => {
+              {joursTries.map((iso, i) => {
                 const d = decrire(iso)
                 const ligne = index.get(iso)
-                const actif = iso === jourOuvert
+                const nouvelleSemaine = i > 0 && semaineISO(iso) !== semaineISO(joursTries[i - 1])
                 return (
-                  <tr key={iso}
-                      onClick={() => setJourChoisi(iso)}
-                      style={{ cursor: 'pointer', outline: actif ? '2px solid var(--color-primary)' : 'none' }}>
+                  <Fragment key={iso}>
+                    {/* Respiration entre les semaines, comme la ligne vide du fichier Excel :
+                        sans elle, le mois se lit comme un seul bloc. */}
+                    {nouvelleSemaine && (
+                      <tr aria-hidden="true">
+                        <td colSpan={colonnes.length + 2}
+                            style={{ height: 14, border: 'none', background: 'transparent', padding: 0 }} />
+                      </tr>
+                    )}
+                    <tr>
                     <td style={{
                       ...cellule, textAlign: 'left', paddingLeft: 10, fontWeight: 600,
                       background: ligne.infos.vacances ? COULEUR_VACANCES : 'var(--color-bg)',
-                      color: 'var(--color-text)',
+                      // Sur le jaune vif, l'encre reste sombre quel que soit le thème : en
+                      // mode sombre, var(--color-text) est clair et devient illisible.
+                      color: ligne.infos.vacances ? ENCRE_SUR_JAUNE : 'var(--color-text)',
+                      boxShadow: iso === aujourdHui ? 'inset 3px 0 0 var(--color-primary)' : 'none',
                     }}>
                       {d.court}
                     </td>
@@ -252,7 +195,8 @@ export default function IadePlanning() {
                     <td style={{ ...cellule, fontSize: 10, color: 'var(--color-text-secondary)' }}>
                       {ligne.infos.remplacants?.join(' · ') || ''}
                     </td>
-                  </tr>
+                    </tr>
+                  </Fragment>
                 )
               })}
             </tbody>
