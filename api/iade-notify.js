@@ -4,6 +4,7 @@ import { envoyerEmail } from './_lib/mailer.js'
 import {
   emailCongesPoses, emailCongesRetires, emailCongesDecides,
   emailHsDeclarees, emailHsDecidees, emailHsAjoutees,
+  emailHsCorrigees, emailHsSansSuite,
 } from './_lib/emails.js'
 
 /**
@@ -17,11 +18,17 @@ import {
  *   • 'decision'         → la gestion décide, on prévient l'agent concerné.
  *
  * Heures supplémentaires :
- *   • 'hs_declaration' → l'agent déclare, on prévient le MAR qu'il a désigné ;
- *   • 'hs_decision'    → le MAR désigné (ou la gestion en secours) a tranché,
- *                        on prévient l'agent ;
- *   • 'hs_ajout'       → la gestion a ajouté des heures déjà validées,
- *                        on informe l'agent (rien à approuver de son côté).
+ *   • 'hs_declaration'   → l'agent déclare, on prévient le MAR qu'il a désigné ;
+ *   • 'hs_modification'  → l'agent a corrigé sa déclaration, on renvoie au MAR
+ *                          désigné ce qu'elle dit maintenant ;
+ *   • 'hs_reassignation' → l'agent va désigner un AUTRE MAR : on prévient celui
+ *                          qu'il abandonne — À APPELER AVANT la mise à jour ;
+ *   • 'hs_retrait'       → l'agent retire sa déclaration, on prévient le MAR
+ *                          désigné — À APPELER AVANT la suppression ;
+ *   • 'hs_decision'      → le MAR désigné (ou la gestion en secours) a tranché,
+ *                          on prévient l'agent ;
+ *   • 'hs_ajout'         → la gestion a ajouté des heures déjà validées,
+ *                          on informe l'agent (rien à approuver de son côté).
  *
  * ⚠️ Les deux familles vivent dans LE MÊME fichier volontairement : le plan Vercel
  * de ce compte plafonne à 12 fonctions serverless par déploiement, et deux
@@ -37,6 +44,8 @@ import {
  *
  * Pour le RETRAIT d'un congé, appeler CET endpoint AVANT la suppression des
  * lignes (sinon elles n'existent plus à relire) — cf. src/pages/IadeMesConges.jsx.
+ * Même règle pour 'hs_retrait' et 'hs_reassignation' : ils relisent l'état
+ * d'AVANT, celui que le MAR a reçu dans sa boîte.
  */
 const CHAMPS_CONGES = 'id, user_id, jour, type_conge, lot, statut, motif_reponse'
 
@@ -83,6 +92,37 @@ async function prevenirAgents(rows, lien, construire) {
     if (sent) notified++
   }
   return notified
+}
+
+// Prévient le MAR désigné par chaque ligne (un e-mail par MAR).
+async function prevenirMars(rows, lien, agentNom, construire) {
+  const parMar = new Map()
+  for (const r of rows) {
+    if (!r.mar_id) continue
+    if (!parMar.has(r.mar_id)) parMar.set(r.mar_id, [])
+    parMar.get(r.mar_id).push(r)
+  }
+
+  let notified = 0
+  for (const [marId, siennes] of parMar) {
+    const mar = await profil(marId)
+    if (!mar?.email) continue
+    const message = construire({ agentNom, rows: siennes, lien })
+    const { sent } = await envoyerEmail({
+      to: mar.email, subject: message.subject, html: message.html, text: message.text,
+    })
+    if (sent) notified++
+  }
+  return notified
+}
+
+// Les quatre mouvements dont le MAR désigné doit être averti. Même destinataire,
+// même relecture en base : seul le message change.
+const MESSAGE_AU_MAR = {
+  hs_declaration:   emailHsDeclarees,
+  hs_modification:  emailHsCorrigees,
+  hs_retrait:       (arg) => emailHsSansSuite({ ...arg, cause: 'retrait' }),
+  hs_reassignation: (arg) => emailHsSansSuite({ ...arg, cause: 'reassignation' }),
 }
 
 export default async function handler(req, res) {
@@ -153,8 +193,10 @@ export default async function handler(req, res) {
       return rienAFaire('Aucune ligne fournie.')
     }
 
-    // L'agent déclare : on prévient le MAR qu'il a désigné.
-    if (type === 'hs_declaration') {
+    // L'agent déclare, corrige, réattribue ou retire : le MAR désigné doit le
+    // savoir. Sinon il garde dans sa boîte un message qui annonce des heures qui
+    // ont changé, ou qui n'existent plus, sans que rien ne le lui dise.
+    if (Object.hasOwn(MESSAGE_AU_MAR, type)) {
       // Relecture restreinte à SES lignes : un agent ne peut pas déclencher
       // d'e-mail sur la déclaration d'un collègue.
       const { data: rows } = await supabaseAdmin
@@ -162,24 +204,7 @@ export default async function handler(req, res) {
 
       if (!rows || rows.length === 0) return rienAFaire('Aucune ligne correspondante.')
 
-      const agentNom = nomAgent(profile)
-      const parMar = new Map()
-      for (const r of rows) {
-        if (!r.mar_id) continue
-        if (!parMar.has(r.mar_id)) parMar.set(r.mar_id, [])
-        parMar.get(r.mar_id).push(r)
-      }
-
-      let notified = 0
-      for (const [marId, siennes] of parMar) {
-        const mar = await profil(marId)
-        if (!mar?.email) continue
-        const message = emailHsDeclarees({ agentNom, rows: siennes, lien })
-        const { sent } = await envoyerEmail({
-          to: mar.email, subject: message.subject, html: message.html, text: message.text,
-        })
-        if (sent) notified++
-      }
+      const notified = await prevenirMars(rows, lien, nomAgent(profile), MESSAGE_AU_MAR[type])
       return res.status(200).json({ ok: true, notified })
     }
 

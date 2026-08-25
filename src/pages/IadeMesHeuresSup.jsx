@@ -118,8 +118,20 @@ export default function IadeMesHeuresSup({ apercu = null }) {
     setEnvoi(true)
     try {
       if (editeId) {
-        await modifierDeclaration(editeId, { ...saisie, heures })
-        setSucces('Déclaration corrigée.')
+        // Le MAR a déjà reçu un e-mail annonçant l'état précédent : il doit
+        // apprendre le changement, sinon il répondra sur des heures périmées.
+        const avant = lignes.find(l => l.id === editeId)
+        const changeDeMar = !!avant?.mar_id && avant.mar_id !== saisie.marId
+
+        // Celui qu'on abandonne se prévient AVANT la mise à jour : après, la ligne
+        // porte le nouveau MAR et plus personne ne sait à qui elle était adressée.
+        if (changeDeMar) await notifierHeuresSup({ type: 'reassignation', ids: [editeId] })
+
+        await modifierDeclaration(editeId, { ...saisie, heures }, { renouvelerJeton: changeDeMar })
+        await notifierHeuresSup({ type: 'modification', ids: [editeId] })
+        setSucces(changeDeMar
+          ? `Déclaration corrigée et transmise à ${nomMar(saisie.marId)}.`
+          : `Déclaration corrigée — ${nomMar(saisie.marId)} en est informé.`)
       } else {
         const creee = await declarerHeures({ userId, ...saisie, heures })
         // Le MAR désigné est prévenu par e-mail — sans lui, personne ne saurait
@@ -143,9 +155,14 @@ export default function IadeMesHeuresSup({ apercu = null }) {
     if (!confirm(`Retirer la déclaration de ${formatHeures(ligne.heures)} du ${formatJour(ligne.jour)} ?`)) return
     setErreur(null); setSucces(null)
     try {
+      // Prévient le MAR AVANT la suppression (après, la ligne n'existe plus à
+      // relire) — même règle que le retrait d'un congé.
+      await notifierHeuresSup({ type: 'retrait', ids: [ligne.id] })
       await supprimerDeclaration(ligne.id)
       if (editeId === ligne.id) annulerEdition()
-      setSucces('Déclaration retirée.')
+      setSucces(ligne.mar_id
+        ? `Déclaration retirée — ${nomMar(ligne.mar_id)} en est informé.`
+        : 'Déclaration retirée.')
       await charger()
     } catch {
       setErreur('Retrait impossible (elle a peut-être déjà été traitée).')

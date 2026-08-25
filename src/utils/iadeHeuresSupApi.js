@@ -58,7 +58,12 @@ export async function declarerHeures({ userId, jour, heures, marId, commentaire 
 }
 
 // Corrige une déclaration encore en attente (RLS : l'agent, et seulement lui).
-export async function modifierDeclaration(id, { jour, heures, marId, commentaire }) {
+//
+// `renouvelerJeton` quand l'agent change de MAR : le jeton est ce qui autorise à
+// décider depuis l'e-mail. Le laisser tel quel laisserait au MAR abandonné des
+// boutons « Valider / Refuser » toujours actifs sur des heures qui ne le
+// regardent plus. Le renouveler tue son lien ; le nouveau MAR reçoit le sien.
+export async function modifierDeclaration(id, { jour, heures, marId, commentaire }, { renouvelerJeton = false } = {}) {
   const { data, error } = await supabase
     .from('iade_heures_sup')
     .update({
@@ -66,6 +71,7 @@ export async function modifierDeclaration(id, { jour, heures, marId, commentaire
       heures:      Number(heures),
       mar_id:      marId,
       commentaire: commentaire?.trim() || null,
+      ...(renouvelerJeton ? { jeton: crypto.randomUUID() } : {}),
     })
     .eq('id', id)
     .select(CHAMPS)
@@ -137,9 +143,12 @@ export async function deciderHeures(ids, statut, motif) {
 // ── Notifications e-mail (best-effort) ───────────────────────────────────────
 // Ne bloque JAMAIS l'action : toute erreur est avalée (cf. api/iade-notify.js,
 // endpoint commun aux congés et aux heures sup — d'où le préfixe « hs_ »).
-//   type 'declaration' → { ids } : prévient le MAR désigné
-//   type 'decision'    → { ids } : prévient l'agent
-//   type 'ajout'       → { ids } : prévient l'agent des heures ajoutées par la gestion
+//   type 'declaration'   → { ids } : prévient le MAR désigné
+//   type 'modification'  → { ids } : renvoie au MAR désigné la déclaration corrigée
+//   type 'reassignation' → { ids } : prévient le MAR abandonné — AVANT la mise à jour
+//   type 'retrait'       → { ids } : prévient le MAR désigné — AVANT la suppression
+//   type 'decision'      → { ids } : prévient l'agent
+//   type 'ajout'         → { ids } : prévient l'agent des heures ajoutées par la gestion
 export async function notifierHeuresSup({ type, ids }) {
   try {
     const { data: { session } } = await supabase.auth.getSession()

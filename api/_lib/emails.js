@@ -307,14 +307,12 @@ function boutonsDecision(base, jeton) {
   </table>`
 }
 
-// D. L'agent a déclaré des heures → e-mail au MAR qu'il a désigné.
-// Chaque jour porte ses deux boutons : on répond depuis l'e-mail, sans se connecter.
-export function emailHsDeclarees({ agentNom, rows, lien }) {
-  const h = formaterHeures(rows)
-  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+// Un jour = une carte, avec ses deux boutons quand l'URL absolue est connue.
+// Partagé par la déclaration (D) et sa correction (G) : deux messages qui montrent
+// la même chose, à quelques minutes d'intervalle, doivent se ressembler.
+function cartesDecision(rows, lien) {
   const boutonsPossibles = baseUtilisable(lien)
-
-  const blocs = tries.map(r => {
+  const html = rows.map(r => {
     const date = new Date(`${r.jour}T00:00:00`).toLocaleDateString('fr-FR',
       { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
     return `<div style="margin:18px 0;padding:14px 16px;background:#f7f6f2;border-radius:8px;">
@@ -323,6 +321,22 @@ export function emailHsDeclarees({ agentNom, rows, lien }) {
       ${(boutonsPossibles && r.jeton) ? boutonsDecision(lien, r.jeton) : ''}
     </div>`
   }).join('')
+  return { html, boutonsPossibles }
+}
+
+// Les mêmes liens, pour la version texte du message.
+function liensTexte(rows, lien) {
+  return rows.filter(r => r.jeton).map(r =>
+    `- ${r.jour} (${r.heures} h)\n    Valider : ${lienDecision(lien, r.jeton, 'valider')}\n    Refuser : ${lienDecision(lien, r.jeton, 'refuser')}`
+  ).join('\n')
+}
+
+// D. L'agent a déclaré des heures → e-mail au MAR qu'il a désigné.
+// Chaque jour porte ses deux boutons : on répond depuis l'e-mail, sans se connecter.
+export function emailHsDeclarees({ agentNom, rows, lien }) {
+  const h = formaterHeures(rows)
+  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+  const { html: blocs, boutonsPossibles } = cartesDecision(tries, lien)
 
   const corps = `
     ${p(bonjour())}
@@ -339,9 +353,7 @@ ${agentNom} déclare ${h.total} h supplémentaires et indique que vous les lui a
 ${h.text}
 
 ${boutonsPossibles ? `Répondre directement (une page de confirmation s'ouvre, aucune connexion demandée) :
-${tries.filter(r => r.jeton).map(r =>
-  `- ${r.jour} (${r.heures} h)\n    Valider : ${lienDecision(lien, r.jeton, 'valider')}\n    Refuser : ${lienDecision(lien, r.jeton, 'refuser')}`
-).join('\n')}
+${liensTexte(tries, lien)}
 
 Vous pourrez revenir sur votre réponse jusqu'à la fin du mois suivant.
 Sinon, onglet` : 'Rendez-vous dans l\'onglet'} « Heures sup à valider » du dashboard${lien ? ` : ${lien}` : '.'}`
@@ -405,6 +417,75 @@ ${lien}`
   return {
     subject: `Heures supplémentaires ajoutées — ${h.total} h`,
     html: coquille({ apercu: `${h.total} h supplémentaires vous ont été ajoutées`, titre: 'Heures supplémentaires ajoutées', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// G. L'agent a corrigé sa déclaration (encore en attente) → e-mail au MAR désigné.
+// Sans ce message, le MAR garderait dans sa boîte le premier e-mail, annonçant des
+// heures qui ne sont plus les bonnes — et rien ne le lui dirait.
+export function emailHsCorrigees({ agentNom, rows, lien }) {
+  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+  const h = formaterHeures(tries)
+  const { html: blocs, boutonsPossibles } = cartesDecision(tries, lien)
+
+  const corps = `
+    ${p(bonjour())}
+    ${p(`<strong>${agentNom}</strong> a <strong>corrigé</strong> sa déclaration d'heures supplémentaires. Voici ce qu'elle dit maintenant :`)}
+    ${blocs}
+    ${p('Ce message remplace le précédent : répondez depuis celui-ci.', 'color:#5f5e5a;font-size:13px;')}
+    ${p(`${boutonsPossibles ? 'Vous préférez le dashboard ? Onglet' : 'Rendez-vous dans l\'onglet'} <strong>Heures sup à valider</strong>${lien ? ` : ${lien}` : ' du dashboard.'}`, 'color:#5f5e5a;font-size:13px;')}`
+
+  const text = `${bonjour()}
+
+${agentNom} a corrigé sa déclaration d'heures supplémentaires. Elle dit maintenant :
+${h.text}
+
+Ce message remplace le précédent : répondez depuis celui-ci.
+${boutonsPossibles ? `${liensTexte(tries, lien)}
+
+Sinon, onglet` : 'Rendez-vous dans l\'onglet'} « Heures sup à valider » du dashboard${lien ? ` : ${lien}` : '.'}`
+
+  return {
+    subject: `Heures sup corrigées — ${agentNom}`,
+    html: coquille({ apercu: `${agentNom} a corrigé sa déclaration — ${h.total} h`, titre: 'Déclaration corrigée', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// H. La déclaration ne concerne plus le MAR : l'agent l'a retirée, ou il a désigné
+// quelqu'un d'autre. Aucun bouton — il n'y a plus rien à décider, et le lien du
+// message précédent ne mène plus nulle part (ligne supprimée, ou jeton renouvelé).
+export function emailHsSansSuite({ agentNom, rows, lien, cause }) {
+  const h = formaterHeures(rows)
+  const reattribuee = cause === 'reassignation'
+  const phrase = reattribuee
+    ? `<strong>${agentNom}</strong> a corrigé sa déclaration et désigné <strong>un autre MAR</strong> : ces heures ne vous sont plus adressées.`
+    : `<strong>${agentNom}</strong> a <strong>retiré</strong> sa déclaration d'heures supplémentaires : il n'y a plus rien à valider.`
+
+  const corps = `
+    ${p(bonjour())}
+    ${p(phrase)}
+    ${h.html}
+    ${p('Le lien de validation reçu précédemment ne fonctionne plus. Vous pouvez supprimer ce message et le précédent.', 'color:#5f5e5a;font-size:13px;')}
+    ${lien ? p(`Le reste de vos validations est dans l'onglet <strong>Heures sup à valider</strong> : ${lien}`, 'color:#5f5e5a;font-size:13px;') : ''}`
+
+  const text = `${bonjour()}
+
+${reattribuee
+  ? `${agentNom} a corrigé sa déclaration et désigné un autre MAR : ces heures ne vous sont plus adressées.`
+  : `${agentNom} a retiré sa déclaration d'heures supplémentaires : il n'y a plus rien à valider.`}
+${h.text}
+
+Le lien de validation reçu précédemment ne fonctionne plus.`
+
+  return {
+    subject: reattribuee ? `Heures sup réattribuées — ${agentNom}` : `Heures sup retirées — ${agentNom}`,
+    html: coquille({
+      apercu: reattribuee ? `${agentNom} a désigné un autre MAR` : `${agentNom} a retiré sa déclaration`,
+      titre: reattribuee ? 'Déclaration réattribuée' : 'Déclaration retirée',
+      corps, pied: PIED_NOTIF,
+    }),
     text,
   }
 }

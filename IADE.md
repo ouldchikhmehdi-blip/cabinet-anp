@@ -248,6 +248,32 @@ Fichiers : `supabase/iade_heures_sup.sql` · `src/utils/iadeHeuresSup{,Api}.js` 
 reviendrait à le laisser valider ses propres heures. Son e-mail l'informe de la décision, il
 n'en prend aucune.
 
+**Les six e-mails des heures sup** (tous par `/api/iade-notify`, sauf le dernier) :
+
+| Événement | Déclencheur | Destinataire | Gabarit | Boutons |
+|---|---|---|---|---|
+| **Déclaration** | l'agent | le **MAR désigné** | `emailHsDeclarees` | oui |
+| **Correction** | l'agent | le **MAR désigné** (le nouveau, s'il a changé) | `emailHsCorrigees` | oui |
+| **Réattribution** | l'agent | le MAR **abandonné** | `emailHsSansSuite` (`cause: 'reassignation'`) | non |
+| **Retrait** | l'agent | le **MAR désigné** | `emailHsSansSuite` (`cause: 'retrait'`) | non |
+| **Décision** | le MAR, ou la gestion en secours | l'**agent** | `emailHsDecidees` | non |
+| **Ajout par la gestion** | la gestion | l'**agent** (informé, rien à approuver) | `emailHsAjoutees` | non |
+
+Ajouté le 2026-08-25 : correction, réattribution et retrait ne prévenaient personne. Le MAR
+gardait dans sa boîte un message annonçant des heures qui avaient changé — ou qui n'existaient
+plus — sans que rien ne le lui dise.
+
+- **Réattribution et retrait notifient AVANT l'écriture** (même règle que le retrait d'un
+  congé) : après, la ligne porte le nouveau MAR, ou n'existe plus. Ordre respecté dans
+  `IadeMesHeuresSup.jsx`.
+- **Changer de MAR renouvelle le `jeton`.** Le laisser tel quel laisserait à celui qu'on
+  abandonne des boutons « Valider / Refuser » toujours actifs sur des heures qui ne le
+  regardent plus — le jeton est une URL-capacité, il ne se périme pas tout seul. Le MAR
+  abandonné reçoit son message « sans suite », le nouveau reçoit son propre lien.
+- L'agent ne peut corriger ou retirer que **tant que personne n'a décidé** (RLS
+  `statut = 'en_attente'`) : ces trois e-mails ne peuvent donc jamais contredire une
+  décision déjà prise.
+
 ---
 
 ## 4. Modèle de données
@@ -404,17 +430,18 @@ Un compte révoqué apparaît « (désactivé) » dans le récapitulatif par age
 | `POST /api/invite` | admin | `{ email, role, isIade }` — invitation, e-mail adapté si IADE |
 | `POST /api/accept` | invité | applique `is_iade` d'après l'invitation, via les métadonnées |
 | `POST /api/iade-attribuer` | admin | `{ userId, isIade, isGestionIade }` — pose les drapeaux, refuse les cumuls |
-| `POST /api/iade-notify` | agent · MAR · gestion | `{ type, lot?, ids? }` — **toutes** les notifications IADE : congés (`pose`/`retrait`/`decision`) et heures sup (`hs_declaration`/`hs_decision`/`hs_ajout`) |
+| `POST /api/iade-notify` | agent · MAR · gestion | `{ type, lot?, ids? }` — **toutes** les notifications IADE : congés (`pose`/`retrait`/`decision`) et heures sup (`hs_declaration`/`hs_modification`/`hs_reassignation`/`hs_retrait`/`hs_decision`/`hs_ajout`) |
 | `GET\|POST /api/hs-decision` | **personne d'authentifié** | `?jeton=…&action=valider\|refuser` — décider depuis l'e-mail. Le GET **affiche**, le POST décide (cf. § 3 ter). |
 
 Le **dépôt, la validation et le calendrier** passent **directement par Supabase sous RLS**
 (pas de `service_role`). Seul l'**envoi des e-mails** de notification passe par le serverless
 (il lui faut le `service_role` pour lire l'adresse du destinataire).
 
-`iade-notify` **relit toujours les lignes en base** avant d'écrire un e-mail, et pour le
-type `declaration` il restreint la relecture à `user_id = <appelant>` : un agent ne peut pas
-déclencher d'e-mail sur la déclaration d'un collègue. Pour `decision`, il n'accepte que le
-**MAR désigné** ou la gestion.
+`iade-notify` **relit toujours les lignes en base** avant d'écrire un e-mail, et pour les
+types adressés au MAR (`hs_declaration`, `hs_modification`, `hs_reassignation`, `hs_retrait`)
+il restreint la relecture à `user_id = <appelant>` : un agent ne peut pas déclencher d'e-mail
+sur la déclaration d'un collègue. Pour `decision`, il n'accepte que le **MAR désigné** ou la
+gestion.
 
 ---
 
