@@ -23,6 +23,13 @@ create table if not exists public.iade_agenda (
   updated_at timestamptz not null default now()
 );
 
+-- Ajouté le 2026-08-26 : la colonne de l'agent dans le planning publié
+-- (`iade_planning.iade`). Renseignée, le flux iCal recalcule les événements depuis
+-- le planning À CHAQUE APPEL — l'agent désigne sa colonne une fois, son agenda suit
+-- ensuite la republication nocturne sans plus rien coller. `colonne` l'emporte sur
+-- `data` : deux sources vivantes mettraient deux vérités dans le même agenda.
+alter table public.iade_agenda add column if not exists colonne text;
+
 alter table public.iade_agenda enable row level security;
 
 drop trigger if exists iade_agenda_touch_updated_at on public.iade_agenda;

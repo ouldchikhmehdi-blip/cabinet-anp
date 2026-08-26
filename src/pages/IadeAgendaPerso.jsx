@@ -1,16 +1,28 @@
 // ============================================================
 // IadeAgendaPerso — « Sync agenda » (self-service IADE).
-// L'IADE colle tout le tableau d'un mois, clique sur SON nom (lu dans l'en-tête, jamais
-// en dur), et s'ABONNE à un flux iCal vivant (Apple / Google / Outlook) — son agenda se
-// met à jour tout seul. Les mois se CUMULENT (recoller un mois le met à jour). Un jour de
-// congé devient une journée « Congé » sans poste (le poste affiché est pour le remplaçant).
+//
+// L'IADE s'abonne à un flux iCal vivant (Apple / Google / Outlook) : son agenda se
+// met à jour tout seul. Un jour de congé devient une journée « Congé » sans poste
+// (le poste affiché dans le planning est pour le remplaçant).
+//
+// Deux façons d'alimenter ce flux, et la première est la bonne :
+//   1. **désigner sa colonne** dans le planning publié — un clic, une fois pour
+//      toutes : l'agenda suit ensuite la republication nocturne, tous les mois à
+//      la fois, sans rien coller ;
+//   2. coller un mois (l'ancienne méthode), qui reste là pour les mois absents du
+//      planning publié et pour le .ics téléchargé.
+// Désigner une colonne DÉSACTIVE la source « mois collés » : deux sources
+// vivantes mettraient deux vérités dans le même agenda (cf. api/agenda-iade.js).
 // ============================================================
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { lignesDepuisTexte, listerIades, extraireEvenementsIade } from '../utils/planningColle'
 import {
-  chargerAbonnementIade, activerSyncIade, desactiverSyncIade, reactiverSyncIade, viderSyncIade,
+  chargerAbonnementIade, activerSyncIade, desactiverSyncIade, reactiverSyncIade,
+  viderSyncIade, definirColonneIade, oublierColonneIade,
 } from '../utils/iadeAgendaApi'
+import { chargerColonnesPlanning } from '../utils/iadePlanningApi'
+import { suggererColonne } from '../utils/iadeAgenda'
 
 const PLATEFORMES = [
   { id: 'apple', label: '🍎 iPhone / Mac (Apple)' },
@@ -25,22 +37,41 @@ export default function IadeAgendaPerso() {
   const [texte, setTexte] = useState('')
   const [noms, setNoms] = useState(null)
   const [choix, setChoix] = useState(null)        // { nom, moisLabel } dernier nom traité
-  const [abonnement, setAbonnement] = useState(null) // { token, actif }
+  const [abonnement, setAbonnement] = useState(null) // { token, actif, colonne }
+  const [colonnes, setColonnes] = useState([])       // colonnes du planning publié
   const [plateforme, setPlateforme] = useState('apple')
   const [busy, setBusy] = useState(false)
   const [copie, setCopie] = useState(false)
   const [erreur, setErreur] = useState(null)
   const [info, setInfo] = useState(null)
 
-  // Abonnement existant (token / actif) même avant de coller.
+  // Abonnement existant (token / actif / colonne) même avant de coller, et les
+  // colonnes du planning publié parmi lesquelles l'agent reconnaît la sienne.
   useEffect(() => {
     if (!userId) return
     let annule = false
     chargerAbonnementIade(userId)
-      .then(row => { if (!annule && row) setAbonnement({ token: row.token, actif: row.actif }) })
+      .then(row => {
+        if (!annule && row) {
+          setAbonnement({ token: row.token, actif: row.actif, colonne: row.colonne ?? null })
+        }
+      })
+      .catch(() => {})
+
+    const maintenant = new Date()
+    chargerColonnesPlanning(maintenant.getFullYear(), maintenant.getMonth() + 1)
+      .then(liste => { if (!annule) setColonnes(liste) })
       .catch(() => {})
     return () => { annule = true }
   }, [userId])
+
+  // Rapprochement proposé, jamais imposé : se tromper de colonne remplirait
+  // l'agenda avec les journées d'un collègue.
+  const suggestion = useMemo(
+    () => suggererColonne(profile?.nom_complet, colonnes),
+    [profile?.nom_complet, colonnes]
+  )
+  const colonneActive = abonnement?.colonne ?? null
 
   const base = useMemo(() => (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, ''), [])
   const urlHttps = abonnement?.token ? `${base}/api/agenda-iade?token=${abonnement.token}` : null
@@ -71,6 +102,32 @@ export default function IadeAgendaPerso() {
       setInfo(`${nom} — ${moisLabel} synchronisé (${evenements.length} événement(s)). Ton agenda se met à jour tout seul ; recolle un autre mois pour l'ajouter.`)
     } catch (e) {
       setErreur(e.message || 'Synchronisation impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function choisirColonne(colonne) {
+    setErreur(null); setInfo(null); setBusy(true)
+    try {
+      const row = await definirColonneIade(userId, colonne)
+      setAbonnement({ token: row.token, actif: row.actif, colonne: row.colonne })
+      setInfo(`Colonne « ${colonne} » retenue. Ton agenda suit maintenant le planning publié — tous les mois, sans rien coller.`)
+    } catch (e) {
+      setErreur(e.message || 'Impossible d\'enregistrer ta colonne.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function oublierColonne() {
+    setErreur(null); setInfo(null); setBusy(true)
+    try {
+      const row = await oublierColonneIade(userId)
+      setAbonnement({ token: row.token, actif: row.actif, colonne: null })
+      setInfo('Colonne oubliée. Ton agenda repart des mois que tu as collés.')
+    } catch (e) {
+      setErreur(e.message || 'Action impossible.')
     } finally {
       setBusy(false)
     }
@@ -127,10 +184,10 @@ export default function IadeAgendaPerso() {
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Sync agenda</h1>
         <p style={{ ...s.aide, marginTop: 6 }}>
-          Copie tout le tableau d'un mois depuis le fichier visuel du planning, colle-le ci-dessous,
-          puis clique sur <strong>ton nom</strong>. Tu t'abonnes <strong>une seule fois</strong> : ton
-          agenda se met à jour tout seul, et les mois se <strong>cumulent</strong> (recolle un mois pour
-          l'ajouter ou le corriger). Un jour de congé apparaît « Congé » sans poste.
+          Clique sur <strong>ta colonne</strong> dans le planning : ton agenda s'y branche
+          <strong> une fois pour toutes</strong>, tous les mois à la fois, et suit les mises à jour
+          du planning sans que tu aies rien à refaire. Un jour de congé apparaît « Congé »
+          sans poste.
         </p>
       </div>
 
@@ -141,9 +198,69 @@ export default function IadeAgendaPerso() {
         <div style={{ fontSize: 13, color: 'var(--color-text)', background: 'var(--color-primary-light)', borderRadius: 8, padding: '10px 14px' }}>{info}</div>
       )}
 
-      {/* 1. Coller + choisir son nom */}
+      {/* 1. Désigner sa colonne dans le planning publié — la bonne façon */}
       <div style={s.carte}>
-        <div style={s.titre}>1. Colle ton mois et choisis ton nom</div>
+        <div style={s.titre}>1. Quelle colonne est la tienne ?</div>
+        {colonnes.length === 0 ? (
+          <div style={s.aide}>
+            Aucun planning publié pour le moment. Tu peux quand même passer par un mois collé,
+            ci-dessous.
+          </div>
+        ) : (
+          <>
+            <div style={s.aide}>
+              Ce sont les colonnes du planning de l'équipe. Clique la tienne — vérifie bien,
+              choisir celle d'un collègue remplirait ton agenda avec ses journées.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {colonnes.map(nom => (
+                <button
+                  key={nom}
+                  type="button"
+                  onClick={() => choisirColonne(nom)}
+                  disabled={busy}
+                  style={{ ...s.onglet(colonneActive === nom), padding: '10px 16px', fontSize: 14 }}
+                >
+                  {nom}
+                  {colonneActive === nom && ' ✓'}
+                  {colonneActive !== nom && suggestion === nom && (
+                    <span style={{ fontSize: 11, marginLeft: 6, color: 'var(--color-text-tertiary)' }}>
+                      (sans doute toi)
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {colonneActive ? (
+              <div style={{ ...s.aide, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span>
+                  Ton agenda suit la colonne <strong>{colonneActive}</strong> du planning publié.
+                  Rien à recoller : les corrections du planning arrivent toutes seules.
+                </span>
+                <button type="button" onClick={oublierColonne} disabled={busy} style={s.boutonSec}>
+                  Ce n'est pas ma colonne
+                </button>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+                Tant qu'aucune colonne n'est choisie, ton agenda n'affiche que les mois que tu as
+                collés toi-même.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 2. L'ancienne méthode : coller un mois. Reste utile pour un mois absent
+             du planning publié, et pour le .ics téléchargé. */}
+      <div style={s.carte}>
+        <div style={s.titre}>2. Ou colle un mois et choisis ton nom</div>
+        {colonneActive && (
+          <div style={{ fontSize: 12.5, color: 'var(--color-amber, #b8860b)' }}>
+            Tu suis déjà la colonne <strong>{colonneActive}</strong> : tant qu'elle est choisie,
+            les mois collés ne sont <strong>pas</strong> repris dans ton agenda.
+          </div>
+        )}
         <textarea
           value={texte}
           onChange={e => { setTexte(e.target.value); setNoms(null) }}
@@ -171,10 +288,12 @@ export default function IadeAgendaPerso() {
         )}
       </div>
 
-      {/* 2. Abonnement (visible dès qu'un token existe) */}
+      {/* 3. Abonnement (visible dès qu'un token existe) */}
       {urlHttps && (
         <div style={s.carte}>
-          <div style={s.titre}>2. Synchroniser mon agenda{choix ? ` · ${choix.nom}` : ''}</div>
+          <div style={s.titre}>
+            3. Synchroniser mon agenda{colonneActive ? ` · ${colonneActive}` : choix ? ` · ${choix.nom}` : ''}
+          </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 10px' }}>
             ⏳ Après l'abonnement (ou toute modification), la mise à jour de ton agenda peut prendre <strong>jusqu'à ~1 heure</strong> : c'est ton application d'agenda qui rafraîchit l'abonnement, ce n'est pas instantané.
           </div>

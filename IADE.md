@@ -552,7 +552,29 @@ tout seul (rafraîchi par l'app cliente, jusqu'à ~1 h). Les mois se **cumulent*
 | Flux public | `api/agenda-iade.js` | `GET /api/agenda-iade?token=…` → ICS via service_role. Token inconnu / `actif=false` → calendrier **vide**. Événements **à l'heure** (congé / poste sans horaire = journée entière). |
 | API client | `src/utils/iadeAgendaApi.js` | charger / activer (fusion par mois) / désactiver / vider — RLS `user_id = auth.uid()`. |
 | Extraction | `src/utils/planningColle.js` | `extraireEvenementsIade` (JSON stockable) → réutilisé par le `.ics` téléchargé **et** par le flux. |
-| UI | `src/pages/IadeAgendaPerso.jsx` | coller → clic sur son nom → bloc d'abonnement Apple / Google / Outlook + activer/désactiver + copier l'adresse. |
+| UI | `src/pages/IadeAgendaPerso.jsx` | choisir sa colonne (ou coller un mois) → bloc d'abonnement Apple / Google / Outlook + activer/désactiver + copier l'adresse. |
+
+**Depuis le 2026-08-26, l'agent désigne SA COLONNE et n'a plus rien à coller.** Un clic sur
+sa colonne du planning publié (`iade_agenda.colonne`) et le flux **recalcule ses événements
+à chaque appel** depuis `iade_planning` — tous les mois à la fois, corrections de la
+republication nocturne comprises. La fenêtre publiée va de **62 jours en arrière à la fin de
+l'année suivante**.
+
+| Brique | Fichier | Rôle |
+|---|---|---|
+| Conversion | `api/_lib/evenementsPlanning.js` | lignes `iade_planning` → événements (mêmes règles que l'extraction d'un mois collé), testée |
+| Suggestion | `src/utils/iadeAgenda.js` | rapproche `nom_complet` d'une colonne — **jamais imposé**, et rien n'est proposé si c'est ambigu |
+
+- **`colonne` l'emporte sur `data`.** Laisser les deux vivantes mettrait deux vérités dans
+  le même agenda. L'écran le dit quand une colonne est choisie ; « Ce n'est pas ma colonne »
+  la retire et `data` redevient la source.
+- **La suggestion ne vaut pas décision** : c'est l'agent qui clique. Se tromper de colonne
+  remplirait son agenda avec les journées d'un collègue — et deux colonnes plausibles
+  (`Marion`, `PAULINE>sabrina`) ne produisent aucune suggestion.
+- **Une journée d'heures sup sans poste** (« +10h » sur un jour OFF, ça existe) donne un
+  événement « Heures sup +10h » en journée entière : sinon une journée travaillée
+  n'apparaîtrait nulle part.
+- Le **congé n'affiche pas le poste** : celui du planning est là pour le remplaçant.
 
 **⚠️ Mise en service** : exécuter `supabase/iade_agenda.sql` dans Supabase (SQL Editor)
 **avant** usage — sans la table, l'activation échoue et le flux renvoie un agenda vide.

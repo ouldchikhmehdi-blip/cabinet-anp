@@ -28,6 +28,27 @@ export async function chargerMois(annee, mois) {
   return { cases: cases.data ?? [], jours: jours.data ?? [] }
 }
 
+// Les colonnes du planning publié, dans l'ordre du fichier — celles parmi
+// lesquelles un agent reconnaît la sienne pour synchroniser son agenda.
+// On lit UN mois plutôt que l'année : les colonnes y sont toutes, et c'est une
+// requête sur trente lignes au lieu de plusieurs milliers.
+export async function chargerColonnesPlanning(annee, mois) {
+  const { debut, fin } = bornesDuMois(annee, mois)
+  const { data, error } = await supabase
+    .from('iade_planning')
+    .select('iade, rang')
+    .gte('jour', debut).lte('jour', fin)
+  if (error) throw error
+
+  const rangs = new Map()
+  for (const c of data ?? []) {
+    if (!rangs.has(c.iade) || c.rang < rangs.get(c.iade)) rangs.set(c.iade, c.rang)
+  }
+  return [...rangs.entries()]
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0], 'fr'))
+    .map(([nom]) => nom)
+}
+
 // Date de la dernière publication : un planning figé par un cron en panne doit
 // se voir à l'écran, pas se deviner.
 export async function chargerDerniereMaj() {

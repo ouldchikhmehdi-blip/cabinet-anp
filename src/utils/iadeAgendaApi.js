@@ -5,13 +5,39 @@
 // ============================================================
 import { supabase } from '../lib/supabase'
 
-// Ligne d'abonnement de l'utilisateur courant → { token, actif, data } ou null (pas encore créée).
+// Ligne d'abonnement de l'utilisateur courant → { token, actif, colonne, data }
+// ou null (pas encore créée).
 export async function chargerAbonnementIade(userId) {
   const { data, error } = await supabase
     .from('iade_agenda')
-    .select('token, actif, data, updated_at')
+    .select('token, actif, colonne, data, updated_at')
     .eq('user_id', userId)
     .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// L'agent désigne SA colonne dans le planning publié : à partir de là, le flux
+// iCal se recalcule depuis le planning à chaque appel (cf. api/agenda-iade.js).
+// Plus rien à coller, et la republication nocturne se propage toute seule.
+export async function definirColonneIade(userId, colonne) {
+  const { data, error } = await supabase
+    .from('iade_agenda')
+    .upsert({ user_id: userId, colonne, actif: true }, { onConflict: 'user_id' })
+    .select('token, actif, colonne, data')
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Revenir aux mois collés : la colonne est effacée, `data` redevient la source.
+export async function oublierColonneIade(userId) {
+  const { data, error } = await supabase
+    .from('iade_agenda')
+    .update({ colonne: null })
+    .eq('user_id', userId)
+    .select('token, actif, colonne, data')
+    .single()
   if (error) throw error
   return data
 }
