@@ -1,7 +1,13 @@
 // ============================================================
-// IadeGestion — « Congés IADE » : valider ou refuser les jours posés par les IADE.
+// IadeGestion — « Congés, HS et rempla » : l'écran de gestion des IADE.
 // Accessible au gestionnaire des IADE (profiles.is_gestion_iade), au faiseur de
 // planning (is_faiseur) et à l'admin — cf. peut_gerer_iade() côté base.
+//
+// Quatre problématiques distinctes, quatre onglets — pas un seul long
+// défilement : on vient ici pour traiter UNE chose (des congés à valider, des
+// heures à trancher, la synthèse à envoyer à la comptable), et le reste n'est
+// que du bruit à ce moment-là. Les données, elles, sont chargées une seule fois
+// pour l'année : changer d'onglet ne relance aucune requête.
 //
 // Les jours sont stockés un par un ; l'écran les regroupe en plages contiguës de
 // même nature issues d'un même envoi, pour qu'une semaine de congés se traite
@@ -22,10 +28,24 @@ import {
 } from '../utils/iadeConges'
 import { ANNEES } from '../utils/calendrier'
 
+// Une problématique = un onglet. `attente` désigne le compteur affiché en
+// pastille : ce qui attend une décision, donc ce qui doit sauter aux yeux.
+const ONGLETS = [
+  { id: 'conges',   icone: '🌴', label: 'Congés',    attente: 'conges',
+    texte: 'Jours posés par les infirmiers anesthésistes — congés payés et récupérations de jours fériés — à valider ou à refuser.' },
+  { id: 'hs',       icone: '⏱', label: 'Heures sup', attente: 'hs',
+    texte: 'Heures supplémentaires déclarées par les agents, et heures ajoutées directement par la gestion. Le MAR désigné tranche ; vous pouvez trancher en secours s\'il ne répond pas.' },
+  { id: 'rempla',   icone: '↺', label: 'Rempla',
+    texte: 'Les remplaçants qui couvrent les absences.' },
+  { id: 'synthese', icone: '📊', label: 'Synthèse comptable',
+    texte: 'Le récapitulatif mensuel à transmettre à la comptable : absences et heures supplémentaires validées, agent par agent.' },
+]
+
 export default function IadeGestion() {
   const maintenant = new Date()
   const [annee, setAnnee] = useState(maintenant.getFullYear())
   const [mois,  setMois]  = useState(maintenant.getMonth())
+  const [vue,   setVue]   = useState('conges')
 
   const [demandes,  setDemandes]  = useState([])   // jours posés sur l'année
   const [heuresSup, setHeuresSup] = useState([])   // heures sup de l'année
@@ -170,23 +190,66 @@ export default function IadeGestion() {
   })
 
   const totalAttente = enAttente.reduce((n, p) => n + p.nb, 0)
+  const hsAttente = heuresSup.filter(h => h.statut === 'en_attente').length
+  const compteurs = { conges: totalAttente, hs: hsAttente }
+
+  // Même langage visuel que les onglets d'« Aperçu compte IADE ».
+  const styleOnglet = (actif) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 7,
+    padding: '8px 16px', fontSize: 13, fontWeight: actif ? 600 : 400,
+    borderRadius: 'var(--radius-md)',
+    border: actif ? '0.5px solid var(--color-primary)' : '0.5px solid var(--color-border)',
+    background: actif ? 'var(--color-primary-light)' : 'var(--color-bg)',
+    color: actif ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)',
+    cursor: 'pointer',
+  })
+
+  // Pastille de ce qui attend une décision. Rien à traiter = pas de pastille :
+  // un « 0 » permanent finit par ne plus rien vouloir dire.
+  const pastille = {
+    fontSize: 11, fontWeight: 700, lineHeight: 1, padding: '3px 7px', borderRadius: 10,
+    background: 'var(--color-danger)', color: '#fff',
+  }
+
+  const actif = ONGLETS.find(o => o.id === vue) ?? ONGLETS[0]
 
   return (
     <div style={{ maxWidth: 1180 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 4, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600 }}>Congés et HS</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600 }}>Congés, HS et rempla</h1>
         <select value={annee} onChange={e => setAnnee(Number(e.target.value))} style={s.input}>
           {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
       </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        {ONGLETS.map(o => {
+          const n = compteurs[o.attente] ?? 0
+          return (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={vue === o.id}
+              style={styleOnglet(vue === o.id)}
+              onClick={() => setVue(o.id)}
+            >
+              <span aria-hidden="true">{o.icone}</span>
+              {o.label}
+              {n > 0 && <span style={pastille}>{n}</span>}
+            </button>
+          )
+        })}
+      </div>
       <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 24 }}>
-        Jours posés par les infirmiers anesthésistes : congés payés et récupérations de jours fériés, à valider ou à refuser.
+        {actif.texte}
       </div>
 
       {erreur && <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{erreur}</div>}
       {succes && <div style={{ fontSize: 13, color: 'var(--color-success)', background: 'var(--color-success-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{succes}</div>}
 
+      {/* ══ Onglet « Congés » ══════════════════════════════════════════════ */}
       {/* ── À traiter ── */}
+      {vue === 'conges' && (<>
       <div style={s.section}>
         <div style={s.titre}>Demandes à traiter ({totalAttente} jour(s))</div>
         {charge ? (
@@ -226,24 +289,9 @@ export default function IadeGestion() {
         )}
       </div>
 
-      {/* ── Heures supplémentaires ── */}
-      <div style={s.section}>
-        <div style={s.titre}>Heures supplémentaires</div>
-        <HeuresSupGestion
-          heuresSup={heuresSup}
-          agents={agents}
-          annee={annee}
-          onChange={charger}
-        />
-      </div>
-
-      {/* ── Synthèse mensuelle pour la comptable ── */}
-      <div style={s.section}>
-        <div style={s.titre}>Synthèse mensuelle pour la comptable</div>
-        <SyntheseMensuelle jours={demandes} heuresSup={heuresSup} agents={agents} annee={annee} />
-      </div>
-
       {/* ── Calendrier d'équipe ── */}
+      {/* Il reste dans « Congés » : on y lit d'abord qui est absent. Les heures
+          sup y figurent en second plan, elles ne le déplacent pas ailleurs. */}
       <div style={s.section}>
         <div style={s.titre}>Calendrier des absences et des heures sup</div>
         <CalendrierConges
@@ -340,6 +388,48 @@ export default function IadeGestion() {
           </div>
         )}
       </div>
+      </>)}
+
+      {/* ══ Onglet « Heures sup » ══════════════════════════════════════════ */}
+      {vue === 'hs' && (
+        <div style={s.section}>
+          <HeuresSupGestion
+            heuresSup={heuresSup}
+            agents={agents}
+            annee={annee}
+            onChange={charger}
+          />
+        </div>
+      )}
+
+      {/* ══ Onglet « Rempla » ══════════════════════════════════════════════ */}
+      {/* Écran encore à définir. Il annonce ce qui existe aujourd'hui plutôt que
+          de faire semblant : les remplaçants vivent dans le fichier du planning,
+          pas encore dans l'application. */}
+      {vue === 'rempla' && (
+        <div style={s.section}>
+          <div style={{ ...s.card, padding: '20px 22px', fontSize: 13, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>
+              À construire
+            </div>
+            Les remplaçants sont aujourd'hui saisis dans le <strong>fichier du planning</strong>,
+            colonne « remplaçants », et se lisent dans l'onglet <strong>Planning IADE</strong> —
+            rien n'est géré ici pour l'instant.
+            <div style={{ marginTop: 10 }}>
+              Ce qu'on veut en faire reste à décider : qui les saisit, ce qu'on garde
+              (jours couverts, poste remplacé, coordonnées), et si la saisie doit passer de
+              l'Excel à l'application. À voir ensemble avant d'écrire quoi que ce soit.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Onglet « Synthèse comptable » ══════════════════════════════════ */}
+      {vue === 'synthese' && (
+        <div style={s.section}>
+          <SyntheseMensuelle jours={demandes} heuresSup={heuresSup} agents={agents} annee={annee} />
+        </div>
+      )}
     </div>
   )
 }

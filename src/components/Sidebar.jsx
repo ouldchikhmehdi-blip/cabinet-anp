@@ -32,7 +32,7 @@ const adminItem = { id: 'admin-users', label: 'Comptes', icon: '🔑' }
 // Congés IADE — côté gestion (gestionnaire IADE, faiseur, admin)
 const iadeGestionItems = [
   { section: true, label: 'Congés IADE' },
-  { id: 'iade-gestion', label: 'Congés et HS', icon: '🗓' },
+  { id: 'iade-gestion', label: 'Congés, HS et rempla', icon: '🗓' },
   { id: 'iade-calendrier', label: 'Congés équipe', icon: '🌴' },
   { id: 'iade-apercu', label: 'Aperçu compte IADE', icon: '👁', sub: true },
   { id: 'iade-recap-planning', label: 'Récap planning', icon: '📄' },

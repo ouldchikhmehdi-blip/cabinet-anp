@@ -74,8 +74,26 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 | **Congés de l'équipe** (agent) / **Congés équipe** (gestion) | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
 | **Planning IADE** (lecture seule) | `src/pages/IadePlanning.jsx` | Agent IADE **et** tout associé (cf. § 12) |
 | **Heures sup à valider** | `src/pages/HeuresSupAValider.jsx` | **Tout associé** (MAR) |
-| **Congés et HS** (validation des congés + heures sup) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
+| **Congés, HS et rempla** (4 onglets, cf. ci-dessous) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |
+
+**Congés, HS et rempla** — renommé et découpé en **quatre onglets** le 2026-08-26 (avant :
+un seul long défilement de six sections). Une problématique à la fois : on ouvre cet écran
+pour traiter **une** chose, le reste est du bruit à ce moment-là.
+
+| Onglet | Contenu | Pastille |
+|---|---|---|
+| **Congés** | demandes à traiter · calendrier des absences · récap par agent · jours traités | jours en attente |
+| **Heures sup** | `HeuresSupGestion` : ajout par la gestion, décisions, liste de l'année | déclarations en attente |
+| **Rempla** | **à construire** — les remplaçants vivent encore dans le fichier du planning | — |
+| **Synthèse comptable** | `SyntheseMensuelle` : l'export mensuel destiné à la comptable | — |
+
+Le sélecteur d'**année** et les bandeaux d'erreur / de succès restent au-dessus des onglets :
+ils valent pour toute la page. Les données (jours, heures sup, agents) sont chargées **une
+seule fois pour l'année** — changer d'onglet ne relance aucune requête. Les pastilles
+n'affichent rien quand il n'y a rien à traiter : un « 0 » permanent ne veut plus rien dire.
+Le **calendrier d'équipe reste dans « Congés »** : on l'ouvre pour savoir qui est absent, les
+heures sup n'y sont qu'en second plan.
 
 **Aperçu compte IADE** : voir l'application telle qu'un agent la voit, pour l'agent choisi
 dans la liste, **sans créer de second compte** et **sans pouvoir agir à sa place**. Trois
@@ -118,8 +136,8 @@ Accès Supabase : `src/utils/iadeCongesApi.js`.
 ## 3 bis. Synthèse mensuelle pour la comptable
 
 Chaque mois, la personne qui valide doit transmettre les congés à la comptable.
-L'écran « Congés IADE » porte pour cela un bloc **« Synthèse mensuelle pour la
-comptable »** : on choisit un mois (l'année est celle du sélecteur en haut de page),
+L'écran « Congés, HS et rempla » porte pour cela un onglet **« Synthèse comptable »** :
+on choisit un mois (l'année est celle du sélecteur en haut de page),
 on clique **« Copier le texte »**, on colle dans un e-mail. Rien à mettre en forme.
 
 Le texte produit (fonction pure `syntheseMensuelle()`, testée) :
@@ -173,7 +191,7 @@ d'heures, et **désigne le MAR qui les lui a demandées**. La ligne naît `en_at
 reçoit un e-mail et la valide (ou la refuse) depuis « Heures sup à valider ». Tant que
 personne n'a tranché, l'agent peut corriger ou retirer sa déclaration.
 
-**Chemin 2 — la gestion ajoute.** Bloc « Heures supplémentaires » de l'écran « Congés IADE » :
+**Chemin 2 — la gestion ajoute.** Onglet « Heures sup » de l'écran « Congés, HS et rempla » :
 la gestion choisit un agent, un jour, un nombre d'heures. La ligne naît **déjà `validee`** —
 c'est le trigger qui l'impose, pas le front. L'agent est **informé** par e-mail ; il n'a rien
 à approuver.
