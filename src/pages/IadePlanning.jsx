@@ -102,25 +102,33 @@ export default function IadePlanning() {
     border: '0.5px solid var(--color-border)', background: 'var(--color-bg)',
     color: 'var(--color-text)', cursor: 'pointer',
   }
+  // Un peu plus étroit qu'avant : chaque IADE occupe maintenant deux colonnes,
+  // il faut bien les loger sans que le mois parte trop loin sur la droite.
   const cellule = {
-    border: '0.5px solid var(--color-border)', padding: 0,
-    minWidth: 108, height: 42, textAlign: 'center', fontSize: 11,
+    border: '0.5px solid var(--color-border)', padding: '0 2px',
+    minWidth: 98, height: 36, textAlign: 'center', fontSize: 11,
   }
 
-  // Congé et heures sup barrent toute la largeur de la case, sous le poste.
-  // Un badge minuscule dans un coin ne se voit pas sur un mois entier — or ce
-  // sont précisément les deux informations qu'on vient chercher.
-  const bandeauNote = (nature) => ({
-    fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', lineHeight: '15px',
-    background: nature === 'conge' ? COULEUR_CONGE : COULEUR_HS,
-    // Encre imposée : ces deux fonds ne changent pas avec le thème.
-    color: nature === 'conge' ? '#fff' : '#6E4109',
-    borderTop: '1px solid rgba(0,0,0,.18)',
-  })
   const enTete = {
     ...cellule, position: 'sticky', top: 0, zIndex: 2, height: 30,
     background: 'var(--color-bg)', fontWeight: 600, color: 'var(--color-text)',
   }
+  // Deuxième ligne d'en-tête, collée sous la première (30 px plus bas).
+  const sousEnTete = {
+    ...enTete, top: 30, height: 20, minWidth: 0,
+    fontSize: 10, fontWeight: 600, color: 'var(--color-text-secondary)',
+  }
+  // La colonne « Congé / HS » porte les couleurs du fichier jusque dans son
+  // en-tête : on la repère avant même qu'elle soit remplie.
+  const enTeteNote = { ...sousEnTete, background: COULEUR_HS, color: '#7A4A0B' }
+
+  // Couleurs de la case « Congé / HS ». Congé en rouge plein, heures sup sur le
+  // beige — exactement le fichier Excel, pour qu'on lise les deux pareil.
+  const celluleNote = (nature) => ({
+    ...cellule, minWidth: 62, fontWeight: 700, letterSpacing: '0.02em',
+    background: nature === 'conge' ? COULEUR_CONGE : nature === 'hs' ? COULEUR_HS : 'transparent',
+    color: nature === 'conge' ? '#fff' : nature === 'hs' ? '#7A4A0B' : 'var(--color-text-tertiary)',
+  })
 
   const vide = !chargement && !erreur && joursTries.length === 0
 
@@ -167,11 +175,23 @@ export default function IadePlanning() {
       {joursTries.length > 0 && (
         <div style={{ ...carte, padding: 0, overflowX: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            {/* En-tête sur deux lignes, comme le fichier : le nom de l'IADE
+                coiffe SA colonne d'horaires ET sa colonne « Congé / HS ». */}
             <thead>
               <tr>
-                <th style={{ ...enTete, minWidth: 92, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
-                {colonnes.map(nom => <th key={nom} style={enTete}>{nom}</th>)}
-                <th style={{ ...enTete, minWidth: 130 }}>Remplaçants</th>
+                <th rowSpan={2} style={{ ...enTete, minWidth: 92, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
+                {colonnes.map(nom => (
+                  <th key={nom} colSpan={2} style={{ ...enTete, fontSize: 12 }}>{nom}</th>
+                ))}
+                <th rowSpan={2} style={{ ...enTete, minWidth: 130 }}>Remplaçants</th>
+              </tr>
+              <tr>
+                {colonnes.map(nom => (
+                  <Fragment key={nom}>
+                    <th style={sousEnTete}>Horaires</th>
+                    <th style={enTeteNote}>Congé / HS</th>
+                  </Fragment>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -185,7 +205,7 @@ export default function IadePlanning() {
                         sans elle, le mois se lit comme un seul bloc. */}
                     {nouvelleSemaine && (
                       <tr aria-hidden="true">
-                        <td colSpan={colonnes.length + 2}
+                        <td colSpan={colonnes.length * 2 + 2}
                             style={{ height: 14, border: 'none', background: 'transparent', padding: 0 }} />
                       </tr>
                     )}
@@ -206,32 +226,20 @@ export default function IadePlanning() {
                       const fond = couleurPoste(c?.poste)
                       const nature = natureNote(c?.note)
                       return (
-                        <td key={nom} style={{
-                          ...cellule, background: fond ?? 'transparent',
-                          color: fond ? '#fff' : 'var(--color-text-secondary)',
-                          fontWeight: fond ? 600 : 400,
-                          verticalAlign: 'top',
-                          // Le liseré fait ressortir la case de loin ; le bandeau
-                          // dit laquelle des deux natures c'est.
-                          boxShadow: nature
-                            ? `inset 0 0 0 2px ${nature === 'conge' ? COULEUR_CONGE : COULEUR_HS}`
-                            : 'none',
-                        }}>
-                          <div style={{
-                            display: 'flex', flexDirection: 'column',
-                            justifyContent: 'space-between', minHeight: 40,
+                        <Fragment key={nom}>
+                          {/* Horaires : le poste reste intact, même en congé —
+                              c'est celui que le remplaçant vient couvrir. */}
+                          <td style={{
+                            ...cellule, background: fond ?? 'transparent',
+                            color: fond ? '#fff' : 'var(--color-text-secondary)',
+                            fontWeight: fond ? 600 : 400,
                           }}>
-                            <div style={{
-                              flex: 1, display: 'flex', alignItems: 'center',
-                              justifyContent: 'center', padding: '3px 2px',
-                            }}>
-                              <span>{t.haut}{t.bas && <><br />{t.bas}</>}</span>
-                            </div>
-                            {nature && (
-                              <div style={bandeauNote(nature)}>{libelleNote(c.note)}</div>
-                            )}
-                          </div>
-                        </td>
+                            {t.haut}{t.bas && <><br />{t.bas}</>}
+                          </td>
+                          <td style={celluleNote(nature)}>
+                            {nature ? libelleNote(c.note) : ''}
+                          </td>
+                        </Fragment>
                       )
                     })}
                     <td style={{ ...cellule, fontSize: 10, color: 'var(--color-text-secondary)' }}>
@@ -274,17 +282,18 @@ export default function IadePlanning() {
           ))}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{
-              background: COULEUR_CONGE, color: '#fff', fontSize: 9, fontWeight: 800,
-              letterSpacing: '0.06em', padding: '1px 5px', borderRadius: 3,
-            }}>CONGÉ</span>
-            Le poste reste affiché : c'est celui que couvre le remplaçant
+              background: COULEUR_CONGE, color: '#fff', fontSize: 10, fontWeight: 700,
+              padding: '1px 6px', borderRadius: 3,
+            }}>Congé</span>
+            Colonne « Congé / HS » — les horaires restent affichés à côté, c'est le poste
+            que couvre le remplaçant
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{
-              background: COULEUR_HS, color: '#6E4109', fontSize: 9, fontWeight: 800,
-              letterSpacing: '0.06em', padding: '1px 5px', borderRadius: 3,
+              background: COULEUR_HS, color: '#7A4A0B', fontSize: 10, fontWeight: 700,
+              padding: '1px 6px', borderRadius: 3,
             }}>+10 h</span>
-            Heures supplémentaires
+            Heures supplémentaires, dans la même colonne
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: COULEUR_VACANCES }} />

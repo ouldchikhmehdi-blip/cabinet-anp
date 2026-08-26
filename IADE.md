@@ -635,13 +635,17 @@ de 5h du mini PC (`publier-dropbox.sh`).
 - Sur les fonds jaunes, l'encre est **imposée en sombre** (`#2C2C2A`) : le jaune ne change
   pas avec le thème, le texte ne doit pas changer non plus — en mode sombre,
   `var(--color-text)` y devenait illisible.
-- **Congé et heures sup barrent toute la largeur de la case** (bandeau sous le poste,
-  `CONGÉ` en blanc sur rouge, `+10 h` sur le beige des heures sup), et la case porte un
-  **liseré de 2 px** de la même couleur. Repris le 2026-08-26 : c'était un badge de 9 px
-  dans un coin, invisible sur un mois entier — or ce sont précisément les deux
-  informations qu'on vient chercher. `natureNote()` range les écritures irrégulières du
-  fichier (« Congé », « conge », « +10h », « HS ») en deux natures ; `libelleNote()` aère
-  le nombre d'heures (`+10 h`) pour qu'il ne se lise pas comme un horaire.
+- **Chaque IADE occupe DEUX colonnes**, comme dans le fichier visuel : ses **horaires**,
+  et une colonne **« Congé / HS »** à côté — congé en **rouge plein** (`#E24A3B`, la
+  couleur du fichier), heures sup sur le **beige** (`#F4D8B8`). L'en-tête tient sur deux
+  lignes, le nom coiffant ses deux colonnes. Repris le 2026-08-26 : l'annotation était un
+  badge de 9 px dans un coin de la case, invisible sur un mois entier — or c'est
+  précisément ce qu'on vient chercher. **Le poste n'est jamais effacé** : c'est celui que
+  le remplaçant vient couvrir.
+- `natureNote()` range les écritures irrégulières du fichier (« Congé », « conge »,
+  « +10h », « HS ») en deux natures ; `libelleNote()` garde le libellé du congé tel quel
+  (« Congé CP », « Congé récup. » quand la nature est connue) et aère le nombre d'heures
+  (`+10 h`), qui se lisait comme un horaire.
 - **« À jour au … »** est affiché en haut : un planning figé par un cron en panne doit se
   voir, pas se deviner.
 

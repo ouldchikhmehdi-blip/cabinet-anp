@@ -95,14 +95,18 @@ export function natureNote(note) {
   return 'hs'
 }
 
-// Ce qu'on écrit dans le bandeau de la case. « +10h » devient « +10 h » : à cette
-// taille, l'espace est ce qui empêche de lire « 10h » comme un horaire.
+// Ce qu'on écrit dans la colonne « Congé / HS ». Le libellé du congé est gardé tel
+// que le fichier l'écrit (« Congé », mais aussi « Congé CP », « Congé récup. »
+// quand la nature est connue) : la colonne est assez large pour le dire.
+// « +10h » devient « +10 h » : à cette taille, l'espace est ce qui empêche de
+// lire « 10h » comme un horaire.
 export function libelleNote(note) {
   const nature = natureNote(note)
   if (!nature) return ''
-  if (nature === 'conge') return 'CONGÉ'
-  const heures = (note ?? '').trim().match(/^\+?\s*(\d+(?:[.,]\d+)?)\s*h/i)
-  return heures ? `+${heures[1].replace(',', '.')} h` : (note ?? '').trim().toUpperCase()
+  const propre = (note ?? '').trim()
+  if (nature === 'conge') return propre.charAt(0).toUpperCase() + propre.slice(1)
+  const heures = propre.match(/^\+?\s*(\d+(?:[.,]\d+)?)\s*h/i)
+  return heures ? `+${heures[1].replace(',', '.')} h` : propre.toUpperCase()
 }
 
 // Numéro de semaine ISO. Il sert à séparer visuellement les semaines dans la

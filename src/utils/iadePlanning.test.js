@@ -99,8 +99,14 @@ describe('nature et libellé d\'une note', () => {
     // désignent tous la même chose.
     for (const note of ['Congé', 'conge', 'CONGÉS', ' Congé ']) {
       expect(natureNote(note)).toBe('conge')
-      expect(libelleNote(note)).toBe('CONGÉ')
     }
+  })
+
+  it('garde le libellé du congé tel que le fichier l\'écrit', () => {
+    // La colonne dédiée est assez large : « Congé CP » vaut mieux que « Congé ».
+    expect(libelleNote('Congé')).toBe('Congé')
+    expect(libelleNote('conge')).toBe('Conge')
+    expect(libelleNote('Congé récup.')).toBe('Congé récup.')
   })
 
   it('range tout le reste en heures supplémentaires', () => {
