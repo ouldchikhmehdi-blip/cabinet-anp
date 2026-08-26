@@ -31,7 +31,6 @@ import HeuresSupAValider from './pages/HeuresSupAValider'
 import IadeCalendrier from './pages/IadeCalendrier'
 import IadeGestion from './pages/IadeGestion'
 import IadeApercu from './pages/IadeApercu'
-import IadeRecapPlanning from './pages/IadeRecapPlanning'
 import IadeAgendaPerso from './pages/IadeAgendaPerso'
 import IadePlanning from './pages/IadePlanning'
 import './index.css'
@@ -262,7 +261,9 @@ export default function App() {
       case 'iade-gestion':        return peutGererIade ? <IadeGestion /> : <VueGlobale />
       case 'iade-calendrier':     return peutGererIade ? <IadeCalendrier /> : <VueGlobale />
       case 'iade-apercu':         return peutGererIade ? <IadeApercu /> : <VueGlobale />
-      case 'iade-recap-planning': return peutGererIade ? <IadeRecapPlanning /> : <VueGlobale />
+      // « Récap planning » n'est plus une page : c'est un bloc de l'onglet
+      // « Synthèse comptable ». On y renvoie ceux qui gardent l'ancien écran ouvert.
+      case 'iade-recap-planning': return peutGererIade ? <IadeGestion /> : <VueGlobale />
       case 'iade-agenda-perso':   return peutGererIade ? <IadeAgendaPerso /> : <VueGlobale />
       // Ouvert à TOUT associé : chacun peut être désigné par un IADE comme
       // celui qui lui a demandé des heures sup (la RPC ne lui montre que les siennes).

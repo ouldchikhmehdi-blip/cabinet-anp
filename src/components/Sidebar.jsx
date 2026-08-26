@@ -35,7 +35,6 @@ const iadeGestionItems = [
   { id: 'iade-gestion', label: 'Congés, HS et rempla', icon: '🗓' },
   { id: 'iade-calendrier', label: 'Congés équipe', icon: '🌴' },
   { id: 'iade-apercu', label: 'Aperçu compte IADE', icon: '👁', sub: true },
-  { id: 'iade-recap-planning', label: 'Récap planning', icon: '📄' },
   { id: 'iade-agenda-perso', label: 'Sync agenda', icon: '📲', sub: true },
 ]
 

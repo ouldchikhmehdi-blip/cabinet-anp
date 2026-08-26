@@ -85,8 +85,8 @@ pour traiter **une** chose, le reste est du bruit à ce moment-là.
 |---|---|---|
 | **Congés** | demandes à traiter · calendrier des absences · récap par agent · jours traités | jours en attente |
 | **Heures sup** | `HeuresSupGestion` : ajout par la gestion, décisions, liste de l'année | déclarations en attente |
-| **Rempla** | **à construire** — les remplaçants vivent encore dans le fichier du planning | — |
-| **Synthèse comptable** | `SyntheseMensuelle` : l'export mensuel destiné à la comptable | — |
+| **Rempla** | chercher, puis nommer les remplaçants (cf. § 13) | — |
+| **Synthèse comptable** | `SyntheseMensuelle` (d'après le dashboard) **et** `RecapPlanningColle` (d'après le fichier du planning collé, cf. § 10) | — |
 
 Le sélecteur d'**année** et les bandeaux d'erreur / de succès restent au-dessus des onglets :
 ils valent pour toute la page. Les données (jours, heures sup, agents) sont chargées **une
@@ -514,8 +514,15 @@ l'en-tête, noms de remplaçants lus comme texte libre.
 
 | Écran | Page | Accès | Ce que ça fait |
 |---|---|---|---|
-| **Récap planning** | `src/pages/IadeRecapPlanning.jsx` | `peutGererIade` (gestion / faiseur / admin) | colle le mois → récap congés (+ remplaçant / HS du même jour), remplaçants hors congé, heures sup ; export `.txt` |
+| **Récap planning** | `src/components/iade/RecapPlanningColle.jsx` | `peutGererIade` (gestion / faiseur / admin) | colle le mois → récap congés (+ remplaçant / HS du même jour), remplaçants hors congé, heures sup ; export `.txt` |
 | **Sync agenda** | `src/pages/IadeAgendaPerso.jsx` | comptes **IADE** (+ gestion) | colle le mois → clique son nom → s'abonne au flux iCal vivant (Apple / Google / Outlook), cf. §10 bis |
+
+> **Le 2026-08-26, « Récap planning » a cessé d'être une page** : c'est un bloc de l'onglet
+> **Synthèse comptable** (§ 3), sous « D'après le fichier du planning ». Il y voisine la
+> synthèse tirée du dashboard : même geste — préparer le récapitulatif d'un mois à
+> transmettre —, seule la source diffère. L'entrée de menu a disparu ; l'ancien identifiant
+> de page `iade-recap-planning` renvoie vers l'écran de gestion, pour ceux qui l'auraient
+> gardé ouvert.
 
 Logique partagée : **`src/utils/planningColle.js`** (`analyserEntete`, `listerIades`,
 `genererRecapTexte`, `genererIcs`), testée dans `planningColle.test.js`.
@@ -640,3 +647,79 @@ de 5h du mini PC (`publier-dropbox.sh`).
   **jamais dans le vault ni dans le dépôt**.
 - Republication par **fusion puis ménage** (`maj < horodatage du passage`) : la table n'est
   jamais vidée, personne ne tombe sur un planning vide pendant la republication nocturne.
+
+---
+
+## 13. Onglet « Rempla » — chercher, puis nommer les remplaçants
+
+Ajouté le 2026-08-26. Troisième onglet de « Congés, HS et rempla » (§ 3), réservé à la
+gestion. Il suit l'ordre dans lequel les choses se passent vraiment :
+
+1. **on désigne les jours** où il manque quelqu'un — au calendrier, ou en partant des
+   **suggestions tirées des congés posés** ;
+2. **on copie le mail** de recherche et on l'envoie ;
+3. **on inscrit le nom** de celui qui a répondu, on valide, et il apparaît dans le
+   **planning IADE**.
+
+### Le calendrier
+
+Un clic ouvre une recherche sur le jour, un deuxième en demande un **second** sur le même
+jour (deux remplaçants, pas plus — `check rang between 1 and 2`), un troisième remet le jour
+à zéro. **Maj + clic** étend depuis le dernier jour cliqué : une semaine d'absence se pose en
+deux gestes. Les jours où un IADE est absent portent un **liseré** : c'est là qu'il faut
+quelqu'un neuf fois sur dix.
+
+> ⚠️ Le troisième clic **n'efface jamais un besoin nommé ou pourvu** (`actionClicJour`) : le
+> clic de trop est la faute la plus facile à faire, il ne doit pas coûter un nom qu'on a mis
+> trois jours à trouver. Ceux-là se retirent explicitement, dans la liste.
+
+### Les suggestions
+
+`suggestionsDepuisConges()` propose les plages de congés **demandés comme validés** — on
+cherche un remplaçant avant de valider, pas après — en ne gardant que les jours qui ne
+portent encore aucun besoin. Une plage entièrement couverte disparaît de la liste.
+
+### Le mail
+
+`texteMailRempla()` produit le texte à copier-coller : qui nous sommes, les dates (jours
+consécutifs regroupés, « — 2 remplaçants » quand il en faut deux), le lieu des vacations
+(endoscopies digestives) et le tarif (30 € brut de l'heure). **Aucune coordonnée**, par choix
+explicite : elles s'ajoutent à la main avant l'envoi. Le texte est **modifiable dans l'écran**
+avant d'être copié ; « Régénérer » revient à la version calculée. La portée (mois affiché ou
+année entière) vaut pour la liste **et** pour le mail.
+
+### Le nom, et le planning
+
+« Valider » passe la ligne en `pourvu` et le nom s'affiche aussitôt dans la colonne
+**Remplaçants** de l'onglet « Planning IADE », en **couleur primaire**, avec l'infobulle
+« saisi dans l'onglet Rempla, pas encore dans le fichier ». Les noms déjà présents dans
+l'Excel ne sont pas répétés (comparaison insensible à la casse et aux espaces).
+
+> ⚠️ **Ces lignes ne sont pas écrasées par la republication nocturne.** `iade_planning*` est
+> le miroir du fichier Excel ; `iade_remplacements` appartient au dashboard, et
+> `pousser_planning.py` n'y touche pas. C'est le seul endroit où le planning affiché n'est
+> pas strictement le fichier — d'où le marquage visuel, qui doit rester.
+
+### Tout se défait
+
+C'est la partie du module qui bouge le plus : un remplaçant se décommande, un congé est
+annulé, on change d'avis. Rien n'est irréversible.
+
+- **Dévalider conserve le nom** (`devaliderBesoin`) : la même personne revient souvent,
+  la retaper à chaque hésitation serait une punition.
+- Retirer un jour ne touche pas les autres ; aucune suppression en cascade.
+- Un `pourvu` porte forcément un nom (`check statut <> 'pourvu' or nom is not null`) : sans
+  ça, le planning afficherait une case vide en prétendant que le jour est couvert.
+- Chaque écriture repose sur une relecture depuis la base : deux personnes peuvent
+  travailler dessus en même temps.
+
+### Sécurité
+
+Lecture : `is_iade() or acces_cabinet()` — les remplaçants figurent déjà dans le planning que
+tout le monde consulte, les cacher ici serait une fausse pudeur. Écriture : `peut_gerer_iade()`
+seule. `cree_par` / `maj_par` sont posés par un **trigger**, jamais par le client, et la
+fonction de trigger est **révoquée de l'API REST** (elle n'a rien à faire en `/rest/v1/rpc/`).
+
+Fichiers : `supabase/iade_remplacements.sql` · `src/utils/iadeRempla{,Api}.js` ·
+`src/components/iade/{RemplaGestion,CalendrierRempla}.jsx` · `src/pages/IadePlanning.jsx`
+(fusion à l'affichage).

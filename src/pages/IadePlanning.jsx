@@ -7,14 +7,17 @@
 // écriture ici : une correction se fait dans le fichier, sinon les deux versions
 // divergent et plus personne ne sait laquelle croire.
 //
-// Deux niveaux de lecture : le bandeau du jour (qui est où — lisible sur
-// téléphone) et la grille du mois (la vue d'ensemble que l'équipe connaît).
+// UNE exception, la colonne des remplaçants : les noms validés dans l'onglet
+// « Rempla » y sont ajoutés à ceux du fichier, et signalés comme tels. Ils vivent
+// dans leur propre table, que la republication nocturne ne touche pas — sans quoi
+// un remplaçant saisi le soir aurait disparu le lendemain matin.
 // ============================================================
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
+import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
 import {
   POSTES, COULEUR_CONGE, COULEUR_VACANCES,
-  couleurPoste, decrire, colonnesDuMois, indexerParJour, texteCase, semaineISO,
+  couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, texteCase, semaineISO,
 } from '../utils/iadePlanning'
 import { moisAnneeFR } from '../utils/calendrier'
 
@@ -37,16 +40,17 @@ export default function IadePlanning() {
   // Les données portent le mois qu'elles décrivent : « en chargement » et
   // « en erreur » s'en déduisent, plutôt que d'être remis à zéro à la main à
   // chaque changement de mois (deux états à garder d'accord, donc un à oublier).
-  const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [] })
+  const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [], rempla: [] })
   const [maj, setMaj] = useState(null)
   const [echec, setEchec] = useState(null)
 
   useEffect(() => {
     let vivant = true
-    Promise.all([chargerMois(annee, mois), chargerDerniereMaj()])
-      .then(([d, m]) => {
+    const { debut, fin } = bornesDuMois(annee, mois)
+    Promise.all([chargerMois(annee, mois), chargerDerniereMaj(), chargerRemplacantsPourvus(debut, fin)])
+      .then(([d, m, r]) => {
         if (!vivant) return
-        setDonnees({ annee, mois, ...d })
+        setDonnees({ annee, mois, ...d, rempla: r })
         setMaj(m)
       })
       .catch(e => {
@@ -65,6 +69,19 @@ export default function IadePlanning() {
   const colonnes = useMemo(() => colonnesDuMois(cases), [cases])
   const index = useMemo(() => indexerParJour(cases, jours), [cases, jours])
   const joursTries = useMemo(() => [...index.keys()].sort(), [index])
+
+  // Remplaçants saisis dans le dashboard : jour → noms. Ceux que le fichier Excel
+  // porte déjà ne sont pas répétés (comparaison insensible à la casse et aux
+  // espaces) — la même personne ne doit pas apparaître deux fois sur une ligne.
+  const remplaDashboard = useMemo(() => {
+    const index = new Map()
+    for (const r of (aJour ? donnees.rempla : [])) {
+      if (!r.nom) continue
+      if (!index.has(r.jour)) index.set(r.jour, [])
+      index.get(r.jour).push(r.nom)
+    }
+    return index
+  }, [aJour, donnees.rempla])
 
   function naviguer(pas) {
     const m = mois + pas
@@ -193,7 +210,24 @@ export default function IadePlanning() {
                       )
                     })}
                     <td style={{ ...cellule, fontSize: 10, color: 'var(--color-text-secondary)' }}>
-                      {ligne.infos.remplacants?.join(' · ') || ''}
+                      {(() => {
+                        const duFichier = ligne.infos.remplacants ?? []
+                        const connus = new Set(duFichier.map(n => n.trim().toLowerCase()))
+                        const duDashboard = (remplaDashboard.get(iso) ?? [])
+                          .filter(n => !connus.has(n.trim().toLowerCase()))
+                        return (
+                          <>
+                            {duFichier.join(' · ')}
+                            {duFichier.length > 0 && duDashboard.length > 0 && ' · '}
+                            {duDashboard.map((nom, k) => (
+                              <span key={nom} title="Saisi dans l'onglet « Rempla », pas encore dans le fichier"
+                                    style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                                {k > 0 && ' · '}{nom}
+                              </span>
+                            ))}
+                          </>
+                        )
+                      })()}
                     </td>
                     </tr>
                   </Fragment>
@@ -220,6 +254,10 @@ export default function IadePlanning() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: COULEUR_VACANCES }} />
             Vacances scolaires
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Nom</span>
+            Remplaçant saisi dans « Rempla » (pas encore dans le fichier)
           </span>
         </div>
       )}

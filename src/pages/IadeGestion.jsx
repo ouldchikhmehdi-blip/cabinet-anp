@@ -20,6 +20,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import CalendrierConges from '../components/iade/CalendrierConges'
 import SyntheseMensuelle from '../components/iade/SyntheseMensuelle'
 import HeuresSupGestion from '../components/iade/HeuresSupGestion'
+import RemplaGestion from '../components/iade/RemplaGestion'
+import RecapPlanningColle from '../components/iade/RecapPlanningColle'
 import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade, notifierConges } from '../utils/iadeCongesApi'
 import { chargerHeuresSupAnnee } from '../utils/iadeHeuresSupApi'
 import {
@@ -36,9 +38,9 @@ const ONGLETS = [
   { id: 'hs',       icone: '⏱', label: 'Heures sup', attente: 'hs',
     texte: 'Heures supplémentaires déclarées par les agents, et heures ajoutées directement par la gestion. Le MAR désigné tranche ; vous pouvez trancher en secours s\'il ne répond pas.' },
   { id: 'rempla',   icone: '↺', label: 'Rempla',
-    texte: 'Les remplaçants qui couvrent les absences.' },
+    texte: 'Les jours où il faut un remplaçant, le mail à envoyer pour en chercher un, et le nom de celui qu\'on a trouvé — qui s\'inscrit alors dans le planning.' },
   { id: 'synthese', icone: '📊', label: 'Synthèse comptable',
-    texte: 'Le récapitulatif mensuel à transmettre à la comptable : absences et heures supplémentaires validées, agent par agent.' },
+    texte: 'Les récapitulatifs mensuels à transmettre : ce que le dashboard a validé, agent par agent, et le récap tiré du fichier du planning collé.' },
 ]
 
 export default function IadeGestion() {
@@ -403,32 +405,27 @@ export default function IadeGestion() {
       )}
 
       {/* ══ Onglet « Rempla » ══════════════════════════════════════════════ */}
-      {/* Écran encore à définir. Il annonce ce qui existe aujourd'hui plutôt que
-          de faire semblant : les remplaçants vivent dans le fichier du planning,
-          pas encore dans l'application. */}
       {vue === 'rempla' && (
         <div style={s.section}>
-          <div style={{ ...s.card, padding: '20px 22px', fontSize: 13, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>
-              À construire
-            </div>
-            Les remplaçants sont aujourd'hui saisis dans le <strong>fichier du planning</strong>,
-            colonne « remplaçants », et se lisent dans l'onglet <strong>Planning IADE</strong> —
-            rien n'est géré ici pour l'instant.
-            <div style={{ marginTop: 10 }}>
-              Ce qu'on veut en faire reste à décider : qui les saisit, ce qu'on garde
-              (jours couverts, poste remplacé, coordonnées), et si la saisie doit passer de
-              l'Excel à l'application. À voir ensemble avant d'écrire quoi que ce soit.
-            </div>
-          </div>
+          <RemplaGestion annee={annee} conges={demandes} agents={agents} />
         </div>
       )}
 
       {/* ══ Onglet « Synthèse comptable » ══════════════════════════════════ */}
+      {/* Deux récapitulatifs du même mois, deux sources : ce que le dashboard a
+          validé, et ce que dit le fichier du planning. Ils vivent côte à côte
+          parce que c'est le même geste — préparer ce qu'on transmet. */}
       {vue === 'synthese' && (
-        <div style={s.section}>
-          <SyntheseMensuelle jours={demandes} heuresSup={heuresSup} agents={agents} annee={annee} />
-        </div>
+        <>
+          <div style={s.section}>
+            <div style={s.titre}>D'après le dashboard — congés et heures sup validés</div>
+            <SyntheseMensuelle jours={demandes} heuresSup={heuresSup} agents={agents} annee={annee} />
+          </div>
+          <div style={s.section}>
+            <div style={s.titre}>D'après le fichier du planning — mois collé</div>
+            <RecapPlanningColle />
+          </div>
+        </>
       )}
     </div>
   )

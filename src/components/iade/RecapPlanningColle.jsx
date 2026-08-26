@@ -1,12 +1,18 @@
 // ============================================================
-// IadeRecapPlanning — « Récap planning » (gestion IADE / faiseur / admin).
-// Le gestionnaire colle tout le tableau d'un mois (depuis le fichier visuel du
-// planning) et obtient un récap : congés des IADE + couverture (remplaçant / HS),
-// remplaçants des jours sans congé, heures sup. 100 % côté client — rien n'est
-// envoyé au serveur, aucune donnée stockée.
+// RecapPlanningColle — le récap tiré du planning collé, dans l'onglet
+// « Synthèse comptable » de la gestion IADE.
+//
+// On colle tout le tableau d'un mois (depuis le fichier visuel du planning) et on
+// obtient un récap : congés des IADE + couverture (remplaçant / HS), remplaçants
+// des jours sans congé, heures sup. 100 % côté client — rien n'est envoyé au
+// serveur, aucune donnée stockée.
+//
+// Il voisine avec `SyntheseMensuelle` parce que c'est le même geste : produire le
+// récapitulatif d'un mois, à transmettre. Seule la source diffère — celui-ci lit
+// le fichier du planning, l'autre ce qui a été validé dans le dashboard.
 // ============================================================
 import { useState } from 'react'
-import { lignesDepuisTexte, genererRecapTexte } from '../utils/planningColle'
+import { lignesDepuisTexte, genererRecapTexte } from '../../utils/planningColle'
 
 function telecharger(texte, nomFichier) {
   const blob = new Blob([texte], { type: 'text/plain;charset=utf-8' })
@@ -18,7 +24,7 @@ function telecharger(texte, nomFichier) {
   URL.revokeObjectURL(url)
 }
 
-export default function IadeRecapPlanning() {
+export default function RecapPlanningColle() {
   const [texte, setTexte] = useState('')
   const [recap, setRecap] = useState('')
   const [erreur, setErreur] = useState(null)
@@ -34,7 +40,6 @@ export default function IadeRecapPlanning() {
     }
   }
 
-  const titre = 'Récap planning'
   const carte = {
     background: 'var(--color-surface)',
     border: '0.5px solid var(--color-border)',
@@ -52,15 +57,12 @@ export default function IadeRecapPlanning() {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>{titre}</h1>
-        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 6, lineHeight: 1.5 }}>
-          Copie tout le tableau d'un mois depuis le fichier visuel du planning, colle-le ci-dessous,
-          puis génère le récap : congés des IADE (avec le remplaçant ou les heures sup du même jour),
-          remplaçants des jours sans congé, et heures sup. Tout se calcule dans ton navigateur.
-        </p>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+        Copiez tout le tableau d'un mois depuis le fichier visuel du planning, collez-le ci-dessous,
+        puis générez le récap : congés des IADE (avec le remplaçant ou les heures sup du même jour),
+        remplaçants des jours sans congé, et heures sup. Tout se calcule dans votre navigateur.
+      </p>
 
       <div style={carte}>
         <textarea
