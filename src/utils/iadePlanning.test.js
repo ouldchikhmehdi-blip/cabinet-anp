@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   couleurPoste, decrire, bornesDuMois, colonnesDuMois,
-  indexerParJour, texteCase, semaineISO,
+  indexerParJour, texteCase, semaineISO, natureNote, libelleNote,
 } from './iadePlanning'
 
 const c = (jour, iade, rang, extra = {}) => ({
@@ -90,6 +90,32 @@ describe('semaine ISO', () => {
     expect(semaineISO('2026-01-01')).toBe(1)
     // Le 31 décembre 2026 est un jeudi : semaine 53, pas la semaine 1 de 2027.
     expect(semaineISO('2026-12-31')).toBe(53)
+  })
+})
+
+describe('nature et libellé d\'une note', () => {
+  it('reconnaît un congé quel que soit l\'accent ou la casse', () => {
+    // Le fichier Excel n'est pas régulier : « Congé », « Conge », « congés »
+    // désignent tous la même chose.
+    for (const note of ['Congé', 'conge', 'CONGÉS', ' Congé ']) {
+      expect(natureNote(note)).toBe('conge')
+      expect(libelleNote(note)).toBe('CONGÉ')
+    }
+  })
+
+  it('range tout le reste en heures supplémentaires', () => {
+    expect(natureNote('+10h')).toBe('hs')
+    expect(natureNote('HS')).toBe('hs')
+    expect(natureNote(null)).toBe(null)
+    expect(natureNote('   ')).toBe(null)
+  })
+
+  it('aère le nombre d\'heures pour qu\'il ne se lise pas comme un horaire', () => {
+    expect(libelleNote('+10h')).toBe('+10 h')
+    expect(libelleNote('8h')).toBe('+8 h')
+    expect(libelleNote('+2,5h')).toBe('+2.5 h')
+    expect(libelleNote('HS')).toBe('HS')
+    expect(libelleNote(null)).toBe('')
   })
 })
 

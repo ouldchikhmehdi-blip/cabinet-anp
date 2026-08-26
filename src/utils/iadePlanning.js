@@ -84,6 +84,27 @@ export function texteCase(c) {
   return { haut: c.matin || c.apres_midi || '', bas: '', pleine: true }
 }
 
+// La note d'une case dit l'une des deux seules choses qui comptent en plus du
+// poste : la personne est en congé, ou elle fait des heures supplémentaires.
+// Le fichier Excel les écrit à sa façon (« Congé », « +10h », « HS ») ; on les
+// range en deux natures pour pouvoir les afficher franchement.
+export function natureNote(note) {
+  const t = (note ?? '').trim().toLowerCase()
+  if (!t) return null
+  if (t.startsWith('cong')) return 'conge'          // « Congé », « Conge », « congés »
+  return 'hs'
+}
+
+// Ce qu'on écrit dans le bandeau de la case. « +10h » devient « +10 h » : à cette
+// taille, l'espace est ce qui empêche de lire « 10h » comme un horaire.
+export function libelleNote(note) {
+  const nature = natureNote(note)
+  if (!nature) return ''
+  if (nature === 'conge') return 'CONGÉ'
+  const heures = (note ?? '').trim().match(/^\+?\s*(\d+(?:[.,]\d+)?)\s*h/i)
+  return heures ? `+${heures[1].replace(',', '.')} h` : (note ?? '').trim().toUpperCase()
+}
+
 // Numéro de semaine ISO. Il sert à séparer visuellement les semaines dans la
 // grille, comme le fichier Excel le fait avec une ligne vide : sans cette
 // respiration, un mois entier se lit comme un seul bloc.

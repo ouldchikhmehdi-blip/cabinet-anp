@@ -16,8 +16,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
 import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
 import {
-  POSTES, COULEUR_CONGE, COULEUR_VACANCES,
-  couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, texteCase, semaineISO,
+  POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
+  couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, texteCase,
+  semaineISO, natureNote, libelleNote,
 } from '../utils/iadePlanning'
 import { moisAnneeFR } from '../utils/calendrier'
 
@@ -103,8 +104,19 @@ export default function IadePlanning() {
   }
   const cellule = {
     border: '0.5px solid var(--color-border)', padding: 0,
-    minWidth: 108, height: 34, textAlign: 'center', fontSize: 11,
+    minWidth: 108, height: 42, textAlign: 'center', fontSize: 11,
   }
+
+  // Congé et heures sup barrent toute la largeur de la case, sous le poste.
+  // Un badge minuscule dans un coin ne se voit pas sur un mois entier — or ce
+  // sont précisément les deux informations qu'on vient chercher.
+  const bandeauNote = (nature) => ({
+    fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', lineHeight: '15px',
+    background: nature === 'conge' ? COULEUR_CONGE : COULEUR_HS,
+    // Encre imposée : ces deux fonds ne changent pas avec le thème.
+    color: nature === 'conge' ? '#fff' : '#6E4109',
+    borderTop: '1px solid rgba(0,0,0,.18)',
+  })
   const enTete = {
     ...cellule, position: 'sticky', top: 0, zIndex: 2, height: 30,
     background: 'var(--color-bg)', fontWeight: 600, color: 'var(--color-text)',
@@ -192,20 +204,33 @@ export default function IadePlanning() {
                       const c = ligne.cases.get(nom)
                       const t = texteCase(c)
                       const fond = couleurPoste(c?.poste)
+                      const nature = natureNote(c?.note)
                       return (
                         <td key={nom} style={{
                           ...cellule, background: fond ?? 'transparent',
                           color: fond ? '#fff' : 'var(--color-text-secondary)',
                           fontWeight: fond ? 600 : 400,
+                          verticalAlign: 'top',
+                          // Le liseré fait ressortir la case de loin ; le bandeau
+                          // dit laquelle des deux natures c'est.
+                          boxShadow: nature
+                            ? `inset 0 0 0 2px ${nature === 'conge' ? COULEUR_CONGE : COULEUR_HS}`
+                            : 'none',
                         }}>
-                          <div>{t.haut}{t.bas && <><br />{t.bas}</>}</div>
-                          {c?.note && (
+                          <div style={{
+                            display: 'flex', flexDirection: 'column',
+                            justifyContent: 'space-between', minHeight: 40,
+                          }}>
                             <div style={{
-                              fontSize: 9, fontWeight: 700, marginTop: 1,
-                              color: c.note.startsWith('Congé') ? COULEUR_CONGE : '#9A5B12',
-                              background: '#fff', borderRadius: 3, display: 'inline-block', padding: '0 4px',
-                            }}>{c.note}</div>
-                          )}
+                              flex: 1, display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', padding: '3px 2px',
+                            }}>
+                              <span>{t.haut}{t.bas && <><br />{t.bas}</>}</span>
+                            </div>
+                            {nature && (
+                              <div style={bandeauNote(nature)}>{libelleNote(c.note)}</div>
+                            )}
+                          </div>
                         </td>
                       )
                     })}
@@ -248,8 +273,18 @@ export default function IadePlanning() {
             </span>
           ))}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: COULEUR_CONGE }} />
-            Congé (le poste reste affiché : c'est celui que couvre le remplaçant)
+            <span style={{
+              background: COULEUR_CONGE, color: '#fff', fontSize: 9, fontWeight: 800,
+              letterSpacing: '0.06em', padding: '1px 5px', borderRadius: 3,
+            }}>CONGÉ</span>
+            Le poste reste affiché : c'est celui que couvre le remplaçant
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{
+              background: COULEUR_HS, color: '#6E4109', fontSize: 9, fontWeight: 800,
+              letterSpacing: '0.06em', padding: '1px 5px', borderRadius: 3,
+            }}>+10 h</span>
+            Heures supplémentaires
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: COULEUR_VACANCES }} />
