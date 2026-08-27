@@ -7,6 +7,7 @@ import {
   syntheseMensuelle,
   bornesMois, joursDuMois, grilleMois,
   grouperParAgent, absenceDuJour, indexJoursPoses,
+  libelleFerie, libelleTypeDetaille, feriesRecuperables, estFerieValide,
 } from './iadeConges'
 
 // Un jour posé, tel que renvoyé par la base.
@@ -97,11 +98,88 @@ describe('plages', () => {
   })
 })
 
+describe('le férié récupéré', () => {
+  it('nomme le férié à partir de sa seule date', () => {
+    expect(libelleFerie('2026-05-08')).toBe('8 mai 2026 (Victoire 1945)')
+    expect(libelleFerie('2026-11-11')).toBe('11 novembre 2026 (Armistice 1918)')
+    expect(libelleFerie('2026-04-06')).toBe('6 avril 2026 (Lundi de Pâques)') // férié mobile
+    expect(libelleFerie(null)).toBeNull()
+  })
+
+  it('dit de quel férié une récup provient, partout où la nature s\'affiche', () => {
+    expect(libelleTypeDetaille('cp')).toBe('Congé payé')
+    expect(libelleTypeDetaille('recup_ferie', '2026-05-08')).toBe('Récup. du 8 mai 2026 (Victoire 1945)')
+  })
+
+  it('avoue l\'absence d\'origine plutôt que de la taire', () => {
+    // Les récups posées avant l'ajout du champ (une seule en base) : le dire
+    // franchement vaut mieux que d'afficher une nature qui semble complète.
+    expect(libelleTypeDetaille('recup_ferie', null)).toMatch(/non précisée/i)
+  })
+
+  it('ne propose que de vrais fériés, année en cours et précédente, du plus récent', () => {
+    const liste = feriesRecuperables(new Date(Date.UTC(2026, 7, 27)))
+    expect(liste[0].iso).toBe('2026-12-25')
+    expect(liste.at(-1).iso).toBe('2025-01-01')
+    expect(liste.every(f => estFerieValide(f.iso))).toBe(true)
+    expect(liste.map(f => f.iso)).toEqual([...liste.map(f => f.iso)].sort().reverse())
+  })
+
+  it('marque les fériés pas encore passés, au lieu de les cacher', () => {
+    // Un agent inscrit au planning du 25 décembre pose sa récup avant de
+    // l'avoir travaillé : le choix reste offert, mais dit ce qu'il est.
+    const liste = feriesRecuperables(new Date(Date.UTC(2026, 7, 27)))
+    expect(liste.find(f => f.iso === '2026-12-25').aVenir).toBe(true)
+    expect(liste.find(f => f.iso === '2026-05-08').aVenir).toBe(false)
+  })
+
+  it('refuse une date qui n\'est pas un jour férié français', () => {
+    expect(estFerieValide('2026-05-08')).toBe(true)
+    expect(estFerieValide('2026-05-09')).toBe(false)
+    expect(estFerieValide('pas une date')).toBe(false)
+    expect(estFerieValide(null)).toBe(false)
+  })
+
+  it('ne fond pas deux récups de fériés différents dans une seule plage', () => {
+    // Deux jours qui se suivent, deux origines : les fusionner en effacerait une.
+    const p = plages([
+      { id: '1', jour: '2026-09-14', type_conge: 'recup_ferie', ferie: '2026-05-08', statut: 'validee' },
+      { id: '2', jour: '2026-09-15', type_conge: 'recup_ferie', ferie: '2026-07-14', statut: 'validee' },
+    ])
+    expect(p).toHaveLength(2)
+    expect(p.map(x => x.ferie)).toEqual(['2026-05-08', '2026-07-14'])
+  })
+
+  it('ventile les récups par férié dans la synthèse de la comptable', () => {
+    const synth = syntheseMensuelle({
+      annee: 2026, mois: 8,
+      agents: [{ id: 'u1', nom: 'Dupont Marie' }],
+      jours: [
+        { id: '1', user_id: 'u1', jour: '2026-09-07', type_conge: 'recup_ferie', ferie: '2026-05-08', statut: 'validee' },
+        { id: '2', user_id: 'u1', jour: '2026-09-08', type_conge: 'recup_ferie', ferie: '2026-05-08', statut: 'validee' },
+        { id: '3', user_id: 'u1', jour: '2026-09-21', type_conge: 'recup_ferie', ferie: '2026-07-14', statut: 'validee' },
+      ],
+    })
+    expect(synth.texte).toContain('récup. du 14 juillet 2026 (Fête nationale) (1) : lun. 21/09')
+    expect(synth.texte).toContain('récup. du 8 mai 2026 (Victoire 1945) (2) : lun. 07/09, mar. 08/09')
+  })
+})
+
 describe('verifierSelection', () => {
-  const sel = (jour, type = 'cp') => ({ jour, type })
+  const sel = (jour, type = 'cp', ferie = null) => ({ jour, type, ferie })
 
   it('accepte une sélection valide', () => {
-    expect(verifierSelection([sel('2026-07-13'), sel('2026-07-14', 'recup_ferie')])).toBeNull()
+    expect(verifierSelection([sel('2026-07-13'), sel('2026-07-16', 'recup_ferie', '2026-07-14')])).toBeNull()
+  })
+  it('refuse une récup qui ne dit pas quel férié elle récupère', () => {
+    // Le cœur de la règle : une récup anonyme est inexploitable en paie.
+    expect(verifierSelection([sel('2026-07-16', 'recup_ferie')])).toMatch(/choisissez le jour férié/i)
+  })
+  it('refuse une récup rattachée à une date qui n\'est pas fériée', () => {
+    expect(verifierSelection([sel('2026-07-16', 'recup_ferie', '2026-07-15')])).toMatch(/jour férié/i)
+  })
+  it('refuse un férié accroché à un congé payé', () => {
+    expect(verifierSelection([sel('2026-07-16', 'cp', '2026-07-14')])).toMatch(/récupération/i)
   })
   it('refuse une sélection vide', () => {
     expect(verifierSelection([])).toMatch(/au moins un jour/i)
@@ -193,7 +271,7 @@ describe('syntheseMensuelle', () => {
     // Marie : 2 CP + 1 récup, validés
     { id: 'a', user_id: 'u1', jour: '2026-09-07', type_conge: 'cp',          statut: 'validee' },
     { id: 'b', user_id: 'u1', jour: '2026-09-08', type_conge: 'cp',          statut: 'validee' },
-    { id: 'c', user_id: 'u1', jour: '2026-09-17', type_conge: 'recup_ferie', statut: 'validee' },
+    { id: 'c', user_id: 'u1', jour: '2026-09-17', type_conge: 'recup_ferie', ferie: '2026-07-14', statut: 'validee' },
     // Sophie : 1 CP validé
     { id: 'd', user_id: 'u2', jour: '2026-09-14', type_conge: 'cp',          statut: 'validee' },
     // à exclure : en attente, refusé, et un mois voisin
@@ -220,7 +298,9 @@ describe('syntheseMensuelle', () => {
     expect(synth.texte.indexOf('Amar Sophie')).toBeLessThan(synth.texte.indexOf('Dupont Marie'))
     expect(synth.texte).toContain('Dupont Marie — 3 jours')
     expect(synth.texte).toContain('Congés payés (2) : lun. 07/09, mar. 08/09')
-    expect(synth.texte).toContain('Récup. jour férié (1) : jeu. 17/09')
+    // La récup NOMME le férié qu'elle récupère : c'est ce que la comptable doit lire.
+    expect(synth.texte).toContain('Récup. jour férié (1) :')
+    expect(synth.texte).toContain('récup. du 14 juillet 2026 (Fête nationale) (1) : jeu. 17/09')
     expect(synth.texte).toContain('Amar Sophie — 1 jour')
     expect(synth.texte).toContain('Total du mois : 4 jours — 3 congés payés · 1 récup. jour férié')
   })

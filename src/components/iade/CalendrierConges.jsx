@@ -14,7 +14,7 @@
 // Si un jour porte les deux, le congé prime — comme dans le planning Excel.
 // ============================================================
 import { moisAnneeFR } from '../../utils/calendrier'
-import { joursDuMois, grouperParAgent, absenceDuJour, courtType, libelleType, formatJour, libelleStatut, STATUTS } from '../../utils/iadeConges'
+import { joursDuMois, grouperParAgent, absenceDuJour, courtType, libelleTypeDetaille, formatJour, libelleStatut, STATUTS } from '../../utils/iadeConges'
 
 export default function CalendrierConges({ annee, mois, absences = [], heuresSup = [], chargement = false, onNaviguer }) {
   const jours = joursDuMois(annee, mois)
@@ -134,7 +134,7 @@ export default function CalendrierConges({ annee, mois, absences = [], heuresSup
                     const marque = a ?? hs
                     const st = marque ? STATUTS[marque.statut] : null
                     const infobulle = [
-                      a  ? `${libelleType(a.type_conge)} · ${formatJour(a.jour)} · ${libelleStatut(a.statut).toLowerCase()}` : null,
+                      a  ? `${libelleTypeDetaille(a.type_conge, a.ferie)} · ${formatJour(a.jour)} · ${libelleStatut(a.statut).toLowerCase()}` : null,
                       hs ? `${hs.heures} h supplémentaires · ${libelleStatut(hs.statut).toLowerCase()}` : null,
                     ].filter(Boolean).join(' — ')
                     return (

@@ -11,7 +11,7 @@
 // ============================================================
 import { supabase } from '../lib/supabase'
 
-const CHAMPS = 'id, user_id, jour, type_conge, lot, statut, motif_reponse, decide_par, decide_le, created_at'
+const CHAMPS = 'id, user_id, jour, type_conge, ferie, lot, statut, motif_reponse, decide_par, decide_le, created_at'
 
 // ── Côté IADE ────────────────────────────────────────────────────────────────
 
@@ -26,17 +26,23 @@ export async function chargerMesConges(userId) {
   return data ?? []
 }
 
-// Dépose une sélection de jours. `jours` = [{ jour, type }].
+// Dépose une sélection de jours. `jours` = [{ jour, type, ferie }].
 // Les jours envoyés ensemble partagent un `lot` : la gestion peut ainsi répondre
 // à « la demande » d'un seul clic, sans perdre la décision jour par jour.
 // `statut` n'est forcé qu'à la saisie directe par la gestion (l'agent, lui, ne
 // peut créer que des jours « en attente » — trigger + RLS).
+//
+// `ferie` = le jour férié récupéré, obligatoire sur une récup et interdit
+// ailleurs. La base le fait respecter (contraintes iade_conges_ferie_sur_recup
+// et iade_conges_recup_precise) : un client bricolé ne peut pas glisser une
+// récup anonyme dans la paie.
 export async function poserJours({ userId, jours, statut = 'en_attente' }) {
   const lot = crypto.randomUUID()
-  const lignes = jours.map(({ jour, type }) => ({
+  const lignes = jours.map(({ jour, type, ferie }) => ({
     user_id:    userId,
     jour,
     type_conge: type,
+    ferie:      type === 'recup_ferie' ? (ferie ?? null) : null,
     lot,
     statut,
   }))

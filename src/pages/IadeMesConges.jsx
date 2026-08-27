@@ -17,8 +17,8 @@ import CalendrierSaisie from '../components/iade/CalendrierSaisie'
 import { chargerMesConges, poserJours, supprimerJours, notifierConges } from '../utils/iadeCongesApi'
 import {
   TYPES_CONGE, TYPE_DEFAUT, STATUTS,
-  libelleType, libelleStatut, formatPeriode, resumeTypes,
-  plages, indexJoursPoses, verifierSelection,
+  libelleTypeDetaille, libelleStatut, formatPeriode, resumeTypes,
+  plages, indexJoursPoses, verifierSelection, feriesRecuperables,
 } from '../utils/iadeConges'
 
 export default function IadeMesConges({ apercu = null }) {
@@ -37,7 +37,17 @@ export default function IadeMesConges({ apercu = null }) {
   const [envoi,    setEnvoi]    = useState(false)
 
   const [typeActif, setTypeActif] = useState(TYPE_DEFAUT)
-  const [selection, setSelection] = useState(new Map()) // iso → type
+  // Le férié en cours de récupération. Il fait partie de la « nature active » :
+  // on le choisit AVANT de cliquer des jours, comme le type, et on peut en
+  // changer pour poser dans le même envoi des récups de fériés différents.
+  const [ferieActif, setFerieActif] = useState('')
+  const [selection, setSelection] = useState(new Map()) // iso → { type, ferie }
+
+  const feries = useMemo(() => feriesRecuperables(), [])
+  // Tant que le férié n'est pas désigné, le calendrier ne se clique pas : une
+  // récup sans origine serait refusée à l'envoi (et par la base). Mieux vaut
+  // l'empêcher tout de suite que d'expliquer l'échec après vingt clics.
+  const attendFerie = typeActif === 'recup_ferie' && !ferieActif
 
   const charger = useCallback(async () => {
     if (!userId) { setDemandes([]); setCharge(false); return }
@@ -65,12 +75,14 @@ export default function IadeMesConges({ apercu = null }) {
   // Le motif de refus entre dans la clé : deux refus motivés différemment ne
   // doivent pas être fondus dans une seule ligne.
   const traitees = useMemo(
-    () => plages(demandes.filter(d => d.statut !== 'en_attente'), ['type_conge', 'statut', 'motif_reponse']),
+    () => plages(demandes.filter(d => d.statut !== 'en_attente'), ['type_conge', 'ferie', 'statut', 'motif_reponse']),
     [demandes]
   )
 
   const listeSelection = useMemo(
-    () => [...selection.entries()].map(([jour, type]) => ({ jour, type })).sort((a, b) => a.jour.localeCompare(b.jour)),
+    () => [...selection.entries()]
+      .map(([jour, v]) => ({ jour, type: v.type, ferie: v.ferie ?? null }))
+      .sort((a, b) => a.jour.localeCompare(b.jour)),
     [selection]
   )
 
@@ -81,12 +93,15 @@ export default function IadeMesConges({ apercu = null }) {
   }
 
   // Un clic pose le jour dans la nature active ; le même clic sur la même nature
-  // l'enlève ; sur l'autre nature, il la remplace.
+  // l'enlève ; sur une autre nature — ou une récup d'un AUTRE férié — il la remplace.
   function basculerJour(iso) {
+    if (attendFerie) return
+    const ferie = typeActif === 'recup_ferie' ? ferieActif : null
     setSelection(prev => {
       const suivant = new Map(prev)
-      if (suivant.get(iso) === typeActif) suivant.delete(iso)
-      else suivant.set(iso, typeActif)
+      const actuel = suivant.get(iso)
+      if (actuel && actuel.type === typeActif && (actuel.ferie ?? null) === ferie) suivant.delete(iso)
+      else suivant.set(iso, { type: typeActif, ferie })
       return suivant
     })
     setSucces(null)
@@ -116,7 +131,7 @@ export default function IadeMesConges({ apercu = null }) {
   }
 
   async function retirer(plage) {
-    if (!confirm(`Retirer ${plage.nb} jour(s) — ${libelleType(plage.type_conge)}, ${formatPeriode(plage.debut, plage.fin)} ?`)) return
+    if (!confirm(`Retirer ${plage.nb} jour(s) — ${libelleTypeDetaille(plage.type_conge, plage.ferie)}, ${formatPeriode(plage.debut, plage.fin)} ?`)) return
     setErreur(null); setSucces(null)
     try {
       // Prévient la gestion AVANT la suppression (après, les lignes n'existent plus à relire).
@@ -213,15 +228,55 @@ export default function IadeMesConges({ apercu = null }) {
             ))}
           </div>
 
+          {/* Quel férié est récupéré. Demandé À LA SAISIE, parce que l'agent est le
+              seul à le savoir : reconstitué plus tard par la gestion, ce serait une
+              devinette, et la comptable a besoin du fait. */}
+          {typeActif === 'recup_ferie' && (
+            <div style={{
+              marginBottom: 18, padding: '12px 14px',
+              background: 'var(--color-amber-light)', borderRadius: 'var(--radius-md)',
+              border: `1px solid ${attendFerie ? 'var(--color-amber)' : 'transparent'}`,
+            }}>
+              <label htmlFor="ferie-recupere" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 6 }}>
+                Quel jour férié récupérez-vous ?
+              </label>
+              <select
+                id="ferie-recupere"
+                value={ferieActif}
+                disabled={lectureSeule}
+                onChange={e => { setFerieActif(e.target.value); setSucces(null) }}
+                style={{
+                  width: '100%', maxWidth: 380, padding: '9px 10px', fontSize: 14,
+                  borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)',
+                  background: 'var(--color-surface)', color: 'var(--color-text)',
+                }}
+              >
+                <option value="">— Choisissez le jour férié —</option>
+                {feries.map(f => (
+                  <option key={f.iso} value={f.iso}>
+                    {f.label}{f.aVenir ? ' — à venir' : ''}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+                {attendFerie
+                  ? 'Choisissez-le maintenant : les jours du calendrier se cliquent ensuite.'
+                  : <>Les jours que vous allez cliquer récupèrent le <strong>{feries.find(f => f.iso === ferieActif)?.label}</strong>. Pour récupérer un autre férié dans le même envoi, changez ce choix puis cliquez les jours concernés.</>}
+              </div>
+            </div>
+          )}
+
           <CalendrierSaisie
             annee={annee}
             mois={mois}
             onNaviguer={naviguer}
             typeActif={typeActif}
+            ferieActif={ferieActif}
             selection={selection}
             dejaPoses={dejaPoses}
             onBasculerJour={basculerJour}
             lectureSeule={lectureSeule}
+            bloque={attendFerie}
           />
 
           <div style={{
@@ -278,7 +333,7 @@ export default function IadeMesConges({ apercu = null }) {
                 {enAttente.map(p => (
                   <tr key={p.ids[0]} style={s.tr}>
                     <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
-                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{libelleTypeDetaille(p.type_conge, p.ferie)}</td>
                     <td style={s.td}>{p.nb}</td>
                     <td style={s.td}>
                       <button style={s.boutonSec} disabled={lectureSeule} onClick={() => retirer(p)}>Retirer</button>
@@ -312,7 +367,7 @@ export default function IadeMesConges({ apercu = null }) {
                 {traitees.map(p => (
                   <tr key={p.ids[0]} style={s.tr}>
                     <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
-                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{libelleTypeDetaille(p.type_conge, p.ferie)}</td>
                     <td style={s.td}>{p.nb}</td>
                     <td style={s.td}><span style={badgeStatut(p.statut)}>{libelleStatut(p.statut)}</span></td>
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{p.motif_reponse || '—'}</td>

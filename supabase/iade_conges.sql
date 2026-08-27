@@ -148,6 +148,25 @@ create table if not exists public.iade_conges (
   updated_at    timestamptz not null default now()
 );
 
+-- Ajouté le 2026-08-27 : DE QUEL jour férié la récupération provient.
+-- Sans lui, la comptable recevait « récup. de jour férié » et devait demander
+-- lequel, agent par agent. On stocke la DATE du férié ; son nom s'en déduit
+-- (`joursFeriesFR`, src/utils/calendrier.js), donc rien n'est saisi à la main.
+alter table public.iade_conges add column if not exists ferie date;
+
+-- Un férié ne se rattache qu'à une récupération : jamais à un congé payé.
+alter table public.iade_conges drop constraint if exists iade_conges_ferie_sur_recup;
+alter table public.iade_conges add constraint iade_conges_ferie_sur_recup
+  check ( ferie is null or type_conge = 'recup_ferie' );
+
+-- Et toute récupération DOIT dire lequel. `not valid` : la seule ligne posée
+-- avant l'ajout du champ survit telle quelle, mais plus aucun insert ni update
+-- ne passe sans son férié — y compris depuis un client bricolé, la RLS ne
+-- protégeant que l'accès, pas le contenu.
+alter table public.iade_conges drop constraint if exists iade_conges_recup_precise;
+alter table public.iade_conges add constraint iade_conges_recup_precise
+  check ( type_conge <> 'recup_ferie' or ferie is not null ) not valid;
+
 create index if not exists iade_conges_user_idx   on public.iade_conges (user_id);
 create index if not exists iade_conges_jour_idx   on public.iade_conges (jour);
 create index if not exists iade_conges_lot_idx    on public.iade_conges (lot);
@@ -270,6 +289,7 @@ returns table (
   nom        text,
   jour       date,
   type_conge text,
+  ferie      date,
   statut     text
 )
 language sql
@@ -282,6 +302,7 @@ as $$
          coalesce(nullif(btrim(p.nom_complet), ''), split_part(p.email, '@', 1)) as nom,
          c.jour,
          c.type_conge,
+         c.ferie,
          c.statut
   from public.iade_conges c
   join public.profiles    p on p.id = c.user_id

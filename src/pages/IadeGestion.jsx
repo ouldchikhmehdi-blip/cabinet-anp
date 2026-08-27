@@ -25,7 +25,7 @@ import RecapPlanningColle from '../components/iade/RecapPlanningColle'
 import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade, notifierConges } from '../utils/iadeCongesApi'
 import { chargerHeuresSupAnnee } from '../utils/iadeHeuresSupApi'
 import {
-  bornesMois, libelleType, libelleStatut, formatPeriode,
+  bornesMois, libelleTypeDetaille, libelleStatut, formatPeriode,
   plages, compterParType, TYPES_CONGE, STATUTS,
 } from '../utils/iadeConges'
 import { ANNEES } from '../utils/calendrier'
@@ -104,17 +104,17 @@ export default function IadeGestion() {
 
   // Une ligne à traiter = des jours consécutifs, de même nature, issus du même envoi.
   const enAttente = useMemo(
-    () => plages(demandes.filter(d => d.statut === 'en_attente'), ['user_id', 'lot', 'type_conge', 'statut']),
+    () => plages(demandes.filter(d => d.statut === 'en_attente'), ['user_id', 'lot', 'type_conge', 'ferie', 'statut']),
     [demandes]
   )
   // Le motif de refus entre dans la clé : deux refus motivés différemment restent séparés.
   const traitees = useMemo(
-    () => plages(demandes.filter(d => d.statut !== 'en_attente'), ['user_id', 'type_conge', 'statut', 'motif_reponse']),
+    () => plages(demandes.filter(d => d.statut !== 'en_attente'), ['user_id', 'type_conge', 'ferie', 'statut', 'motif_reponse']),
     [demandes]
   )
 
   async function decider(plage, statut) {
-    const quoi = `${nomDe(plage.user_id)} — ${libelleType(plage.type_conge)}, ${formatPeriode(plage.debut, plage.fin)} (${plage.nb} jour(s))`
+    const quoi = `${nomDe(plage.user_id)} — ${libelleTypeDetaille(plage.type_conge, plage.ferie)}, ${formatPeriode(plage.debut, plage.fin)} (${plage.nb} jour(s))`
     let motif = null
 
     if (statut === 'refusee') {
@@ -275,7 +275,7 @@ export default function IadeGestion() {
                   <tr key={p.ids[0]} style={s.tr}>
                     <td style={{ ...s.td, fontWeight: 500 }}>{nomDe(p.user_id)}</td>
                     <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
-                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{libelleTypeDetaille(p.type_conge, p.ferie)}</td>
                     <td style={s.td}>{p.nb}</td>
                     <td style={s.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -370,7 +370,7 @@ export default function IadeGestion() {
                   <tr key={p.ids[0]} style={s.tr}>
                     <td style={{ ...s.td, fontWeight: 500 }}>{nomDe(p.user_id)}</td>
                     <td style={s.td}>{formatPeriode(p.debut, p.fin)}</td>
-                    <td style={s.td}>{libelleType(p.type_conge)}</td>
+                    <td style={s.td}>{libelleTypeDetaille(p.type_conge, p.ferie)}</td>
                     <td style={s.td}>{p.nb}</td>
                     <td style={s.td}><span style={badgeStatut(p.statut)}>{libelleStatut(p.statut)}</span></td>
                     <td style={{ ...s.td, color: 'var(--color-text-secondary)' }}>{p.motif_reponse || '—'}</td>

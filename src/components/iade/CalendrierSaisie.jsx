@@ -11,7 +11,7 @@
 // Les jours déjà déposés (en attente ou validés) sont affichés mais verrouillés :
 // on ne peut pas poser deux fois le même jour (index unique côté base).
 // ============================================================
-import { grilleMois, INITIALES_JOURS, courtType, libelleType, libelleStatut, typeConge, STATUTS } from '../../utils/iadeConges'
+import { grilleMois, INITIALES_JOURS, courtType, libelleType, libelleTypeDetaille, libelleStatut, libelleFerie, typeConge, STATUTS } from '../../utils/iadeConges'
 import { moisAnneeFR, formatISO } from '../../utils/calendrier'
 
 export default function CalendrierSaisie({
@@ -19,10 +19,16 @@ export default function CalendrierSaisie({
   mois,
   onNaviguer,
   typeActif,
+  ferieActif = '',
+  // iso → { type, ferie } : une récup porte le férié qu'elle récupère.
   selection = new Map(),
   dejaPoses = new Map(),
   onBasculerJour,
   lectureSeule = false,
+  // Saisie suspendue tant qu'il manque un préalable (le férié d'une récup) :
+  // les jours ne se cliquent pas, et l'écran dit pourquoi au lieu de laisser
+  // l'agent cliquer dans le vide.
+  bloque = false,
 }) {
   const semaines = grilleMois(annee, mois)
   // Le passé n'est pas posable : une demande de congé porte sur des jours à venir.
@@ -64,7 +70,7 @@ export default function CalendrierSaisie({
       return { ...base, background: st?.fond, color: st?.couleur, borderColor: st?.couleur, cursor: 'not-allowed' }
     }
     if (choisi) {
-      const t = typeConge(choisi)
+      const t = typeConge(choisi.type)
       return { ...base, background: t?.couleur, color: '#fff', borderColor: t?.couleur, fontWeight: 600 }
     }
     if (passe) {
@@ -105,17 +111,19 @@ export default function CalendrierSaisie({
           const pose   = dejaPoses.get(jourInfo.iso) ?? null
           const choisi = selection.get(jourInfo.iso) ?? null
           const passe  = jourInfo.iso < aujourdhui
-          const inerte = lectureSeule || !!pose || passe
+          const inerte = lectureSeule || bloque || !!pose || passe
 
-          const marque = pose ? courtType(pose.type_conge) : choisi ? courtType(choisi) : null
+          const marque = pose ? courtType(pose.type_conge) : choisi ? courtType(choisi.type) : null
 
           const titre = pose
-            ? `${libelleType(pose.type_conge)} — ${libelleStatut(pose.statut).toLowerCase()}`
-            : passe
-              ? 'Jour passé'
-              : jourInfo.ferie
-                ? `${jourInfo.nomFerie} (férié)`
-                : undefined
+            ? `${libelleTypeDetaille(pose.type_conge, pose.ferie)} — ${libelleStatut(pose.statut).toLowerCase()}`
+            : choisi
+              ? libelleTypeDetaille(choisi.type, choisi.ferie)
+              : passe
+                ? 'Jour passé'
+                : jourInfo.ferie
+                  ? `${jourInfo.nomFerie} (férié)`
+                  : undefined
 
           return (
             <button
@@ -147,8 +155,12 @@ export default function CalendrierSaisie({
       </div>
 
       {typeActif && !lectureSeule && (
-        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-          Un clic pose un jour de <strong>{libelleType(typeActif).toLowerCase()}</strong> ; cliquez à nouveau pour l'enlever.
+        <div style={{ marginTop: 6, fontSize: 12, color: bloque ? 'var(--color-amber, #b8860b)' : 'var(--color-text-secondary)' }}>
+          {bloque
+            ? <>Choisissez d'abord le <strong>jour férié récupéré</strong>, au-dessus : les jours se cliquent ensuite.</>
+            : typeActif === 'recup_ferie'
+              ? <>Un clic pose une <strong>récup. du {libelleFerie(ferieActif)}</strong> ; cliquez à nouveau pour l'enlever.</>
+              : <>Un clic pose un jour de <strong>{libelleType(typeActif).toLowerCase()}</strong> ; cliquez à nouveau pour l'enlever.</>}
         </div>
       )}
     </div>

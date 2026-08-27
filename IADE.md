@@ -151,11 +151,13 @@ CONGÉS VALIDÉS
 Amar Sophie — 2 jours
   Congés payés (2) : lun. 14/09, mar. 15/09
 
-Dupont Marie — 6 jours
+Dupont Marie — 7 jours
   Congés payés (5) : lun. 07/09, mar. 08/09, mer. 09/09, jeu. 10/09, ven. 11/09
-  Récup. jour férié (1) : jeu. 17/09
+  Récup. de jours fériés (2) :
+    récup. du 14 juillet 2026 (Fête nationale) (1) : jeu. 17/09
+    récup. du 8 mai 2026 (Victoire 1945) (1) : ven. 18/09
 
-Total du mois : 8 jours — 7 congés payés · 1 récup. jour férié
+Total du mois : 9 jours — 7 congés payés · 2 récup. de jours fériés
 
 HEURES SUPPLÉMENTAIRES VALIDÉES
 
@@ -178,6 +180,56 @@ Règles, à ne pas modifier sans y réfléchir :
   la comptable saisit des jours, une plage l'obligerait à les recompter.
 - Agents triés par nom ; un agent supprimé entre-temps apparaît en « Agent inconnu »
   plutôt que de disparaître silencieusement du décompte.
+
+---
+
+## 3 quater. De quel jour férié la récup provient — ajouté le 2026-08-27
+
+Une récup envoyée à la comptable comme « récup. de jour férié » est **inexploitable** : elle
+doit savoir **lequel**. Sans ce champ, elle rappelait la gestion, agent par agent, pour une
+information que **seul l'agent** possède — et que personne ne pouvait reconstituer après coup
+sans deviner. La colonne **`iade_conges.ferie`** la capte donc **à la saisie**.
+
+**Ce qui est stocké est la DATE du férié, pas son nom.** Le nom se déduit
+(`joursFeriesFR()`, `src/utils/calendrier.js`, qui calcule aussi les fériés mobiles via
+Pâques). Rien n'est tapé à la main : « Victoire 1945 » ne peut pas devenir « 8 mai » chez
+l'un et « 8/05 » chez l'autre, et une faute de frappe ne peut pas exister.
+
+**À la saisie** (`IadeMesConges` + `CalendrierSaisie`) : choisir la nature « Récup. jour
+férié » fait apparaître la liste des fériés — **année en cours et année précédente, du plus
+récent au plus ancien**. Tant qu'aucun n'est choisi, **le calendrier ne se clique pas**, et
+l'écran dit pourquoi. Empêcher le geste vaut mieux que le refuser après vingt clics.
+Le férié fait partie de la « nature active » comme le type : en changer puis cliquer d'autres
+jours permet de poser, **dans le même envoi**, des récups de fériés différents.
+
+Les fériés **pas encore passés restent proposés**, marqués « à venir » : un agent inscrit au
+planning du 25 décembre pose sa récup avant de l'avoir travaillé. Les cacher l'aurait bloqué
+sans explication.
+
+**Trois verrous, du plus proche de l'agent au plus profond :**
+
+| Où | Ce qui est empêché |
+|---|---|
+| Écran | le calendrier reste inerte tant que le férié n'est pas désigné |
+| `verifierSelection()` (testé) | une récup sans férié, un férié qui n'est pas un vrai férié français, un férié accroché à un CP |
+| Base — `iade_conges_recup_precise` et `iade_conges_ferie_sur_recup` | les mêmes règles, y compris depuis un client bricolé : la RLS protège l'accès, pas le contenu |
+
+La contrainte de présence est posée **`not valid`** : la **seule** récup antérieure au champ
+(2026-08-29, en base) survit telle quelle, mais **aucun insert ni update** ne passe désormais
+sans son férié. Ces lignes héritées s'affichent « Récup. jour férié (origine non précisée) » —
+le dire franchement plutôt que laisser croire à un défaut d'affichage.
+
+**Le férié entre dans la clé de regroupement de `plages()`.** Deux récups de fériés différents
+posées côte à côte seraient sinon fondues en une seule ligne qui n'en nommerait qu'un —
+exactement l'information qu'on cherche à ne plus perdre.
+
+**Dans la synthèse comptable**, les récups se ventilent **par férié récupéré** (cf. § 3 bis) :
+la comptable lit « ces deux jours récupèrent le 8 mai » sans rien demander à personne.
+
+**Migration** : `iade_conges_ferie_recupere`, appliquée en production le 2026-08-27 —
+colonne, deux contraintes, et la RPC `iade_calendrier()` recréée pour exposer `ferie`
+(l'infobulle du calendrier d'équipe nomme l'origine comme partout ailleurs).
+7 contrôles passés en transaction annulée.
 
 ---
 
@@ -309,6 +361,7 @@ Contrainte **`profiles_iade_exclusif`** : un compte IADE est forcément `role='u
 | `user_id` | l'agent (FK `auth.users`) |
 | `jour` | le jour posé (une seule date, pas de période) |
 | `type_conge` | `cp` (congé payé) · `recup_ferie` (récupération d'un jour férié) |
+| `ferie` | **le jour férié récupéré** (date). Obligatoire sur une `recup_ferie`, interdit ailleurs — cf. § 3 quater |
 | `lot` | identifiant de l'envoi : les jours cliqués ensemble le partagent |
 | `statut` | `en_attente` · `validee` · `refusee` |
 | `motif_reponse` | commentaire **de la décision**, visible par l'agent |

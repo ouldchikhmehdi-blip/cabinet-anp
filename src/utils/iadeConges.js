@@ -12,7 +12,7 @@
 // Les dates circulent en ISO 'YYYY-MM-DD' ; les calculs sont en UTC (cf. calendrier.js).
 // Accès Supabase : iadeCongesApi.js · Schéma + RLS : supabase/iade_conges.sql
 // ============================================================
-import { parseISO, formatISO, joursFeriesFR, moisAnneeFR } from './calendrier'
+import { parseISO, formatISO, joursFeriesFR, moisAnneeFR, MOIS_FR } from './calendrier'
 import { sectionHeuresSup } from './iadeHeuresSup'
 
 const JOUR_MS = 24 * 60 * 60 * 1000
@@ -65,6 +65,58 @@ export function libelleStatut(id) {
   return STATUTS[id]?.label ?? id
 }
 
+// ── Le jour férié qu'une récupération vient récupérer ─────────────────────────
+//
+// Une récup sans son férié d'origine est inexploitable en paie : la comptable
+// reçoit « récup. de jour férié » et doit demander lequel, agent par agent.
+// `iade_conges.ferie` porte donc la DATE du férié récupéré ; son nom s'en déduit
+// (`joursFeriesFR`), rien n'est saisi à la main — aucune faute de frappe possible,
+// et « Victoire 1945 » ne devient jamais « 8 mai » chez l'un, « 8/05 » chez l'autre.
+
+// « 8 mai 2026 (Victoire 1945) », ou null si `iso` est vide.
+export function libelleFerie(iso) {
+  if (!iso) return null
+  const d = parseISO(iso)
+  const date = `${d.getUTCDate()} ${MOIS_FR[d.getUTCMonth()].toLowerCase()} ${d.getUTCFullYear()}`
+  const nom = joursFeriesFR(d.getUTCFullYear()).find(f => f.iso === iso)?.nom
+  return nom ? `${date} (${nom})` : date
+}
+
+/**
+ * La nature d'un jour, dite en entier : pour une récup, elle NOMME le férié.
+ * C'est ce qui part chez la comptable et ce qu'affichent les tableaux.
+ */
+export function libelleTypeDetaille(type, ferie = null) {
+  if (type !== 'recup_ferie') return libelleType(type)
+  const quoi = libelleFerie(ferie)
+  // Les récups posées avant l'ajout du champ (une seule en base) n'ont pas
+  // d'origine : le dire plutôt que de laisser croire à un oubli d'affichage.
+  return quoi ? `Récup. du ${quoi}` : 'Récup. jour férié (origine non précisée)'
+}
+
+/**
+ * Les fériés proposés à un agent : ceux de l'année en cours et de l'année
+ * précédente, du plus récent au plus ancien. Un férié travaillé se récupère dans
+ * les mois qui suivent, jamais deux ans après.
+ *
+ * Les fériés encore à venir restent proposés — un agent inscrit au planning du
+ * 25 décembre pose sa récup avant de l'avoir travaillé — mais ils sont marqués
+ * `aVenir` pour que l'écran le dise au lieu de le laisser deviner.
+ */
+export function feriesRecuperables(reference = new Date()) {
+  const annee = reference.getUTCFullYear()
+  const aujourdhui = formatISO(reference)
+  return [...joursFeriesFR(annee - 1), ...joursFeriesFR(annee)]
+    .map(f => ({ iso: f.iso, nom: f.nom, label: libelleFerie(f.iso), aVenir: f.iso > aujourdhui }))
+    .sort((a, b) => b.iso.localeCompare(a.iso))
+}
+
+// Un `ferie` n'est acceptable que s'il tombe sur un vrai jour férié français.
+export function estFerieValide(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso ?? ''))) return false
+  return joursFeriesFR(Number(iso.slice(0, 4))).some(f => f.iso === iso)
+}
+
 // ── Dates ────────────────────────────────────────────────────────────────────
 
 export function jourSuivant(iso) {
@@ -102,8 +154,11 @@ export function resumeTypes(jours) {
 
 // Regroupe des jours en plages de dates consécutives partageant les mêmes clés.
 // Sert à afficher « du 12 au 16/10 — congé payé » plutôt que cinq lignes.
-// → [{ debut, fin, nb, ids, jours, type_conge, statut, user_id, lot, motif_reponse }]
-export function plages(jours, cles = ['type_conge', 'statut']) {
+// `ferie` fait partie des clés par défaut : deux récups de fériés DIFFÉRENTS,
+// posées côte à côte, resteraient sinon fondues en une seule ligne qui n'en
+// nommerait qu'un — exactement l'information qu'on cherche à ne plus perdre.
+// → [{ debut, fin, nb, ids, jours, type_conge, ferie, statut, user_id, lot, motif_reponse }]
+export function plages(jours, cles = ['type_conge', 'ferie', 'statut']) {
   const signature = (j) => cles.map(c => String(j[c] ?? '')).join('|')
 
   const tries = [...jours].sort((a, b) =>
@@ -128,6 +183,7 @@ export function plages(jours, cles = ['type_conge', 'statut']) {
       ids:           [j.id],
       jours:         [j],
       type_conge:    j.type_conge,
+      ferie:         j.ferie ?? null,
       statut:        j.statut,
       user_id:       j.user_id,
       lot:           j.lot,
@@ -151,9 +207,15 @@ export function verifierSelection(selection, dejaPoses = new Map()) {
     return `Vous ne pouvez pas envoyer plus de ${MAX_JOURS_PAR_ENVOI} jours à la fois.`
   }
 
-  for (const { jour, type } of liste) {
+  for (const { jour, type, ferie } of liste) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return 'Date invalide dans la sélection.'
     if (!typeConge(type)) return 'Nature de jour inconnue.'
+    // Une récup dit TOUJOURS quel férié elle récupère : c'est ce que la
+    // comptable doit lire sans avoir à le demander.
+    if (type === 'recup_ferie' && !estFerieValide(ferie)) {
+      return `Le ${formatJour(jour)} est une récupération : choisissez le jour férié qu'il récupère.`
+    }
+    if (type !== 'recup_ferie' && ferie) return 'Un jour férié ne se rattache qu\'à une récupération.'
     const deja = dejaPoses.get(jour)
     if (deja) {
       return `Le ${formatJour(jour)} fait déjà partie d'une demande (${libelleStatut(deja.statut).toLowerCase()}).`
@@ -314,6 +376,25 @@ export function syntheseMensuelle({
         const intitule = dessus.length > 1
           ? t.pluriel.charAt(0).toUpperCase() + t.pluriel.slice(1)
           : t.label
+
+        // Les récups se ventilent PAR FÉRIÉ RÉCUPÉRÉ. La comptable a besoin de
+        // lire « ces deux jours récupèrent le 8 mai » sans rien demander à
+        // personne ; une liste de dates plates ne le dit pas.
+        if (t.id === 'recup_ferie') {
+          lignes.push(`  ${intitule} (${dessus.length}) :`)
+          const parFerie = new Map()
+          for (const j of dessus) {
+            const cle = j.ferie ?? ''
+            if (!parFerie.has(cle)) parFerie.set(cle, [])
+            parFerie.get(cle).push(j)
+          }
+          for (const [cle, siens] of [...parFerie.entries()].sort((x, y) => y[0].localeCompare(x[0]))) {
+            const origine = libelleFerie(cle) ?? 'férié non précisé'
+            lignes.push(`    récup. du ${origine} (${siens.length}) : ${siens.map(j => formatJourCourt(j.jour)).join(', ')}`)
+          }
+          continue
+        }
+
         lignes.push(`  ${intitule} (${dessus.length}) : ${dessus.map(j => formatJourCourt(j.jour)).join(', ')}`)
       }
       lignes.push('')
