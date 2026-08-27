@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './_lib/supabaseAdmin.js'
+import { calendrier as batirCalendrier, evenement, horodatage } from './_lib/ics.js'
 
 /**
  * GET /api/agenda?token=<token>  — flux iCalendar (.ics) PUBLIC d'un associé, pour abonnement
@@ -9,33 +10,23 @@ import { supabaseAdmin } from './_lib/supabaseAdmin.js'
  * Renvoie les événements « journée entière » de CET associé (gardes/astreintes/réa/vacances/récup).
  * Token inconnu ou `actif=false` → calendrier VIDE (l'agenda abonné se vide au prochain rafraîchissement).
  * Aucune donnée sensible : uniquement des rôles + initiales.
+ *
+ * La conformité du .ics est tenue par `_lib/ics.js` : DTSTAMP notamment, sans lequel
+ * Google et Outlook acceptent l'abonnement puis n'affichent aucune journée (Apple, lui,
+ * s'en passait — d'où un défaut longtemps invisible). Voir l'en-tête de ce fichier.
  */
 
 const TITRES = { garde: 'Garde', astreinte: 'Astreinte', rea: 'Réanimation', vacances: 'Vacances', recup: 'Récup jour férié' }
 
-function escTexte(s) {
-  return String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
-}
+const NOM_CALENDRIER = 'SARM — Mon planning'
+const PRODID = '-//SARM//Planning anesthésie//FR'
 
 function compact(iso) {
   return String(iso).replace(/-/g, '')
 }
 
-function calendrier(lignesEvenements) {
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//SARM//Planning anesthésie//FR',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:SARM — Mon planning',
-    'X-WR-TIMEZONE:Europe/Paris',
-    'X-PUBLISHED-TTL:PT6H',
-    'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
-    ...lignesEvenements,
-    'END:VCALENDAR',
-    '',
-  ].join('\r\n')
+function calendrier(evenements) {
+  return batirCalendrier({ nom: NOM_CALENDRIER, prodid: PRODID, evenements })
 }
 
 export default async function handler(req, res) {
@@ -50,7 +41,7 @@ export default async function handler(req, res) {
 
     const { data: ab } = await supabaseAdmin
       .from('planning_agenda')
-      .select('user_id, actif, exclus, source')
+      .select('user_id, actif, exclus, source, updated_at')
       .eq('token', token)
       .maybeSingle()
     if (!ab || !ab.actif) return res.status(200).send(calendrier([]))
@@ -70,25 +61,20 @@ export default async function handler(req, res) {
     if (ab.source === 'manuel') {
       const { data: man } = await supabaseAdmin
         .from('planning_agenda_manuel')
-        .select('data')
+        .select('data, updated_at')
         .eq('user_id', ab.user_id)
         .maybeSingle()
       const evts = Array.isArray(man?.data) ? man.data : []
-      const lignes = []
-      for (const e of evts) {
-        if (!e?.d || !e?.fin) continue
-        lignes.push(
-          'BEGIN:VEVENT',
-          // UID stable par (associé, jour de début) : mises à jour propres, purge des jours retirés.
-          `UID:${ini}-manuel-${compact(e.d)}@cabinet-anp`,
-          `DTSTART;VALUE=DATE:${compact(e.d)}`,
-          `DTEND;VALUE=DATE:${compact(e.fin)}`,
-          `SUMMARY:${escTexte(e.titre || 'Planning')}`,
-          'TRANSP:TRANSPARENT',
-          'END:VEVENT',
-        )
-      }
-      return res.status(200).send(calendrier(lignes))
+      const dtstamp = horodatage(man?.updated_at ?? ab.updated_at)
+      return res.status(200).send(calendrier(evts.map(e => evenement({
+        // UID stable par (associé, jour de début) : mises à jour propres, purge des jours retirés.
+        uid: `${ini}-manuel-${compact(e?.d)}@cabinet-anp`,
+        dtstamp,
+        jour: e?.d ? compact(e.d) : null,
+        finJour: e?.fin ? compact(e.fin) : null,
+        titre: e?.titre,
+        transparent: true,
+      }))))
     }
 
     // Source de vérité = les ARCHIVES vivantes (planning Excel validé, reçu par l'associé).
@@ -110,29 +96,34 @@ export default async function handler(req, res) {
 
     const { data: rows } = await supabaseAdmin
       .from('planning_agenda_evenements')
-      .select('recueil_id, data')
+      .select('recueil_id, data, updated_at')
 
-    const lignes = []
+    let maj = ab.updated_at
+    for (const row of (rows ?? [])) {
+      if (row?.updated_at && (!maj || row.updated_at > maj)) maj = row.updated_at
+    }
+    const dtstamp = horodatage(maj)
+
+    const evenements = []
     for (const row of (rows ?? [])) {
       if (!recueilsValides.has(row?.recueil_id)) continue // pas d'archive vivante (supprimée / remplacée)
       if (exclus.has(row?.recueil_id)) continue // tiers désynchronisé par l'associé
       const evts = row?.data?.[ini]
       if (!Array.isArray(evts)) continue
       for (const e of evts) {
-        if (!e?.d || !e?.fin || !e?.type) continue
-        lignes.push(
-          'BEGIN:VEVENT',
+        if (!e?.type) continue
+        evenements.push(evenement({
           // UID stable (même (associé, type, jour) → même UID) pour des mises à jour propres, pas de doublon.
-          `UID:${ini}-${e.type}-${compact(e.d)}@cabinet-anp`,
-          `DTSTART;VALUE=DATE:${compact(e.d)}`,
-          `DTEND;VALUE=DATE:${compact(e.fin)}`,
-          `SUMMARY:${escTexte(e.titre || TITRES[e.type] || e.type)}`,
-          'TRANSP:TRANSPARENT',
-          'END:VEVENT',
-        )
+          uid: `${ini}-${e.type}-${compact(e?.d)}@cabinet-anp`,
+          dtstamp,
+          jour: e?.d ? compact(e.d) : null,
+          finJour: e?.fin ? compact(e.fin) : null,
+          titre: e.titre || TITRES[e.type] || e.type,
+          transparent: true,
+        }))
       }
     }
-    return res.status(200).send(calendrier(lignes))
+    return res.status(200).send(calendrier(evenements))
   } catch {
     // En cas d'erreur, ne pas casser l'abonnement : renvoyer un calendrier vide.
     return res.status(200).send(calendrier([]))

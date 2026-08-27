@@ -23,6 +23,7 @@ import {
 } from '../utils/iadeAgendaApi'
 import { chargerColonnesPlanning } from '../utils/iadePlanningApi'
 import { suggererColonne } from '../utils/iadeAgenda'
+import { urlFlux, liensAbonnement } from '../utils/lienAgenda'
 
 const PLATEFORMES = [
   { id: 'apple', label: '🍎 iPhone / Mac (Apple)' },
@@ -74,10 +75,8 @@ export default function IadeAgendaPerso() {
   const colonneActive = abonnement?.colonne ?? null
 
   const base = useMemo(() => (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, ''), [])
-  const urlHttps = abonnement?.token ? `${base}/api/agenda-iade?token=${abonnement.token}` : null
-  const urlWebcal = urlHttps ? urlHttps.replace(/^https?:\/\//, 'webcal://') : null
-  const lienGoogle = urlWebcal ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(urlWebcal)}` : null
-  const lienOutlook = urlHttps ? `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(urlHttps)}&name=${encodeURIComponent('SARM — Mon planning IADE')}` : null
+  const urlHttps = useMemo(() => urlFlux(base, '/api/agenda-iade', abonnement?.token), [base, abonnement?.token])
+  const liens = useMemo(() => liensAbonnement(urlHttps, 'SARM — Mon planning IADE'), [urlHttps])
   const actif = abonnement?.actif !== false
 
   function analyser() {
@@ -295,7 +294,11 @@ export default function IadeAgendaPerso() {
             3. Synchroniser mon agenda{colonneActive ? ` · ${colonneActive}` : choix ? ` · ${choix.nom}` : ''}
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 10px' }}>
-            ⏳ Après l'abonnement (ou toute modification), la mise à jour de ton agenda peut prendre <strong>jusqu'à ~1 heure</strong> : c'est ton application d'agenda qui rafraîchit l'abonnement, ce n'est pas instantané.
+            ⏳ C'est ton application d'agenda qui vient chercher les mises à jour, à son rythme :
+            comptes <strong>~1 h sur Apple</strong>, mais <strong>jusqu'à 24 h sur Google Agenda et
+            Outlook</strong>, qui rafraîchissent les abonnements externes bien plus lentement.
+            L'ajout, lui, doit afficher les journées <strong>tout de suite</strong> — si ton agenda
+            reste vide après l'abonnement, c'est autre chose, préviens la gestion.
           </div>
           {!actif && (
             <div style={{ fontSize: 12.5, color: 'var(--color-amber, #b8860b)' }}>
@@ -313,19 +316,32 @@ export default function IadeAgendaPerso() {
           {plateforme === 'apple' && (
             <div>
               <p style={s.aide}>Sur <strong>iPhone/iPad/Mac</strong> : touche le bouton, puis confirme l'ajout dans l'app <strong>Calendrier</strong>.</p>
-              <a href={urlWebcal} style={s.bouton}>📲 Ajouter à mon agenda Apple</a>
+              <a href={liens.webcal} style={s.bouton}>📲 Ajouter à mon agenda Apple</a>
             </div>
           )}
           {plateforme === 'google' && (
             <div>
-              <p style={s.aide}>Sur <strong>Android / Google Agenda</strong> : ouvre le lien (sur ordinateur de préférence), puis confirme « Ajouter le calendrier ». Sinon, Google Agenda → <em>Autres agendas</em> → <em>À partir de l'URL</em>, colle l'adresse.</p>
-              <a href={lienGoogle} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
+              <p style={s.aide}>
+                Sur <strong>Android / Google Agenda</strong> : ouvre le lien, puis confirme
+                « Ajouter le calendrier ». <strong>De préférence sur ordinateur</strong> — sur
+                téléphone, si plusieurs comptes Google sont connectés, l'agenda part sur le mauvais
+                et tu ne le vois jamais. Autre chemin, plus sûr : Google Agenda →
+                <em> Autres agendas</em> → <em>À partir de l'URL</em>, colle l'adresse ci-dessous.
+              </p>
+              <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
             </div>
           )}
           {plateforme === 'outlook' && (
             <div>
-              <p style={s.aide}>Sur <strong>Outlook</strong> : ouvre le lien, ou Outlook → <em>Ajouter un calendrier</em> → <em>S'abonner à partir du web</em>, colle l'adresse.</p>
-              <a href={lienOutlook} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ S'abonner dans Outlook</a>
+              <p style={s.aide}>
+                Deux Outlook, deux adresses — prends celle de <strong>ton</strong> compte, l'autre
+                ouvre une page de connexion qui ne mènera nulle part. Sinon, dans Outlook →
+                <em> Ajouter un calendrier</em> → <em>S'abonner à partir du web</em>, colle l'adresse ci-dessous.
+              </p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook personnel (outlook.com, hotmail)</a>
+                <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook professionnel (Microsoft 365)</a>
+              </div>
             </div>
           )}
 

@@ -580,6 +580,45 @@ l'année suivante**.
 **avant** usage — sans la table, l'activation échoue et le flux renvoie un agenda vide.
 `gen_random_uuid()` et `public.touch_updated_at()` sont déjà présents (schéma de base).
 
+#### Conformité du `.ics` — corrigé le 2026-08-27
+
+Symptôme : sur **Google Agenda et Outlook**, l'abonnement s'ajoutait sans erreur et
+**aucune journée n'apparaissait** ; sur Apple, tout marchait. Les deux flux du site
+(`api/agenda.js` pour les associés, `api/agenda-iade.js` pour les IADE) étaient touchés.
+
+Le flux servait bien ses 119 événements — le défaut était dans la forme du `.ics` :
+**`DTSTAMP` manquait**, alors que RFC 5545 § 3.6.1 en fait une propriété **obligatoire**
+d'un `VEVENT`. Apple la supplée ; Google et Outlook jettent l'événement **en silence**,
+un par un, sans jamais rien afficher ni signaler. C'est ce qui rendait la panne si
+déroutante : le calendrier apparaissait, avec son nom, définitivement vide.
+
+Toute la fabrication du `.ics` est passée dans **`api/_lib/ics.js`** (testé), qui répare
+aussi trois pièges du même genre :
+
+| Piège | Ce qu'il coûtait |
+|---|---|
+| `DTSTAMP` absent | **la panne** — Google/Outlook rejettent chaque événement |
+| Ligne > 75 octets non repliée (§ 3.1) | une note un peu longue casse l'analyse, chez Outlook tout le calendrier avec |
+| Heure sans fuseau (`DTSTART:…T080000`) | chaque client l'interprète dans **son** fuseau ; on déclare `TZID=Europe/Paris` + un `VTIMEZONE` |
+| `BEGIN:VEVENT` sans son `END` | un seul bloc non refermé invalide le calendrier **entier** — `evenement()` renvoie un bloc complet ou `null`, jamais un fragment |
+
+`DTSTAMP` vaut la **dernière écriture de la source** (`updated_at`, ou le `maj` le plus
+récent des lignes de `iade_planning`), pas l'instant courant : un `DTSTAMP` qui bouge à
+chaque requête ferait rejouer tout l'agenda à chaque rafraîchissement, pour rien.
+
+**Côté écran** (`src/utils/lienAgenda.js`, partagé par les deux pages), deux autres causes
+de « rien ne s'affiche » qui n'ont rien à voir avec le flux :
+
+- **Outlook** — `outlook.live.com` ne connaît que les comptes **personnels**. Avec un
+  compte **professionnel Microsoft 365**, la page demande une connexion qui n'existe pas.
+  Les deux liens sont désormais proposés (`outlook.office.com` pour le professionnel).
+- **Google** — `?cid=` n'ajoute que sur le compte **actif** du navigateur : sur un
+  téléphone à deux comptes Google, l'abonnement part sur le mauvais. L'écran conseille
+  l'ordinateur et garde l'adresse à coller bien visible.
+- Le délai annoncé était faux : **~1 h sur Apple**, mais **jusqu'à 24 h** sur Google et
+  Outlook, qui rafraîchissent bien plus lentement les abonnements externes. En revanche
+  l'ajout initial, lui, doit remplir l'agenda **tout de suite** — sinon c'est une panne.
+
 ---
 
 ## 11. Redescente dans le planning Excel (Dropbox)

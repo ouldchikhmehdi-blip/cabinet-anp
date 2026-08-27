@@ -12,6 +12,7 @@ import { listerEvenementsTiers } from '../utils/agendaEvenementsApi'
 import { listerRecueils } from '../utils/desiderataApi'
 import { listerArchives } from '../utils/archivesApi'
 import { ANNEES, formatDateLongueFR, parseISO } from '../utils/calendrier'
+import { urlFlux, liensAbonnement } from '../utils/lienAgenda'
 
 const PLATEFORMES = [
   { id: 'apple', label: '🍎 iPhone / Mac (Apple)' },
@@ -120,10 +121,8 @@ export default function MonAgenda() {
   }, [ini])
 
   const base = useMemo(() => (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, ''), [])
-  const urlHttps = abonnement?.token ? `${base}/api/agenda?token=${abonnement.token}` : null
-  const urlWebcal = urlHttps ? urlHttps.replace(/^https?:\/\//, 'webcal://') : null
-  const lienGoogle = urlHttps ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(urlWebcal)}` : null
-  const lienOutlook = urlHttps ? `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(urlHttps)}&name=${encodeURIComponent('SARM — Mon planning')}` : null
+  const urlHttps = useMemo(() => urlFlux(base, '/api/agenda', abonnement?.token), [base, abonnement?.token])
+  const liens = useMemo(() => liensAbonnement(urlHttps, 'SARM — Mon planning'), [urlHttps])
 
   async function copier() {
     if (!urlHttps) return
@@ -381,19 +380,33 @@ export default function MonAgenda() {
             {plateforme === 'apple' && (
               <div>
                 <p style={s.aide}>Sur <strong>iPhone/iPad/Mac</strong> : touchez le bouton ci-dessous, puis confirmez l'ajout du calendrier dans l'app <strong>Calendrier</strong>.</p>
-                <a href={urlWebcal} style={s.bouton}>📲 Ajouter à mon agenda Apple</a>
+                <a href={liens.webcal} style={s.bouton}>📲 Ajouter à mon agenda Apple</a>
               </div>
             )}
             {plateforme === 'google' && (
               <div>
-                <p style={s.aide}>Sur <strong>Android / Google Agenda</strong> : ouvrez le lien ci-dessous (sur ordinateur de préférence), puis confirmez « Ajouter le calendrier ». Sinon, dans Google Agenda → <em>Autres agendas</em> → <em>À partir de l'URL</em>, collez l'adresse plus bas.</p>
-                <a href={lienGoogle} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
+                <p style={s.aide}>
+                  Sur <strong>Android / Google Agenda</strong> : ouvrez le lien ci-dessous, puis
+                  confirmez « Ajouter le calendrier ». <strong>De préférence sur ordinateur</strong> —
+                  sur téléphone, si plusieurs comptes Google sont connectés, l'agenda est ajouté au
+                  mauvais et vous ne le voyez jamais. Sinon, dans Google Agenda →
+                  <em> Autres agendas</em> → <em>À partir de l'URL</em>, collez l'adresse plus bas.
+                </p>
+                <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
               </div>
             )}
             {plateforme === 'outlook' && (
               <div>
-                <p style={s.aide}>Sur <strong>Outlook</strong> : ouvrez le lien ci-dessous, ou dans Outlook → <em>Ajouter un calendrier</em> → <em>S'abonner à partir du web</em>, collez l'adresse plus bas.</p>
-                <a href={lienOutlook} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ S'abonner dans Outlook</a>
+                <p style={s.aide}>
+                  Deux Outlook, deux adresses — prenez celle de <strong>votre</strong> compte,
+                  l'autre n'ouvre qu'une page de connexion sans suite. Sinon, dans Outlook →
+                  <em> Ajouter un calendrier</em> → <em>S'abonner à partir du web</em>, collez
+                  l'adresse plus bas.
+                </p>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook personnel (outlook.com, hotmail)</a>
+                  <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook professionnel (Microsoft 365)</a>
+                </div>
               </div>
             )}
 
