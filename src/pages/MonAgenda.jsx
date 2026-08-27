@@ -225,6 +225,12 @@ export default function MonAgenda() {
     carte: { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 20 },
     titre: { fontSize: 15, fontWeight: 600, color: 'var(--color-text)', marginBottom: 6 },
     aide: { fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.55, marginBottom: 12 },
+    // L'appareil sur lequel l'abonnement se fait, énoncé AVANT les étapes : c'est la
+    // première chose qui décide de la réussite, pas un détail à découvrir en cas d'échec.
+    ouSeFait: { fontSize: 13.5, lineHeight: 1.55, color: 'var(--color-text)', background: 'var(--color-primary-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 },
+    // Liste ordonnée simple : `display:flex` ferait disparaître les numéros (les <li>
+    // deviennent des éléments flex et perdent leur `display: list-item`).
+    etapes: { fontSize: 13, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 12px', paddingLeft: 22 },
     bouton: { padding: '9px 16px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' },
     boutonSec: { padding: '7px 12px', fontSize: 12, borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-secondary)', cursor: 'pointer' },
     boutonDanger: { padding: '8px 14px', fontSize: 13, borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-danger)', background: 'transparent', color: 'var(--color-danger)', cursor: 'pointer' },
@@ -359,7 +365,10 @@ export default function MonAgenda() {
       <div style={s.carte}>
         <div style={s.titre}>Synchroniser mon agenda</div>
         <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
-          ⏳ Après l'abonnement (ou toute modification ci-dessous), la mise à jour de votre agenda peut prendre <strong>jusqu'à ~1 heure</strong> : c'est votre application d'agenda qui rafraîchit l'abonnement, ce n'est pas instantané.
+          ⏳ Vos journées s'affichent <strong>dès l'ajout</strong>. Ensuite, les modifications
+          arrivent d'elles-mêmes : comptez <strong>1 h sur Apple</strong>, <strong>24 h sur Google
+          Agenda et Outlook</strong>, qui rafraîchissent les abonnements externes plus lentement.
+          Vous n'avez rien à refaire dans l'intervalle.
         </div>
         {!actif && (
           <div style={{ fontSize: 12.5, color: 'var(--color-amber)', marginBottom: 12 }}>
@@ -379,45 +388,54 @@ export default function MonAgenda() {
           <>
             {plateforme === 'apple' && (
               <div>
-                <p style={s.aide}>Sur <strong>iPhone/iPad/Mac</strong> : touchez le bouton ci-dessous, puis confirmez l'ajout du calendrier dans l'app <strong>Calendrier</strong>.</p>
+                <div style={s.ouSeFait}>📱 Faites-le <strong>sur votre iPhone, iPad ou Mac</strong>.</div>
+                <ol style={s.etapes}>
+                  <li>Touchez le bouton ci-dessous.</li>
+                  <li>Dans l'app <strong>Calendrier</strong> qui s'ouvre, touchez <strong>S'abonner</strong>, puis <strong>OK</strong>.</li>
+                  <li>Vos journées sont là.</li>
+                </ol>
                 <a href={liens.webcal} style={s.bouton}>📲 Ajouter à mon agenda Apple</a>
               </div>
             )}
             {plateforme === 'google' && (
               <div>
-                <p style={{ ...s.aide, color: 'var(--color-text)' }}>
-                  ⚠️ <strong>À faire sur un ordinateur, pas sur le téléphone.</strong> L'application
-                  Google Agenda <strong>ne sait pas</strong> ajouter un agenda par adresse : le
-                  bouton n'existe pas, et il ne se passera jamais rien. Une fois ajouté depuis
-                  l'ordinateur, l'agenda <strong>descend tout seul</strong> sur le téléphone.
-                </p>
-                <p style={s.aide}>
-                  Sur l'ordinateur, ouvrez le lien et confirmez « Ajouter le calendrier ». Autre
-                  chemin, équivalent : Google Agenda → <em>Autres agendas</em> →
-                  <em> À partir de l'URL</em>, collez l'adresse plus bas.
-                </p>
-                <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda (sur ordinateur)</a>
-                <p style={{ ...s.aide, marginTop: 12 }}>
-                  Deux pièges ensuite, si vous ne le voyez toujours pas :
-                  {' '}<strong>le bon compte Google</strong> — si plusieurs sont connectés dans le
-                  navigateur, l'agenda est ajouté à celui qui est actif ; et sur le téléphone, il
-                  faut parfois <strong>cocher l'agenda</strong> dans Google Agenda →
-                  <em> Paramètres</em>, où les agendas ajoutés arrivent masqués.
-                </p>
+                <div style={s.ouSeFait}>
+                  💻 Faites-le <strong>sur un ordinateur</strong>. L'application Google Agenda du
+                  téléphone n'ajoute pas d'agenda par adresse : la fonction n'y existe pas. Une fois
+                  l'ajout fait sur l'ordinateur, votre agenda arrive tout seul sur votre téléphone.
+                </div>
+                <ol style={s.etapes}>
+                  <li>Sur l'ordinateur, ouvrez cette page et venez jusqu'ici.</li>
+                  <li>Vérifiez en haut à droite de <strong>Google Agenda</strong> que vous êtes sur
+                      <strong> votre</strong> compte Google. Si plusieurs comptes sont connectés,
+                      basculez sur le vôtre maintenant.</li>
+                  <li>Cliquez le bouton ci-dessous, puis <strong>Ajouter</strong>.</li>
+                  <li>Vos journées sont là.</li>
+                  <li>Sur votre téléphone, ouvrez Google Agenda → <strong>Paramètres</strong> et
+                      <strong> cochez</strong> « SARM — Mon planning ».</li>
+                </ol>
+                <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
               </div>
             )}
             {plateforme === 'outlook' && (
               <div>
-                <p style={s.aide}>
-                  Deux Outlook, deux adresses — prenez celle de <strong>votre</strong> compte,
-                  l'autre n'ouvre qu'une page de connexion sans suite. Sinon, dans Outlook →
-                  <em> Ajouter un calendrier</em> → <em>S'abonner à partir du web</em>, collez
-                  l'adresse plus bas.
-                </p>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook personnel (outlook.com, hotmail)</a>
-                  <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook professionnel (Microsoft 365)</a>
+                <div style={s.ouSeFait}>
+                  💻 Faites-le <strong>sur un ordinateur</strong>. L'application Outlook du téléphone
+                  n'ajoute pas d'agenda par adresse : la fonction n'y existe pas. Une fois l'ajout
+                  fait sur l'ordinateur, votre agenda arrive tout seul sur votre téléphone.
                 </div>
+                <ol style={s.etapes}>
+                  <li>Regardez <strong>votre adresse Outlook</strong> et prenez le bouton qui lui
+                      correspond — il y a deux Outlook, et un seul est le vôtre :</li>
+                </ol>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Mon adresse finit par @outlook.com, @hotmail, @live</a>
+                  <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Mon adresse est celle de mon employeur (Microsoft 365)</a>
+                </div>
+                <ol start={2} style={s.etapes}>
+                  <li>Cliquez <strong>Importer</strong> sur la page Outlook qui s'ouvre.</li>
+                  <li>Vos journées sont là.</li>
+                </ol>
               </div>
             )}
 

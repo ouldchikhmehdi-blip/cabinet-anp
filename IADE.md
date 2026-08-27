@@ -612,15 +612,25 @@ de « rien ne s'affiche » qui n'ont rien à voir avec le flux :
 - **Outlook** — `outlook.live.com` ne connaît que les comptes **personnels**. Avec un
   compte **professionnel Microsoft 365**, la page demande une connexion qui n'existe pas.
   Les deux liens sont désormais proposés (`outlook.office.com` pour le professionnel).
-- **Google, le piège principal** — l'**application** Google Agenda (Android comme iOS) ne
-  sait pas ajouter un agenda par adresse : la fonction n'existe que sur `calendar.google.com`,
-  **depuis un ordinateur**. Un agent qui tente l'abonnement sur son téléphone ne voit
-  strictement rien se passer — pas un agenda vide, **pas d'agenda du tout**. C'est ce qu'a
-  vécu Nicolas. Une fois l'ajout fait sur l'ordinateur, l'agenda descend tout seul sur le
-  téléphone. L'écran le dit désormais en tête du bloc Google, avertissement à l'appui.
-- **Google, deux pièges secondaires** — `?cid=` n'ajoute que sur le compte **actif** du
-  navigateur (plusieurs comptes connectés → l'agenda part sur le mauvais) ; et sur le
-  téléphone, un agenda ajouté arrive parfois **décoché** dans les paramètres de l'app.
+- **Google et Outlook s'abonnent depuis un ORDINATEUR, Apple depuis le téléphone.** Leurs
+  applications mobiles n'ajoutent pas d'agenda par adresse — la fonction n'y existe pas.
+  Un agent qui tente l'abonnement sur son téléphone ne voit strictement rien se passer :
+  pas un agenda vide, **pas d'agenda du tout**. C'est ce qu'a vécu Nicolas. Apple fait
+  exception parce que `webcal://` est géré par iOS lui-même, au niveau du système.
+- **`?cid=` ajoute sur le compte Google ACTIF du navigateur**, pas forcément celui de
+  l'agent ; et sur le téléphone, un agenda ajouté arrive **décoché** dans les paramètres
+  de l'app. Ces deux points sont des **étapes du mode d'emploi**, pas un dépannage.
+
+#### Règle de rédaction des consignes aux agents
+
+**Une consigne donnée à un agent est une certitude, jamais une hypothèse.** Écrire
+« essaie sur le téléphone, et si ça ne marche pas prends un ordinateur » fait porter le
+diagnostic à l'agent, qui n'a aucun moyen de le mener : il conclut que l'outil est cassé.
+Chaque bloc de plateforme s'ouvre donc sur **l'appareil à utiliser** (`s.ouSeFait`), puis
+déroule des **étapes numérotées** qui vont jusqu'à « tes journées sont là ». Ce qui est
+conditionnel pour nous doit être rendu déterministe pour l'agent : les deux Outlook ne se
+présentent pas comme « prends le bon », mais comme un choix tranché par une chose qu'il
+sait avec certitude — la fin de sa propre adresse e-mail.
 - Le délai annoncé était faux : **~1 h sur Apple**, mais **jusqu'à 24 h** sur Google et
   Outlook, qui rafraîchissent bien plus lentement les abonnements externes. En revanche
   l'ajout initial, lui, doit remplir l'agenda **tout de suite** — sinon c'est une panne.

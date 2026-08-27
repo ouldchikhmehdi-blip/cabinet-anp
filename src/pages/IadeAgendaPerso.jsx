@@ -174,6 +174,12 @@ export default function IadeAgendaPerso() {
     boutonSec: { padding: '7px 12px', fontSize: 12, borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-secondary)', cursor: 'pointer' },
     boutonDanger: { padding: '8px 14px', fontSize: 13, borderRadius: 'var(--radius-md)', border: '0.5px solid var(--color-danger, #c0392b)', background: 'transparent', color: 'var(--color-danger, #c0392b)', cursor: 'pointer' },
     onglet: (a) => ({ padding: '7px 12px', fontSize: 12.5, borderRadius: 'var(--radius-md)', cursor: 'pointer', border: `0.5px solid ${a ? 'var(--color-primary)' : 'var(--color-border)'}`, background: a ? 'var(--color-primary-light)' : 'var(--color-bg)', color: a ? 'var(--color-primary)' : 'var(--color-text-secondary)', fontWeight: a ? 600 : 400 }),
+    // L'appareil sur lequel l'abonnement se fait, énoncé AVANT les étapes : c'est la
+    // première chose qui décide de la réussite, pas un détail à découvrir en cas d'échec.
+    ouSeFait: { fontSize: 13.5, lineHeight: 1.55, color: 'var(--color-text)', background: 'var(--color-primary-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 },
+    // Liste ordonnée simple : `display:flex` ferait disparaître les numéros (les <li>
+    // deviennent des éléments flex et perdent leur `display: list-item`).
+    etapes: { fontSize: 13, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 12px', paddingLeft: 22 },
     url: { fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-all', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', color: 'var(--color-text)' },
     zone: { width: '100%', minHeight: 170, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, padding: 12, border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', color: 'var(--color-text)', resize: 'vertical', boxSizing: 'border-box' },
   }
@@ -294,11 +300,10 @@ export default function IadeAgendaPerso() {
             3. Synchroniser mon agenda{colonneActive ? ` · ${colonneActive}` : choix ? ` · ${choix.nom}` : ''}
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '8px 10px' }}>
-            ⏳ C'est ton application d'agenda qui vient chercher les mises à jour, à son rythme :
-            comptes <strong>~1 h sur Apple</strong>, mais <strong>jusqu'à 24 h sur Google Agenda et
-            Outlook</strong>, qui rafraîchissent les abonnements externes bien plus lentement.
-            L'ajout, lui, doit afficher les journées <strong>tout de suite</strong> — si ton agenda
-            reste vide après l'abonnement, c'est autre chose, préviens la gestion.
+            ⏳ Tes journées s'affichent <strong>dès l'ajout</strong>. Ensuite, les corrections du
+            planning arrivent d'elles-mêmes : compte <strong>1 h sur Apple</strong>,
+            <strong> 24 h sur Google Agenda et Outlook</strong>, qui rafraîchissent les abonnements
+            externes plus lentement. Tu n'as rien à refaire dans l'intervalle.
           </div>
           {!actif && (
             <div style={{ fontSize: 12.5, color: 'var(--color-amber, #b8860b)' }}>
@@ -315,45 +320,59 @@ export default function IadeAgendaPerso() {
 
           {plateforme === 'apple' && (
             <div>
-              <p style={s.aide}>Sur <strong>iPhone/iPad/Mac</strong> : touche le bouton, puis confirme l'ajout dans l'app <strong>Calendrier</strong>.</p>
+              <div style={s.ouSeFait}>📱 Fais-le <strong>sur ton iPhone, ton iPad ou ton Mac</strong>.</div>
+              <ol style={s.etapes}>
+                <li>Touche le bouton ci-dessous.</li>
+                <li>Dans l'app <strong>Calendrier</strong> qui s'ouvre, touche <strong>S'abonner</strong>, puis <strong>OK</strong>.</li>
+                <li>Tes journées sont là.</li>
+              </ol>
               <a href={liens.webcal} style={s.bouton}>📲 Ajouter à mon agenda Apple</a>
             </div>
           )}
           {plateforme === 'google' && (
             <div>
-              <p style={{ ...s.aide, color: 'var(--color-text)' }}>
-                ⚠️ <strong>À faire sur un ordinateur, pas sur le téléphone.</strong> L'application
-                Google Agenda <strong>ne sait pas</strong> ajouter un agenda par adresse — ce n'est
-                pas une question de patience, le bouton n'existe pas et il ne se passera jamais
-                rien. Une fois ajouté depuis l'ordinateur, l'agenda <strong>descend tout seul</strong>
-                sur ton téléphone.
-              </p>
-              <p style={s.aide}>
-                Sur l'ordinateur, ouvre le lien et confirme « Ajouter le calendrier ». Autre chemin,
-                équivalent : Google Agenda → <em>Autres agendas</em> → <em>À partir de l'URL</em>,
-                colle l'adresse ci-dessous.
-              </p>
-              <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda (sur ordinateur)</a>
-              <p style={{ ...s.aide, marginTop: 12 }}>
-                Deux pièges ensuite, si tu ne le vois toujours pas :
-                {' '}<strong>le bon compte Google</strong> — si plusieurs sont connectés dans le
-                navigateur, l'agenda est ajouté à celui qui est actif, pas forcément au tien ;
-                {' '}et sur le téléphone, il faut parfois <strong>cocher l'agenda</strong> dans
-                Google Agenda → <em>Paramètres</em>, où les agendas ajoutés arrivent masqués.
-              </p>
+              <div style={s.ouSeFait}>
+                💻 Fais-le <strong>sur un ordinateur</strong>. L'application Google Agenda du
+                téléphone n'ajoute pas d'agenda par adresse : la fonction n'y existe pas.
+                Une fois l'ajout fait sur l'ordinateur, ton agenda arrive tout seul sur ton
+                téléphone.
+              </div>
+              <ol style={s.etapes}>
+                <li>Sur l'ordinateur, ouvre cette page et va jusqu'ici.</li>
+                <li>Vérifie en haut à droite de <strong>Google Agenda</strong> que tu es sur
+                    <strong> ton</strong> compte Google. Si plusieurs comptes sont connectés,
+                    bascule sur le tien maintenant.</li>
+                <li>Clique le bouton ci-dessous, puis <strong>Ajouter</strong>.</li>
+                <li>Tes journées sont là.</li>
+                <li>Sur ton téléphone, ouvre Google Agenda → <strong>Paramètres</strong> et
+                    <strong> coche</strong> « SARM — Mon planning IADE ».</li>
+              </ol>
+              <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
             </div>
           )}
           {plateforme === 'outlook' && (
             <div>
-              <p style={s.aide}>
-                Deux Outlook, deux adresses — prends celle de <strong>ton</strong> compte, l'autre
-                ouvre une page de connexion qui ne mènera nulle part. Sinon, dans Outlook →
-                <em> Ajouter un calendrier</em> → <em>S'abonner à partir du web</em>, colle l'adresse ci-dessous.
-              </p>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook personnel (outlook.com, hotmail)</a>
-                <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Outlook professionnel (Microsoft 365)</a>
+              <div style={s.ouSeFait}>
+                💻 Fais-le <strong>sur un ordinateur</strong>. L'application Outlook du téléphone
+                n'ajoute pas d'agenda par adresse : la fonction n'y existe pas. Une fois l'ajout
+                fait sur l'ordinateur, ton agenda arrive tout seul sur ton téléphone.
               </div>
+              <ol style={s.etapes}>
+                <li>Regarde <strong>ton adresse Outlook</strong> et prends le bouton qui lui
+                    correspond — il y a deux Outlook, et un seul est le tien :</li>
+              </ol>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>
+                  ➕ Mon adresse finit par @outlook.com, @hotmail, @live
+                </a>
+                <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>
+                  ➕ Mon adresse est celle de mon employeur (Microsoft 365)
+                </a>
+              </div>
+              <ol start={2} style={s.etapes}>
+                <li>Clique <strong>Importer</strong> sur la page Outlook qui s'ouvre.</li>
+                <li>Tes journées sont là.</li>
+              </ol>
             </div>
           )}
 
