@@ -385,14 +385,25 @@ export default function MonAgenda() {
             )}
             {plateforme === 'google' && (
               <div>
-                <p style={s.aide}>
-                  Sur <strong>Android / Google Agenda</strong> : ouvrez le lien ci-dessous, puis
-                  confirmez « Ajouter le calendrier ». <strong>De préférence sur ordinateur</strong> —
-                  sur téléphone, si plusieurs comptes Google sont connectés, l'agenda est ajouté au
-                  mauvais et vous ne le voyez jamais. Sinon, dans Google Agenda →
-                  <em> Autres agendas</em> → <em>À partir de l'URL</em>, collez l'adresse plus bas.
+                <p style={{ ...s.aide, color: 'var(--color-text)' }}>
+                  ⚠️ <strong>À faire sur un ordinateur, pas sur le téléphone.</strong> L'application
+                  Google Agenda <strong>ne sait pas</strong> ajouter un agenda par adresse : le
+                  bouton n'existe pas, et il ne se passera jamais rien. Une fois ajouté depuis
+                  l'ordinateur, l'agenda <strong>descend tout seul</strong> sur le téléphone.
                 </p>
-                <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
+                <p style={s.aide}>
+                  Sur l'ordinateur, ouvrez le lien et confirmez « Ajouter le calendrier ». Autre
+                  chemin, équivalent : Google Agenda → <em>Autres agendas</em> →
+                  <em> À partir de l'URL</em>, collez l'adresse plus bas.
+                </p>
+                <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda (sur ordinateur)</a>
+                <p style={{ ...s.aide, marginTop: 12 }}>
+                  Deux pièges ensuite, si vous ne le voyez toujours pas :
+                  {' '}<strong>le bon compte Google</strong> — si plusieurs sont connectés dans le
+                  navigateur, l'agenda est ajouté à celui qui est actif ; et sur le téléphone, il
+                  faut parfois <strong>cocher l'agenda</strong> dans Google Agenda →
+                  <em> Paramètres</em>, où les agendas ajoutés arrivent masqués.
+                </p>
               </div>
             )}
             {plateforme === 'outlook' && (

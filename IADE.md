@@ -612,9 +612,15 @@ de « rien ne s'affiche » qui n'ont rien à voir avec le flux :
 - **Outlook** — `outlook.live.com` ne connaît que les comptes **personnels**. Avec un
   compte **professionnel Microsoft 365**, la page demande une connexion qui n'existe pas.
   Les deux liens sont désormais proposés (`outlook.office.com` pour le professionnel).
-- **Google** — `?cid=` n'ajoute que sur le compte **actif** du navigateur : sur un
-  téléphone à deux comptes Google, l'abonnement part sur le mauvais. L'écran conseille
-  l'ordinateur et garde l'adresse à coller bien visible.
+- **Google, le piège principal** — l'**application** Google Agenda (Android comme iOS) ne
+  sait pas ajouter un agenda par adresse : la fonction n'existe que sur `calendar.google.com`,
+  **depuis un ordinateur**. Un agent qui tente l'abonnement sur son téléphone ne voit
+  strictement rien se passer — pas un agenda vide, **pas d'agenda du tout**. C'est ce qu'a
+  vécu Nicolas. Une fois l'ajout fait sur l'ordinateur, l'agenda descend tout seul sur le
+  téléphone. L'écran le dit désormais en tête du bloc Google, avertissement à l'appui.
+- **Google, deux pièges secondaires** — `?cid=` n'ajoute que sur le compte **actif** du
+  navigateur (plusieurs comptes connectés → l'agenda part sur le mauvais) ; et sur le
+  téléphone, un agenda ajouté arrive parfois **décoché** dans les paramètres de l'app.
 - Le délai annoncé était faux : **~1 h sur Apple**, mais **jusqu'à 24 h** sur Google et
   Outlook, qui rafraîchissent bien plus lentement les abonnements externes. En revanche
   l'ajout initial, lui, doit remplir l'agenda **tout de suite** — sinon c'est une panne.
