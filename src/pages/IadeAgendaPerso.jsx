@@ -77,6 +77,16 @@ export default function IadeAgendaPerso() {
   const base = useMemo(() => (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, ''), [])
   const urlHttps = useMemo(() => urlFlux(base, '/api/agenda-iade', abonnement?.token), [base, abonnement?.token])
   const liens = useMemo(() => liensAbonnement(urlHttps, 'SARM — Mon planning IADE'), [urlHttps])
+
+  // Sur téléphone, les boutons Google et Outlook ne mènent nulle part : leurs
+  // applications mobiles n'ont pas d'ajout d'agenda par adresse. Le lien ouvre
+  // l'app sur la vue du jour et l'abonnement n'est pas créé — l'agent en conclut
+  // que ça ne marche pas. On retire le bouton là où il ne peut pas marcher,
+  // plutôt que d'écrire « fais-le sur un ordinateur » juste au-dessus de lui.
+  const surTelephone = useMemo(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  }, [])
   const actif = abonnement?.actif !== false
 
   function analyser() {
@@ -177,6 +187,7 @@ export default function IadeAgendaPerso() {
     // L'appareil sur lequel l'abonnement se fait, énoncé AVANT les étapes : c'est la
     // première chose qui décide de la réussite, pas un détail à découvrir en cas d'échec.
     ouSeFait: { fontSize: 13.5, lineHeight: 1.55, color: 'var(--color-text)', background: 'var(--color-primary-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 },
+    surTelephone: { fontSize: 13.5, lineHeight: 1.55, color: 'var(--color-text)', background: 'var(--color-amber-light)', border: '0.5px solid var(--color-amber)', borderRadius: 8, padding: '10px 14px' },
     // Liste ordonnée simple : `display:flex` ferait disparaître les numéros (les <li>
     // deviennent des éléments flex et perdent leur `display: list-item`).
     etapes: { fontSize: 13, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 12px', paddingLeft: 22 },
@@ -195,6 +206,27 @@ export default function IadeAgendaPerso() {
           sans poste.
         </p>
       </div>
+
+      {/* Cette page configure l'abonnement du compte CONNECTÉ, quel qu'il soit.
+          Ouverte depuis le menu de la gestion, elle ressemble à s'y méprendre à
+          un écran de configuration « pour un agent » — et l'adresse affichée est
+          alors celle du gestionnaire. L'envoyer à un IADE lui ferait suivre la
+          colonne choisie ici, pas la sienne. On le dit franchement. */}
+      {!profile?.is_iade && (
+        <div style={{
+          fontSize: 13, lineHeight: 1.55, borderRadius: 8, padding: '12px 14px',
+          background: 'var(--color-amber-light)', color: 'var(--color-text)',
+          border: '0.5px solid var(--color-amber)',
+        }}>
+          ⚠️ <strong>Cette page règle TON agenda à toi</strong>, pas celui d'un agent.
+          La colonne choisie ici et l'adresse affichée plus bas sont les tiennes.
+          <div style={{ marginTop: 6 }}>
+            Chaque IADE a <strong>sa propre adresse</strong> : il l'obtient en ouvrant cette
+            page depuis <strong>son</strong> compte. Ne lui envoie pas celle-ci — il verrait la
+            colonne que tu as choisie, pas la sienne.
+          </div>
+        </div>
+      )}
 
       {erreur && (
         <div style={{ fontSize: 13, color: 'var(--color-danger, #c0392b)', background: 'var(--color-danger-light, rgba(192,57,43,0.08))', borderRadius: 8, padding: '10px 14px' }}>{erreur}</div>
@@ -347,7 +379,15 @@ export default function IadeAgendaPerso() {
                 <li>Sur ton téléphone, ouvre Google Agenda → <strong>Paramètres</strong> et
                     <strong> coche</strong> « SARM — Mon planning IADE ».</li>
               </ol>
-              <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
+              {surTelephone ? (
+                <div style={s.surTelephone}>
+                  📱 Tu es sur un téléphone : ce bouton n'existe pas ici, il ne pourrait rien
+                  ajouter. <strong>Copie l'adresse</strong> juste en dessous, envoie-la-toi
+                  (e-mail, message à toi-même), et termine sur un ordinateur.
+                </div>
+              ) : (
+                <a href={liens.google} target="_blank" rel="noopener noreferrer" style={s.bouton}>➕ Ajouter à Google Agenda</a>
+              )}
             </div>
           )}
           {plateforme === 'outlook' && (
@@ -361,14 +401,22 @@ export default function IadeAgendaPerso() {
                 <li>Regarde <strong>ton adresse Outlook</strong> et prends le bouton qui lui
                     correspond — il y a deux Outlook, et un seul est le tien :</li>
               </ol>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>
-                  ➕ Mon adresse finit par @outlook.com, @hotmail, @live
-                </a>
-                <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>
-                  ➕ Mon adresse est celle de mon employeur (Microsoft 365)
-                </a>
-              </div>
+              {surTelephone ? (
+                <div style={{ ...s.surTelephone, marginBottom: 10 }}>
+                  📱 Tu es sur un téléphone : ces boutons n'existent pas ici, ils ne pourraient
+                  rien ajouter. <strong>Copie l'adresse</strong> juste en dessous, envoie-la-toi,
+                  et termine sur un ordinateur.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <a href={liens.outlookPerso} target="_blank" rel="noopener noreferrer" style={s.bouton}>
+                    ➕ Mon adresse finit par @outlook.com, @hotmail, @live
+                  </a>
+                  <a href={liens.outlookPro} target="_blank" rel="noopener noreferrer" style={s.bouton}>
+                    ➕ Mon adresse est celle de mon employeur (Microsoft 365)
+                  </a>
+                </div>
+              )}
               <ol start={2} style={s.etapes}>
                 <li>Clique <strong>Importer</strong> sur la page Outlook qui s'ouvre.</li>
                 <li>Tes journées sont là.</li>
