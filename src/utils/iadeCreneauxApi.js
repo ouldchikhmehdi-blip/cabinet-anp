@@ -5,10 +5,23 @@
 // tout le monde lit — l'information figure dans le planning que l'équipe
 // consulte —, seule la gestion IADE écrit. `cree_par` / `maj_par` et le nettoyage
 // des espaces sont posés par un trigger.
+//
+// Au bloc B la salle n'est pas nommée : on écrit « Bloc B » et c'est l'opérateur
+// (`absent`) qui identifie la ligne. Au bloc A, c'est la salle.
 // ============================================================
 import { supabase } from '../lib/supabase'
+import { SALLE_BLOC_B } from './iadeCreneaux'
 
-const CHAMPS = 'id, jour, moment, salle, absent, note, maj_le'
+const CHAMPS = 'id, jour, moment, secteur, salle, absent, note, maj_le'
+
+function normaliser({ secteur, moment, salle, absent, note }) {
+  return {
+    secteur, moment,
+    salle: secteur === 'B' ? SALLE_BLOC_B : salle,
+    absent: absent || null,
+    note: note || null,
+  }
+}
 
 export async function chargerCreneaux(annee) {
   const { data, error } = await supabase
@@ -25,7 +38,7 @@ export async function chargerCreneaux(annee) {
 export async function chargerCreneauxPeriode(debut, fin) {
   const { data, error } = await supabase
     .from('iade_creneaux_fermes')
-    .select('jour, moment, salle, absent')
+    .select('jour, moment, secteur, salle, absent')
     .gte('jour', debut)
     .lte('jour', fin)
     .order('jour')
@@ -34,12 +47,11 @@ export async function chargerCreneauxPeriode(debut, fin) {
 }
 
 // Un opérateur annonce ses absences d'un bloc : on pose tous ses jours en un
-// seul aller-retour, même salle, même moment, même nom. Insertion atomique —
+// seul aller-retour, même bloc, même moment, même nom. Insertion atomique —
 // si une ligne passe mal, aucune n'est écrite et la liste reste lisible.
-export async function ajouterCreneaux(jours, { moment, salle, absent, note }) {
-  const lignes = jours.map(jour => ({
-    jour, moment, salle, absent: absent || null, note: note || null,
-  }))
+export async function ajouterCreneaux(jours, saisie) {
+  const commun = normaliser(saisie)
+  const lignes = jours.map(jour => ({ jour, ...commun }))
   const { data, error } = await supabase
     .from('iade_creneaux_fermes')
     .insert(lignes)
@@ -48,11 +60,11 @@ export async function ajouterCreneaux(jours, { moment, salle, absent, note }) {
   return data ?? []
 }
 
-// Tout se corrige : la salle, le moment, le jour, qui manque.
-export async function modifierCreneau(id, champs) {
+// Tout se corrige : le bloc, la salle, l'opérateur, le moment, le jour.
+export async function modifierCreneau(id, { jour, ...reste }) {
   const { data, error } = await supabase
     .from('iade_creneaux_fermes')
-    .update(champs)
+    .update({ jour, ...normaliser(reste) })
     .eq('id', id)
     .select(CHAMPS)
     .single()

@@ -19,7 +19,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
 import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
 import { chargerCreneauxPeriode } from '../utils/iadeCreneauxApi'
-import { indexerParJour as indexerCreneaux, resume as resumeCreneau } from '../utils/iadeCreneaux'
+import {
+  indexerParJour as indexerCreneaux, resume as resumeCreneau, bilanBlocB, segmentsBilanB,
+} from '../utils/iadeCreneaux'
 import {
   POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
   couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, moitiesCase,
@@ -295,20 +297,41 @@ export default function IadePlanning() {
                       })()}
                     </td>
                     {/* Salles qui ne tournent pas — saisies dans l'onglet « Créneaux ».
-                        Journée entière en rouge, demi-journée en brun : la nuance
-                        se lit sans avoir à relire le texte. */}
+                        Bloc B : un compte, « −2 salles le matin », parce qu'un
+                        opérateur = une salle et que c'est le nombre qui sert. Les
+                        noms restent dessous, en petit. Bloc A : la salle nommée,
+                        journée entière en rouge, demi-journée en brun. */}
                     <td style={{
                       ...cellule, fontSize: 10, color: 'var(--color-text-secondary)',
                       textAlign: 'left', padding: '2px 6px',
                     }}>
-                      {(creneauxParJour.get(iso) ?? []).map(c => (
-                        <div key={`${c.moment}-${c.salle}`} style={{
-                          color: c.moment === 'journee' ? COULEUR_CONGE : '#9A5B12',
-                          fontWeight: 600, lineHeight: 1.3,
-                        }}>
-                          {resumeCreneau(c)}
-                        </div>
-                      ))}
+                      {(() => {
+                        const duJour = creneauxParJour.get(iso) ?? []
+                        const bilan = bilanBlocB(duJour)
+                        const blocA = duJour.filter(c => c.secteur !== 'B')
+                        return (
+                          <>
+                            {bilan.lignes.length > 0 && (
+                              <div style={{ lineHeight: 1.3 }}>
+                                {segmentsBilanB(bilan).map(s => (
+                                  <div key={s} style={{ color: COULEUR_CONGE, fontWeight: 700, fontSize: 11 }}>{s}</div>
+                                ))}
+                                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 9 }}>
+                                  Bloc B · {bilan.lignes.map(c => c.absent).join(', ')}
+                                </div>
+                              </div>
+                            )}
+                            {blocA.map(c => (
+                              <div key={`${c.moment}-${c.salle}`} style={{
+                                color: c.moment === 'journee' ? COULEUR_CONGE : '#9A5B12',
+                                fontWeight: 600, lineHeight: 1.3,
+                              }}>
+                                {resumeCreneau(c)}
+                              </div>
+                            ))}
+                          </>
+                        )
+                      })()}
                     </td>
                     </tr>
                   </Fragment>
@@ -352,9 +375,13 @@ export default function IadePlanning() {
             Remplaçant saisi dans « Rempla » (pas encore dans le fichier)
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ color: COULEUR_CONGE, fontWeight: 600 }}>Salle — journée</span>
-            <span style={{ color: '#9A5B12', fontWeight: 600 }}>/ demi-journée</span>
-            Créneaux en moins
+            <span style={{ color: COULEUR_CONGE, fontWeight: 700 }}>−2 salles le matin</span>
+            Bloc B, un opérateur absent = une salle en moins
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ color: COULEUR_CONGE, fontWeight: 600 }}>CPRE · Dr X</span>
+            <span style={{ color: '#9A5B12', fontWeight: 600 }}>/ — matin</span>
+            Bloc A, qui manque et où — le moment n'est dit que pour une demi-journée
           </span>
         </div>
       )}

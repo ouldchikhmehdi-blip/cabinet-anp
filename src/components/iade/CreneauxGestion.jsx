@@ -1,14 +1,16 @@
 // ============================================================
 // CreneauxGestion — onglet « Créneaux » : les salles qui ne tournent pas.
 //
-// La gestion note qu'un créneau saute — telle salle, tels jours, journée entière
-// ou demi-journée, et quel opérateur est absent. L'information remonte dans
-// l'onglet « Planning IADE » : c'est là qu'on voit d'un coup d'œil où il y a du
-// monde en trop, et c'est le point de départ de la décision RH.
+// Deux blocs, deux façons de dire la même chose :
+//   • Bloc A : on nomme la salle qui ferme (NC, Viscérale, CPRE…), et — si on le
+//     sait — qui manque. Elle s'affiche par son nom.
+//   • Bloc B : un opérateur = une salle. On nomme l'opérateur absent, et le
+//     planning affiche un compte : « −2 salles le matin ». C'est ce qui sert à la
+//     gestion pour savoir où elle a du monde en trop.
 //
 // La saisie suit la façon dont l'information arrive : un opérateur envoie ses
-// absences d'un bloc, on clique ses jours au calendrier et on nomme la salle une
-// seule fois. Et comme ça bouge tout le temps (un opérateur se décommande, puis
+// absences d'un bloc, on clique ses jours au calendrier et on le nomme une seule
+// fois. Et comme ça bouge tout le temps (un opérateur se décommande, puis
 // revient), tout se corrige et se retire ligne par ligne, rien n'est définitif.
 // ============================================================
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -16,14 +18,16 @@ import {
   chargerCreneaux, ajouterCreneaux, modifierCreneau, supprimerCreneau,
 } from '../../utils/iadeCreneauxApi'
 import {
-  MOMENTS, momentCourt, indexerParJour, sallesConnues,
-  compterDemiJournees, verifierCreneau, verifierLot, basculerJour, resumeJours,
+  MOMENTS, SECTEURS, momentCourt, libelleSecteur, cleCreneau, indexerParJour,
+  sallesConnues, operateursConnus, compterDemiJournees,
+  verifierCreneau, verifierLot, basculerJour, resumeJours,
 } from '../../utils/iadeCreneaux'
 import { formatJour, bornesMois } from '../../utils/iadeConges'
 import { MOIS_FR } from '../../utils/calendrier'
 import CalendrierCreneaux from './CalendrierCreneaux'
 
-const VIDE = { jours: [], moment: 'journee', salle: '', absent: '', note: '' }
+// Le bloc B est le cas courant : c'est là que les opérateurs font des demi-journées.
+const VIDE = { jours: [], secteur: 'B', moment: 'journee', salle: '', absent: '', note: '' }
 
 export default function CreneauxGestion({ annee }) {
   const maintenant = new Date()
@@ -59,14 +63,21 @@ export default function CreneauxGestion({ annee }) {
     const dans = portee === 'mois'
       ? creneaux.filter(c => c.jour >= debut && c.jour <= fin)
       : creneaux
-    return [...dans].sort((a, b) => a.jour.localeCompare(b.jour) || a.salle.localeCompare(b.salle, 'fr'))
+    return [...dans].sort((a, b) =>
+      a.jour.localeCompare(b.jour) ||
+      (a.secteur ?? 'A').localeCompare(b.secteur ?? 'A') ||
+      cleCreneau(a).localeCompare(cleCreneau(b), 'fr'))
   }, [creneaux, portee, debut, fin])
 
   const salles = useMemo(() => sallesConnues(creneaux), [creneaux])
+  const operateurs = useMemo(() => operateursConnus(creneaux), [creneaux])
   const parJour = useMemo(() => indexerParJour(affiches), [affiches])
   // Le calendrier montre l'année entière : on peut sélectionner à cheval sur deux mois.
   const fermesParJour = useMemo(() => indexerParJour(creneaux), [creneaux])
-  const demiJournees = compterDemiJournees(affiches)
+  const demiB = compterDemiJournees(affiches.filter(c => c.secteur === 'B'))
+  const demiA = compterDemiJournees(affiches.filter(c => c.secteur !== 'B'))
+
+  const blocB = saisie.secteur === 'B'
 
   function changer(champ, valeur) {
     setSaisie(prev => ({ ...prev, [champ]: valeur }))
@@ -92,7 +103,8 @@ export default function CreneauxGestion({ annee }) {
   function corriger(c) {
     setEditeId(c.id)
     setSaisie({
-      jours: [c.jour], moment: c.moment, salle: c.salle,
+      jours: [c.jour], secteur: c.secteur ?? 'A', moment: c.moment,
+      salle: c.secteur === 'B' ? '' : c.salle,
       absent: c.absent ?? '', note: c.note ?? '',
     })
     setMois(Number(c.jour.slice(5, 7)) - 1)
@@ -102,6 +114,12 @@ export default function CreneauxGestion({ annee }) {
 
   function annulerEdition() {
     setEditeId(null); setSaisie(VIDE); setAncre(null); setErreur(null)
+  }
+
+  // « Bloc B : Dr Martin — matin » / « CPRE — matin »
+  function decrireSaisie() {
+    const moment = momentCourt(saisie.moment).toLowerCase()
+    return blocB ? `Bloc B : ${saisie.absent.trim()} — ${moment}` : `${saisie.salle.trim()} — ${moment}`
   }
 
   async function enregistrer() {
@@ -114,8 +132,8 @@ export default function CreneauxGestion({ annee }) {
       setEnvoi(true)
       try {
         await modifierCreneau(editeId, {
-          jour, moment: saisie.moment, salle: saisie.salle,
-          absent: saisie.absent || null, note: saisie.note || null,
+          jour, secteur: saisie.secteur, moment: saisie.moment,
+          salle: saisie.salle, absent: saisie.absent, note: saisie.note,
         })
         setSucces('Créneau corrigé.')
         setSaisie(VIDE); setEditeId(null); setAncre(null)
@@ -134,12 +152,12 @@ export default function CreneauxGestion({ annee }) {
     setEnvoi(true)
     try {
       await ajouterCreneaux(aPoser, saisie)
-      const quoi = `${saisie.salle} — ${momentCourt(saisie.moment).toLowerCase()}`
       const ignores = refus.length > 0
         ? ` (${refus.length} jour(s) déjà noté(s), laissé(s) de côté : ${resumeJours(refus.map(r => r.jour))})`
         : ''
-      setSucces(`${aPoser.length} créneau(x) noté(s) — ${quoi} : ${resumeJours(aPoser)}.${ignores}`)
-      setSaisie(VIDE); setAncre(null)
+      setSucces(`${aPoser.length} jour(s) noté(s) — ${decrireSaisie()} : ${resumeJours(aPoser)}.${ignores}`)
+      setSaisie(prev => ({ ...VIDE, secteur: prev.secteur, moment: prev.moment }))
+      setAncre(null)
       await charger()
     } catch (err) {
       setErreur(messageEchec(err))
@@ -150,17 +168,20 @@ export default function CreneauxGestion({ annee }) {
 
   function messageEchec(err) {
     return err?.code === '23505'
-      ? 'Cette salle est déjà notée sur ce créneau.'
+      ? 'Cette ligne existe déjà sur ce créneau.'
       : "Enregistrement impossible. Réessayez ; si le problème persiste, vérifiez vos droits."
   }
 
   async function retirer(c) {
-    if (!confirm(`Retirer ce créneau ?\n\n${c.salle} — ${momentCourt(c.moment).toLowerCase()} du ${formatJour(c.jour)}`)) return
+    const quoi = c.secteur === 'B' ? `Bloc B : ${c.absent}` : c.salle
+    if (!confirm(`Retirer ce créneau ?\n\n${quoi} — ${momentCourt(c.moment).toLowerCase()} du ${formatJour(c.jour)}`)) return
     setErreur(null); setSucces(null)
     try {
       await supprimerCreneau(c.id)
       if (editeId === c.id) annulerEdition()
-      setSucces('Créneau retiré — la salle retourne à son fonctionnement normal.')
+      setSucces(c.secteur === 'B'
+        ? 'Créneau retiré — la salle est de nouveau comptée.'
+        : 'Créneau retiré — la salle retourne à son fonctionnement normal.')
       await charger()
     } catch {
       setErreur('Retrait impossible.')
@@ -184,6 +205,12 @@ export default function CreneauxGestion({ annee }) {
     background: variante === 'primary' ? 'var(--color-primary)' : 'transparent',
     color: variante === 'primary' ? '#fff' : `var(--color-${variante})`,
   })
+  const segment = (actif) => ({
+    flex: 1, padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    border: `0.5px solid ${actif ? 'var(--color-primary)' : 'var(--color-border)'}`,
+    background: actif ? 'var(--color-primary)' : 'var(--color-bg)',
+    color: actif ? '#fff' : 'var(--color-text-secondary)',
+  })
   const th = { padding: '10px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em' }
   const td = { padding: '8px 14px', fontSize: 13, color: 'var(--color-text)', verticalAlign: 'middle' }
   const tr = { borderBottom: '0.5px solid var(--color-border)' }
@@ -192,6 +219,12 @@ export default function CreneauxGestion({ annee }) {
     fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap',
     background: moment === 'journee' ? 'var(--color-danger-light)' : 'var(--color-amber-light)',
     color: moment === 'journee' ? 'var(--color-danger)' : 'var(--color-amber)',
+  })
+  const pastilleBloc = (secteur) => ({
+    fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap',
+    background: secteur === 'B' ? 'var(--color-primary-light)' : 'var(--color-bg)',
+    color: secteur === 'B' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+    border: '0.5px solid var(--color-border)',
   })
 
   const choisis = saisie.jours.length
@@ -216,6 +249,21 @@ export default function CreneauxGestion({ annee }) {
           />
 
           <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <span style={label}>Bloc</span>
+              <div style={{ display: 'flex', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                {SECTEURS.map(s => (
+                  <button key={s.id} type="button" onClick={() => changer('secteur', s.id)}
+                          aria-pressed={saisie.secteur === s.id} style={segment(saisie.secteur === s.id)}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                {SECTEURS.find(s => s.id === saisie.secteur)?.aide}
+              </div>
+            </div>
+
             <div style={{
               fontSize: 13, padding: '8px 12px', borderRadius: 8,
               background: choisis > 0 ? 'var(--color-primary-light)' : 'var(--color-bg)',
@@ -242,22 +290,40 @@ export default function CreneauxGestion({ annee }) {
                 {MOMENTS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </label>
-            <label>
-              <span style={label}>Salle qui ne tourne pas</span>
-              <input type="text" list="salles-connues" value={saisie.salle} maxLength={60}
-                     placeholder="Bloc B, Endoscopie 2…"
-                     onChange={e => changer('salle', e.target.value)}
-                     style={{ ...champ, width: '100%' }} />
-              <datalist id="salles-connues">
-                {salles.map(s => <option key={s} value={s} />)}
-              </datalist>
-            </label>
-            <label>
-              <span style={label}>Opérateur absent (facultatif)</span>
-              <input type="text" value={saisie.absent} maxLength={80} placeholder="Dr Martin"
-                     onChange={e => changer('absent', e.target.value)}
-                     style={{ ...champ, width: '100%' }} />
-            </label>
+
+            {blocB ? (
+              <label>
+                <span style={label}>Opérateur absent</span>
+                <input type="text" list="operateurs-connus" value={saisie.absent} maxLength={80}
+                       placeholder="Dr Martin"
+                       onChange={e => changer('absent', e.target.value)}
+                       style={{ ...champ, width: '100%' }} />
+              </label>
+            ) : (
+              <>
+                <label>
+                  <span style={label}>Salle qui ne tourne pas</span>
+                  <input type="text" list="salles-connues" value={saisie.salle} maxLength={60}
+                         placeholder="NC, Viscérale, CPRE…"
+                         onChange={e => changer('salle', e.target.value)}
+                         style={{ ...champ, width: '100%' }} />
+                  <datalist id="salles-connues">
+                    {salles.map(s => <option key={s} value={s} />)}
+                  </datalist>
+                </label>
+                <label>
+                  <span style={label}>Opérateur absent</span>
+                  <input type="text" list="operateurs-connus" value={saisie.absent} maxLength={80}
+                         placeholder="Dr Martin"
+                         onChange={e => changer('absent', e.target.value)}
+                         style={{ ...champ, width: '100%' }} />
+                </label>
+              </>
+            )}
+            <datalist id="operateurs-connus">
+              {operateurs.map(o => <option key={o} value={o} />)}
+            </datalist>
+
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={enregistrer} disabled={envoi || choisis === 0}
                       style={{ ...bouton('primary'), padding: '8px 16px', fontSize: 13, opacity: (envoi || choisis === 0) ? 0.6 : 1 }}>
@@ -271,9 +337,10 @@ export default function CreneauxGestion({ annee }) {
               )}
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', lineHeight: 1.6 }}>
-              Une ligne par salle et par jour : deux salles fermées le même matin font
-              deux saisies. Ce que tu notes ici apparaît dans l'onglet
-              <strong> Planning IADE</strong>, en face du jour.
+              {blocB
+                ? <>Au bloc B, <strong>un opérateur = une salle</strong> : deux opérateurs absents le même matin, c'est « −2 salles le matin » dans le planning.</>
+                : <>Au bloc A, le planning affiche <strong>qui manque et où</strong> ; « matin » ou « après-midi » n'est précisé que pour une demi-journée.</>}
+              {' '}Ce que tu notes ici apparaît dans l'onglet <strong>Planning IADE</strong>, en face du jour.
             </div>
           </div>
         </div>
@@ -293,7 +360,7 @@ export default function CreneauxGestion({ annee }) {
           <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
             {affiches.length === 0
               ? 'Rien de signalé'
-              : `${affiches.length} créneau(x) sur ${parJour.size} jour(s) — ${demiJournees} demi-journée(s)`}
+              : `${affiches.length} ligne(s) sur ${parJour.size} jour(s) — bloc B : ${demiB} demi-journée(s) de salle en moins · bloc A : ${demiA}`}
           </span>
         </div>
 
@@ -310,8 +377,8 @@ export default function CreneauxGestion({ annee }) {
                 <tr style={tr}>
                   <th style={th}>Jour</th>
                   <th style={th}>Quand</th>
-                  <th style={th}>Salle</th>
-                  <th style={th}>Opérateur absent</th>
+                  <th style={th}>Bloc</th>
+                  <th style={th}>Salle / opérateur</th>
                   <th style={th}>Actions</th>
                 </tr>
               </thead>
@@ -320,8 +387,12 @@ export default function CreneauxGestion({ annee }) {
                   <tr key={c.id} style={{ ...tr, background: c.id === editeId ? 'var(--color-primary-light)' : undefined }}>
                     <td style={{ ...td, fontWeight: 500, whiteSpace: 'nowrap' }}>{formatJour(c.jour)}</td>
                     <td style={td}><span style={pastilleMoment(c.moment)}>{momentCourt(c.moment)}</span></td>
-                    <td style={{ ...td, fontWeight: 500 }}>{c.salle}</td>
-                    <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{c.absent || '—'}</td>
+                    <td style={td}><span style={pastilleBloc(c.secteur)}>{libelleSecteur(c.secteur ?? 'A')}</span></td>
+                    <td style={{ ...td, fontWeight: 500 }}>
+                      {c.secteur === 'B'
+                        ? c.absent
+                        : <>{c.salle}{c.absent && <span style={{ color: 'var(--color-text-secondary)', fontWeight: 400 }}> — {c.absent}</span>}</>}
+                    </td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button type="button" style={bouton('primary')} onClick={() => corriger(c)}>Corriger</button>

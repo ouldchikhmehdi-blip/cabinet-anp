@@ -910,10 +910,27 @@ Ajouté le 2026-09-03. Troisième onglet de « Congés, HS et rempla » (§ 3), 
 gestion. Il remplace les deux colonnes **vides et manuelles** du fichier visuel
 (« Salles Bloc B », « Absence Bloc A ») que personne ne remplissait.
 
-Une ligne = **une salle, un jour, un moment**. La gestion note qu'un créneau saute, dit
-quelle salle et — facultatif — quel opérateur est absent. Deux salles fermées le
-même matin font deux lignes ; rien n'interdit « Bloc B le matin » et « Endoscopie
-l'après-midi » le même jour.
+Une ligne = **une salle, un jour, un moment**. Deux salles fermées le même matin font
+deux lignes. Mais les deux blocs ne nomment pas la salle de la même façon, et c'est le
+champ `secteur` qui le dit :
+
+| Bloc | Ce qu'on saisit | Ce que le planning affiche | Pourquoi |
+|---|---|---|---|
+| **A** | la **salle** (NC, Viscérale, CPRE…) et qui manque | « CPRE · Dr Martin » — le moment n'est précisé **que** pour une demi-journée (« — matin ») ; rien dit, c'est la journée entière | les salles ont une identité, on veut savoir laquelle ferme et qui manque |
+| **B** | l'**opérateur absent** et sa demi-journée (`salle` vaut toujours « Bloc B ») | le **cumul du jour** : « −1 salle la journée / −1 salle le matin », les noms en petit dessous | les opérateurs y font des demi-journées et **un opérateur = une salle** : ce qui sert à la gestion, c'est combien de salles manquent, pas qui |
+
+La règle de cumul du bloc B : on compte les salles en moins le matin (M) et l'après-midi
+(A), un absent la journée comptant dans les deux. Puis **min(M, A) salles manquent « la
+journée »**, et ce qui dépasse manque « le matin » ou « l'après-midi ». Une salle en moins
+le matin et une en moins l'après-midi, même tenues par deux personnes différentes, c'est
+**« −1 salle la journée »** — c'est le nombre de salles qui compte, pas qui les tenait.
+`bilanBlocB()` / `segmentsBilanB()` font ce calcul ; le script Excel
+(`lignes_creneaux()` dans `convertir_mois.py`) le refait à l'identique.
+
+> Réécrit le 2026-09-03 (soir). La première version n'avait qu'une logique — salle nommée,
+> unique par moment — et obligeait à taper le nom de l'opérateur dans le champ « salle »
+> pour pouvoir en noter deux le même matin au bloc B. La migration a reclassé l'existant :
+> « CPRE » en bloc A, tous les autres noms en opérateurs du bloc B.
 
 > **La saisie se fait par lot, parce que l'information arrive par lot.** Un opérateur
 > annonce ses absences d'un bloc (« je ne suis pas là les 12, 15 et du 20 au 22 »). On
@@ -929,15 +946,17 @@ l'après-midi » le même jour.
 
 | Brique | Fichier | Rôle |
 |---|---|---|
-| Table, RLS | `supabase/iade_creneaux_fermes.sql` | `(jour, moment, salle)` unique ; `moment ∈ journee/matin/apres_midi` ; trigger de traçabilité qui nettoie aussi les espaces |
-| Logique pure | `src/utils/iadeCreneaux.js` | tri d'un jour, salles déjà saisies, compte des demi-journées, sélection multiple (`basculerJour`, `resumeJours`), contrôles de saisie (`verifierCreneau`, `verifierLot`) — testée |
+| Table, RLS | `supabase/iade_creneaux_fermes.sql` | `secteur ∈ A/B` ; unique sur `(jour, moment, secteur, salle, absent)` — une salle du A ou un opérateur du B ne se note pas deux fois sur le même moment ; au B l'opérateur est obligatoire ; trigger de traçabilité qui nettoie aussi les espaces |
+| Logique pure | `src/utils/iadeCreneaux.js` | bilan du bloc B (`bilanBlocB`, `segmentsBilanB`), tri d'un jour, salles et opérateurs déjà saisis, compte des demi-journées, sélection multiple (`basculerJour`, `resumeJours`), contrôles de saisie (`verifierCreneau`, `verifierLot`) — testée |
 | Accès Supabase | `src/utils/iadeCreneauxApi.js` | lecture par année ou par période, ajout d'un lot (`ajouterCreneaux`), correction, retrait |
 | Calendrier | `src/components/iade/CalendrierCreneaux.jsx` | sélection multiple ; les jours déjà fermés sont teintés et comptés |
 | Écran | `src/components/iade/CreneauxGestion.jsx` | saisie par lot, liste du mois ou de l'année, correction et retrait ligne par ligne |
 
-- **Les contrôles refusent l'incohérent** : la même salle deux fois sur le même moment, une
-  journée entière quand une demi-journée est déjà posée, une demi-journée déjà comprise
-  dans une journée entière. Le message dit quoi faire, pas seulement que c'est refusé.
+- **Les contrôles refusent l'incohérent** : la même salle (ou le même opérateur au bloc B)
+  deux fois sur le même moment, une journée entière quand une demi-journée est déjà posée,
+  une demi-journée déjà comprise dans une journée entière. Le message dit quoi faire, pas
+  seulement que c'est refusé. Deux opérateurs différents le même matin au bloc B, eux,
+  passent : c'est précisément « −2 salles ».
 - **Une plage est bornée à 62 jours** (`MAX_JOURS_LOT`) : au-delà, c'est un Maj + clic à
   l'autre bout de l'année, pas une intention.
 - **La correction reste au jour près** : en mode « Corriger », le calendrier passe à un seul
@@ -948,9 +967,10 @@ l'après-midi » le même jour.
   l'unité dans laquelle la gestion raisonne pour savoir où elle a du monde en trop.
 
 **Dans le planning** (§ 12), une colonne **« Créneaux en moins »** à droite des remplaçants
-affiche « Bloc B — matin (Dr Martin) ». Journée entière en **rouge**, demi-journée en
-**brun** : la nuance se lit sans relire le texte. Comme les remplaçants, ces lignes
-appartiennent au dashboard — la republication nocturne du miroir Excel ne les touche pas.
+affiche, pour le bloc B, le compte en rouge gras (« −2 salles le matin ») avec les noms en
+petit dessous, et pour le bloc A la salle nommée — journée entière en **rouge**,
+demi-journée en **brun**. Comme les remplaçants, ces lignes appartiennent au dashboard —
+la republication nocturne du miroir Excel ne les touche pas.
 
 **Et sur la Dropbox** : la chaîne nocturne de 5 h les redescend dans le fichier visuel, dans
 une colonne « Créneaux en moins » qui remplace les deux colonnes vides « Salles Bloc B » et

@@ -7,6 +7,13 @@
 -- l'information dont la gestion a besoin pour savoir où elle a du monde en trop,
 -- et elle apparaît dans l'onglet « Planning IADE » à côté des remplaçants.
 --
+-- Deux blocs, deux façons de nommer la salle (`secteur`) :
+--   • 'A' : la salle est nommée (`salle` = NC, Viscérale, CPRE…), `absent` dit
+--     facultativement qui manque ;
+--   • 'B' : un opérateur = une salle. `salle` vaut toujours « Bloc B », c'est
+--     `absent` — l'opérateur — qui identifie la ligne. Le planning n'affiche pas
+--     les noms mais un compte : « −2 salles le matin ».
+--
 -- ⚠️ C'est le SEUL endroit du module IADE qui descend à la DEMI-JOURNÉE. Congés
 -- et heures sup comptent en journées, délibérément (cf. IADE.md). Ici la
 -- demi-journée est le fait métier lui-même : une salle ferme souvent le matin
@@ -14,13 +21,14 @@
 --
 -- Comme les remplaçants, ces lignes appartiennent au dashboard : la
 -- republication nocturne du planning (`iade_planning*`, miroir du fichier Excel)
--- ne les touche pas.
+-- ne les touche pas — mais la chaîne de 5 h les recopie dans le fichier Dropbox.
 -- ============================================================
 
 create table if not exists public.iade_creneaux_fermes (
   id       uuid primary key default gen_random_uuid(),
   jour     date not null,
   moment   text not null default 'journee',
+  secteur  text not null default 'B',
   salle    text not null,
   absent   text,
   note     text,
@@ -32,12 +40,48 @@ create table if not exists public.iade_creneaux_fermes (
   constraint iade_creneaux_moment_check
     check (moment in ('journee', 'matin', 'apres_midi')),
   constraint iade_creneaux_salle_non_vide
-    check (length(btrim(salle)) > 0),
-
-  -- Une même salle ne ferme pas deux fois le même moment. Rien n'interdit en
-  -- revanche « Bloc B le matin » ET « Endoscopie l'après-midi » le même jour.
-  unique (jour, moment, salle)
+    check (length(btrim(salle)) > 0)
 );
+
+-- ── Migration du 2026-09-03 : le bloc B compte en opérateurs ─────────────────
+-- Avant, une seule logique (salle nommée, unique par moment). Au bloc B, ça
+-- obligeait à taper le nom de l'opérateur dans le champ « salle » pour pouvoir
+-- en noter deux le même matin. On lève l'unicité par salle AVANT de reclasser
+-- l'existant (sinon deux opérateurs absents le même jour, ramenés tous deux à
+-- « Bloc B », se heurteraient à l'ancienne règle), on donne à chaque ligne son
+-- bloc : « CPRE » est une salle du bloc A ; tout le reste était un opérateur du B.
+alter table public.iade_creneaux_fermes
+  drop constraint if exists iade_creneaux_fermes_jour_moment_salle_key;
+
+alter table public.iade_creneaux_fermes
+  add column if not exists secteur text not null default 'B';
+
+update public.iade_creneaux_fermes
+   set secteur = 'A'
+ where lower(btrim(salle)) in ('cpre', 'nc', 'visc', 'viscérale', 'viscerale', 'bloc a')
+   and secteur = 'B' and salle <> 'Bloc B';
+
+update public.iade_creneaux_fermes
+   set absent = coalesce(absent, salle), salle = 'Bloc B'
+ where secteur = 'B' and salle <> 'Bloc B';
+
+alter table public.iade_creneaux_fermes
+  drop constraint if exists iade_creneaux_secteur_check;
+alter table public.iade_creneaux_fermes
+  add constraint iade_creneaux_secteur_check check (secteur in ('A', 'B'));
+
+-- Au bloc B, l'opérateur est obligatoire : sans lui, la ligne ne dit rien.
+alter table public.iade_creneaux_fermes
+  drop constraint if exists iade_creneaux_bloc_b_operateur;
+alter table public.iade_creneaux_fermes
+  add constraint iade_creneaux_bloc_b_operateur
+  check (secteur <> 'B' or length(btrim(coalesce(absent, ''))) > 0);
+
+-- Une même salle (bloc A) ou un même opérateur (bloc B) ne se note pas deux fois
+-- sur le même moment. Deux opérateurs absents le même matin, c'est deux lignes.
+create unique index if not exists iade_creneaux_fermes_unicite
+  on public.iade_creneaux_fermes
+  (jour, moment, secteur, lower(btrim(salle)), lower(btrim(coalesce(absent, ''))));
 
 create index if not exists iade_creneaux_fermes_jour_idx on public.iade_creneaux_fermes (jour);
 
