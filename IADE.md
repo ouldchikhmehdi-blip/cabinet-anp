@@ -1009,6 +1009,16 @@ semaine) pour le bloc A et les opérateurs hors trame ; sinon la valeur du champ
 En cas d'égalité dans l'historique, **rien n'est proposé** : une case vide se remarque,
 une case fausse non.
 
+**Une seule orthographe par opérateur.** La liste se dédoublonne sur le nom
+**normalisé** (accents, casse et civilité ignorés) : « esperance » tapé à la volée et
+« Espérance » de la trame sont la même personne, et la trame étant en tête, c'est **son**
+orthographe qui l'emporte. La donnée elle-même a été rangée le 2026-09-03 (migration
+`iade_creneaux_noms_canoniques_bloc_b`, 32 lignes) — elle s'affiche telle quelle dans le
+planning et dans le fichier Dropbox, la laisser en minuscules aurait juste déplacé le
+problème. Cas particulier : **`valat` → `Valats`**, qu'aucune normalisation ne rapproche
+(une lettre les sépare) ; c'est bien la même personne, ses deux lignes tombent
+exactement sur les mercredi et vendredi après-midi de la trame.
+
 **La trame décrit le BLOC B, et rien d'autre.** La liste des opérateurs proposés à la
 frappe suit donc le **bloc sélectionné** : au bloc B, les 14 de la trame plus ceux déjà
 saisis en B ; au bloc A, uniquement ceux déjà saisis en A. Proposer un opérateur du

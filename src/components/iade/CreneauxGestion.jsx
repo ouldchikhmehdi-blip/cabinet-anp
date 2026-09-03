@@ -24,7 +24,7 @@ import {
   verifierCreneau, verifierLot, basculerJour, resumeJours,
   habitudes, momentsDuLot, lotPanache, habitudesOperateur,
 } from '../../utils/iadeCreneaux'
-import { operateursTrame, semaineType } from '../../utils/iadeBlocB'
+import { operateursTrame, semaineType, normNom } from '../../utils/iadeBlocB'
 import { formatJour, bornesMois } from '../../utils/iadeConges'
 import { MOIS_FR } from '../../utils/calendrier'
 import CalendrierCreneaux from './CalendrierCreneaux'
@@ -89,10 +89,14 @@ export default function CreneauxGestion({ annee }) {
     const source = saisie.secteur === 'B'
       ? [...operateursTrame(), ...operateursConnus(duBloc)]
       : operateursConnus(duBloc)
+    // Dédoublonnage sur le nom NORMALISÉ (accents, casse et civilité ignorés) :
+    // « esperance » saisi à la volée et « Espérance » de la trame sont la même
+    // personne, et la liste n'a pas à proposer les deux. La trame étant en tête,
+    // c'est SON orthographe qui l'emporte — c'est la référence.
     const vus = new Map()
     for (const n of source) {
-      const cle = n.trim().toLowerCase()
-      if (!vus.has(cle)) vus.set(cle, n.trim())
+      const cle = normNom(n)
+      if (cle && !vus.has(cle)) vus.set(cle, n.trim())
     }
     return [...vus.values()].sort((a, b) => a.localeCompare(b, 'fr'))
   }, [creneaux, saisie.secteur])
