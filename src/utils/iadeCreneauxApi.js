@@ -33,14 +33,19 @@ export async function chargerCreneauxPeriode(debut, fin) {
   return data ?? []
 }
 
-export async function ajouterCreneau({ jour, moment, salle, absent, note }) {
+// Un opérateur annonce ses absences d'un bloc : on pose tous ses jours en un
+// seul aller-retour, même salle, même moment, même nom. Insertion atomique —
+// si une ligne passe mal, aucune n'est écrite et la liste reste lisible.
+export async function ajouterCreneaux(jours, { moment, salle, absent, note }) {
+  const lignes = jours.map(jour => ({
+    jour, moment, salle, absent: absent || null, note: note || null,
+  }))
   const { data, error } = await supabase
     .from('iade_creneaux_fermes')
-    .insert({ jour, moment, salle, absent: absent || null, note: note || null })
+    .insert(lignes)
     .select(CHAMPS)
-    .single()
   if (error) throw error
-  return data
+  return data ?? []
 }
 
 // Tout se corrige : la salle, le moment, le jour, qui manque.

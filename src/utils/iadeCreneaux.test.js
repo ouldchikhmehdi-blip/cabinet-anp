@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   MOMENTS, libelleMoment, momentCourt, resume, indexerParJour,
   sallesConnues, compterDemiJournees, verifierCreneau,
+  basculerJour, groupesConsecutifs, resumeJours, verifierLot, MAX_JOURS_LOT,
 } from './iadeCreneaux'
 
 const c = (jour, moment, salle, extra = {}) => ({
@@ -97,5 +98,96 @@ describe('contrôle de saisie', () => {
   it('ne se bloque pas sur la ligne qu\'on est en train de corriger', () => {
     const ligne = existants[0]
     expect(verifierCreneau({ ...ligne, absent: 'Dr Martin' }, existants)).toBe(null)
+  })
+})
+
+describe('sélection de plusieurs jours', () => {
+  it('ajoute puis retire un jour au clic', () => {
+    expect(basculerJour([], '2026-10-12')).toEqual(['2026-10-12'])
+    expect(basculerJour(['2026-10-12'], '2026-10-12')).toEqual([])
+  })
+
+  it('garde la sélection triée quel que soit l\'ordre des clics', () => {
+    let sel = basculerJour([], '2026-10-15')
+    sel = basculerJour(sel, '2026-10-12')
+    expect(sel).toEqual(['2026-10-12', '2026-10-15'])
+  })
+
+  it('étend depuis le dernier jour cliqué avec Maj', () => {
+    expect(basculerJour(['2026-10-20'], '2026-10-22', { plage: true, ancre: '2026-10-20' }))
+      .toEqual(['2026-10-20', '2026-10-21', '2026-10-22'])
+  })
+
+  it('étend aussi vers le passé', () => {
+    expect(basculerJour(['2026-10-22'], '2026-10-20', { plage: true, ancre: '2026-10-22' }))
+      .toEqual(['2026-10-20', '2026-10-21', '2026-10-22'])
+  })
+
+  it('borne une plage aberrante', () => {
+    const sel = basculerJour([], '2026-12-31', { plage: true, ancre: '2026-01-01' })
+    expect(sel).toHaveLength(MAX_JOURS_LOT)
+  })
+})
+
+describe('lecture d\'une sélection', () => {
+  it('groupe les jours qui se suivent', () => {
+    expect(groupesConsecutifs(['2026-10-12', '2026-10-20', '2026-10-21', '2026-10-22']))
+      .toEqual([
+        { debut: '2026-10-12', fin: '2026-10-12', nb: 1 },
+        { debut: '2026-10-20', fin: '2026-10-22', nb: 3 },
+      ])
+  })
+
+  it('se relit en clair avant enregistrement', () => {
+    expect(resumeJours(['2026-10-12', '2026-10-20', '2026-10-21']))
+      .toBe('12/10/2026, du 20/10/2026 au 21/10/2026')
+    expect(resumeJours([])).toBe('')
+  })
+})
+
+describe('contrôle d\'un lot', () => {
+  const salle = 'Bloc B'
+
+  it('refuse un lot vide', () => {
+    expect(verifierLot({ jours: [], moment: 'matin', salle }).message).toMatch(/au moins un jour/)
+  })
+
+  it('ne dit qu\'une fois ce qui manque à tout le lot', () => {
+    const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], moment: 'matin', salle: '' })
+    expect(r.message).toMatch(/salle/)
+    expect(r.aPoser).toEqual([])
+  })
+
+  it('accepte tous les jours quand rien ne gêne', () => {
+    const r = verifierLot({ jours: ['2026-10-13', '2026-10-12'], moment: 'matin', salle })
+    expect(r.message).toBe(null)
+    expect(r.aPoser).toEqual(['2026-10-12', '2026-10-13'])
+    expect(r.refus).toEqual([])
+  })
+
+  it('laisse de côté les jours déjà notés sans faire échouer le reste', () => {
+    const existants = [c('2026-10-12', 'matin', 'Bloc B')]
+    const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], moment: 'matin', salle }, existants)
+    expect(r.message).toBe(null)
+    expect(r.aPoser).toEqual(['2026-10-13'])
+    expect(r.refus.map(x => x.jour)).toEqual(['2026-10-12'])
+  })
+
+  it('bloque quand plus rien ne reste à poser', () => {
+    const existants = [c('2026-10-12', 'matin', 'Bloc B')]
+    const r = verifierLot({ jours: ['2026-10-12'], moment: 'matin', salle }, existants)
+    expect(r.aPoser).toEqual([])
+    expect(r.message).toMatch(/déjà notée fermée/)
+  })
+
+  it('dédoublonne les jours', () => {
+    const r = verifierLot({ jours: ['2026-10-12', '2026-10-12'], moment: 'journee', salle })
+    expect(r.aPoser).toEqual(['2026-10-12'])
+  })
+
+  it('refuse un lot plus long que le maximum', () => {
+    const jours = Array.from({ length: MAX_JOURS_LOT + 1 },
+      (_, i) => `2026-01-${String(i + 1).padStart(2, '0')}`)
+    expect(verifierLot({ jours, moment: 'matin', salle }).message).toMatch(/Pas plus de/)
   })
 })

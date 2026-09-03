@@ -871,14 +871,21 @@ Fichiers : `supabase/iade_remplacements.sql` · `src/utils/iadeRempla{,Api}.js` 
 
 ## 14. Onglet « Créneaux » — les salles qui ne tournent pas
 
-Ajouté le 2026-09-03. Quatrième onglet de « Congés, HS et rempla » (§ 3), réservé à la
+Ajouté le 2026-09-03. Troisième onglet de « Congés, HS et rempla » (§ 3), réservé à la
 gestion. Il remplace les deux colonnes **vides et manuelles** du fichier visuel
 (« Salles Bloc B », « Absence Bloc A ») que personne ne remplissait.
 
 Une ligne = **une salle, un jour, un moment**. La gestion note qu'un créneau saute, dit
-quelle salle et — facultatif — qui manque (« Dr Martin absent »). Deux salles fermées le
+quelle salle et — facultatif — quel opérateur est absent. Deux salles fermées le
 même matin font deux lignes ; rien n'interdit « Bloc B le matin » et « Endoscopie
 l'après-midi » le même jour.
+
+> **La saisie se fait par lot, parce que l'information arrive par lot.** Un opérateur
+> annonce ses absences d'un bloc (« je ne suis pas là les 12, 15 et du 20 au 22 »). On
+> clique ses jours sur le calendrier — **Maj + clic** étend depuis le dernier jour cliqué —,
+> on nomme la salle, le moment et l'opérateur **une seule fois**, et tout part en une
+> insertion. Un jour déjà noté ne fait pas échouer le lot : il est écarté, signalé, et les
+> autres passent — le cas courant quand l'opérateur renvoie sa liste complétée.
 
 > ⚠️ **C'est le seul endroit du module IADE qui descend à la demi-journée.** Congés et
 > heures sup comptent en journées, délibérément (§ 8). Ici la demi-journée est le fait
@@ -888,13 +895,18 @@ l'après-midi » le même jour.
 | Brique | Fichier | Rôle |
 |---|---|---|
 | Table, RLS | `supabase/iade_creneaux_fermes.sql` | `(jour, moment, salle)` unique ; `moment ∈ journee/matin/apres_midi` ; trigger de traçabilité qui nettoie aussi les espaces |
-| Logique pure | `src/utils/iadeCreneaux.js` | tri d'un jour, salles déjà saisies, compte des demi-journées, contrôles de saisie — testée |
-| Accès Supabase | `src/utils/iadeCreneauxApi.js` | lecture par année ou par période, ajout, correction, retrait |
-| Écran | `src/components/iade/CreneauxGestion.jsx` | saisie, liste du mois ou de l'année, correction et retrait ligne par ligne |
+| Logique pure | `src/utils/iadeCreneaux.js` | tri d'un jour, salles déjà saisies, compte des demi-journées, sélection multiple (`basculerJour`, `resumeJours`), contrôles de saisie (`verifierCreneau`, `verifierLot`) — testée |
+| Accès Supabase | `src/utils/iadeCreneauxApi.js` | lecture par année ou par période, ajout d'un lot (`ajouterCreneaux`), correction, retrait |
+| Calendrier | `src/components/iade/CalendrierCreneaux.jsx` | sélection multiple ; les jours déjà fermés sont teintés et comptés |
+| Écran | `src/components/iade/CreneauxGestion.jsx` | saisie par lot, liste du mois ou de l'année, correction et retrait ligne par ligne |
 
 - **Les contrôles refusent l'incohérent** : la même salle deux fois sur le même moment, une
   journée entière quand une demi-journée est déjà posée, une demi-journée déjà comprise
   dans une journée entière. Le message dit quoi faire, pas seulement que c'est refusé.
+- **Une plage est bornée à 62 jours** (`MAX_JOURS_LOT`) : au-delà, c'est un Maj + clic à
+  l'autre bout de l'année, pas une intention.
+- **La correction reste au jour près** : en mode « Corriger », le calendrier passe à un seul
+  jour et un clic ailleurs déplace le créneau au lieu d'en ajouter un.
 - **Les salles déjà saisies sont proposées à la frappe** (`datalist`) : personne ne devrait
   retaper « Endoscopie 2 » vingt fois ni en inventer l'orthographe.
 - Le compte affiché est en **demi-journées** (une journée entière en vaut deux) : c'est

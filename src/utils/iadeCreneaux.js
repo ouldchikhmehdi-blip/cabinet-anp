@@ -5,7 +5,13 @@
 // journée entière ou une seule demi-journée. C'est le seul endroit du module
 // IADE qui descend à la demi-journée : ici, c'est le fait métier lui-même — une
 // salle ferme souvent le matin seulement, et l'agent libéré travaille l'après-midi.
+//
+// La saisie se fait par lot, parce que c'est comme ça que l'information arrive :
+// un opérateur annonce ses absences d'un bloc (« je ne suis pas là les 12, 15 et
+// du 20 au 22 »). On sélectionne ses jours au calendrier, on nomme la salle et
+// l'opérateur une seule fois, et le lot part en une fois.
 // ============================================================
+import { formatJour, jourSuivant, seSuivent } from './iadeConges'
 
 export const MOMENTS = [
   { id: 'journee',     label: 'Journée entière', court: 'Journée' },
@@ -88,4 +94,85 @@ export function verifierCreneau({ jour, moment, salle, id = null }, existants = 
     return `« ${propre} » est déjà fermée toute la journée : la demi-journée est comprise dedans.`
   }
   return null
+}
+
+// ── Sélection de plusieurs jours ─────────────────────────────────────────────
+
+// Un opérateur peut annoncer une longue absence, mais pas un trimestre : au-delà,
+// c'est une erreur de manipulation (Maj + clic à l'autre bout de l'année).
+export const MAX_JOURS_LOT = 62
+
+// Clic sur un jour du calendrier de saisie. → la nouvelle sélection, triée.
+// Maj + clic étend depuis le dernier jour cliqué : « du 20 au 22 » se pose en
+// deux gestes au lieu de trois clics.
+export function basculerJour(selection = [], iso, { plage = false, ancre = null } = {}) {
+  const dans = new Set(selection)
+  if (plage && ancre) {
+    for (const j of joursDe(ancre, iso)) dans.add(j)
+  } else if (dans.has(iso)) {
+    dans.delete(iso)
+  } else {
+    dans.add(iso)
+  }
+  return [...dans].sort()
+}
+
+// Tous les jours entre deux bornes comprises, quel que soit le sens du glissement.
+function joursDe(isoA, isoB) {
+  const [debut, fin] = isoA <= isoB ? [isoA, isoB] : [isoB, isoA]
+  const out = []
+  let courant = debut
+  while (courant <= fin && out.length < MAX_JOURS_LOT) {
+    out.push(courant)
+    courant = jourSuivant(courant)
+  }
+  return out
+}
+
+// Des jours épars → les suites de jours consécutifs qu'ils forment.
+export function groupesConsecutifs(jours = []) {
+  const out = []
+  for (const jour of [...new Set(jours)].sort()) {
+    const courant = out[out.length - 1]
+    if (courant && seSuivent(courant.fin, jour)) { courant.fin = jour; courant.nb++; continue }
+    out.push({ debut: jour, fin: jour, nb: 1 })
+  }
+  return out
+}
+
+// « 12/10/2026, du 20/10/2026 au 22/10/2026 » — ce qu'on relit avant d'enregistrer.
+export function resumeJours(jours = []) {
+  return groupesConsecutifs(jours)
+    .map(g => g.debut === g.fin ? formatJour(g.debut) : `du ${formatJour(g.debut)} au ${formatJour(g.fin)}`)
+    .join(', ')
+}
+
+// Contrôle d'un lot avant enregistrement.
+// → { message, aPoser, refus } : `message` bloque tout (rien à enregistrer),
+// `refus` liste les jours écartés un par un quand les autres peuvent partir.
+// Un jour déjà noté ne fait pas échouer le lot : l'opérateur qui renvoie sa liste
+// avec deux jours en plus ne doit pas avoir à faire le tri lui-même.
+export function verifierLot({ jours, moment, salle, id = null }, existants = []) {
+  const liste = [...new Set(jours ?? [])].sort()
+  const rien = { aPoser: [], refus: [] }
+
+  if (liste.length === 0) return { ...rien, message: 'Choisissez au moins un jour dans le calendrier.' }
+  if (liste.length > MAX_JOURS_LOT) {
+    return { ...rien, message: `Pas plus de ${MAX_JOURS_LOT} jours à la fois.` }
+  }
+  // La salle et le moment sont communs au lot : leurs défauts se disent une fois.
+  const commun = verifierCreneau({ jour: liste[0], moment, salle }, [])
+  if (commun) return { ...rien, message: commun }
+
+  const aPoser = []
+  const refus = []
+  for (const jour of liste) {
+    const probleme = verifierCreneau({ jour, moment, salle, id }, existants)
+    if (probleme) refus.push({ jour, message: probleme })
+    else aPoser.push(jour)
+  }
+  if (aPoser.length === 0) {
+    return { aPoser, refus, message: refus.length === 1 ? refus[0].message : 'Ces jours sont déjà notés pour cette salle.' }
+  }
+  return { aPoser, refus, message: null }
 }
