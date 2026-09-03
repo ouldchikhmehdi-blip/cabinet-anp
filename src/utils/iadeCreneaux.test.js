@@ -1,16 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import {
   MOMENTS, SECTEURS, libelleMoment, momentCourt, resume, indexerParJour,
-  sallesConnues, operateursConnus, compterDemiJournees, verifierCreneau,
+  operateursConnus, compterDemiJournees, verifierCreneau,
   bilanBlocB, segmentsBilanB, texteBilanB,
   basculerJour, groupesConsecutifs, resumeJours, verifierLot, MAX_JOURS_LOT,
 } from './iadeCreneaux'
 
-// Bloc A : une salle nommée.
-const a = (jour, moment, salle, extra = {}) => ({
-  id: `A-${jour}-${moment}-${salle}`, jour, moment, secteur: 'A', salle, absent: null, ...extra,
+// Dans les deux blocs, une ligne = un opérateur absent, un jour, un moment.
+const a = (jour, moment, absent) => ({
+  id: `A-${jour}-${moment}-${absent}`, jour, moment, secteur: 'A', salle: 'Bloc A', absent,
 })
-// Bloc B : un opérateur = une salle.
 const b = (jour, moment, absent) => ({
   id: `B-${jour}-${moment}-${absent}`, jour, moment, secteur: 'B', salle: 'Bloc B', absent,
 })
@@ -28,20 +27,10 @@ describe('moments et blocs', () => {
 })
 
 describe('résumé d\'un créneau', () => {
-  it('au bloc A, nomme la salle et la personne absente', () => {
-    expect(resume(a('2026-09-14', 'journee', 'Viscérale', { absent: 'Dr Martin' })))
-      .toBe('Viscérale · Dr Martin')
-    expect(resume(a('2026-09-14', 'journee', 'CPRE'))).toBe('CPRE')
-  })
-
-  it('ne précise le moment que pour une demi-journée — rien dit, c\'est la journée', () => {
-    expect(resume(a('2026-09-14', 'matin', 'CPRE', { absent: 'Dr Martin' }))).toBe('CPRE · Dr Martin — matin')
-    expect(resume(a('2026-09-14', 'apres_midi', 'NC'))).toBe('NC — après-midi')
-  })
-
-  it('nomme l\'opérateur au bloc B', () => {
-    expect(resume(b('2026-09-14', 'matin', 'Dr Dran'))).toBe('Dr Dran — matin')
-    expect(resume(b('2026-09-14', 'journee', 'Dr Dran'))).toBe('Dr Dran')
+  it('nomme l\'opérateur, et ne précise le moment que pour une demi-journée', () => {
+    expect(resume(a('2026-09-14', 'journee', 'Dr Martin'))).toBe('Dr Martin')
+    expect(resume(a('2026-09-14', 'matin', 'Dr Martin'))).toBe('Dr Martin — matin')
+    expect(resume(b('2026-09-14', 'apres_midi', 'Dr Dran'))).toBe('Dr Dran — après-midi')
     expect(resume(null)).toBe('')
   })
 })
@@ -49,19 +38,16 @@ describe('résumé d\'un créneau', () => {
 describe('index par jour', () => {
   it('classe la journée entière avant le matin, puis l\'après-midi', () => {
     const index = indexerParJour([
-      a('2026-09-14', 'apres_midi', 'NC'),
+      a('2026-09-14', 'apres_midi', 'Dr Nc'),
       b('2026-09-14', 'journee', 'Dr Dran'),
-      a('2026-09-14', 'matin', 'CPRE'),
+      a('2026-09-14', 'matin', 'Dr Cpre'),
     ])
     expect(index.get('2026-09-14').map(x => x.moment)).toEqual(['journee', 'matin', 'apres_midi'])
   })
 
-  it('trie par nom à moment égal, salle ou opérateur', () => {
-    const index = indexerParJour([
-      b('2026-09-14', 'matin', 'Dr Pissas'),
-      a('2026-09-14', 'matin', 'CPRE'),
-    ])
-    expect(index.get('2026-09-14').map(x => x.secteur)).toEqual(['A', 'B'])
+  it('trie par nom à moment égal', () => {
+    const index = indexerParJour([b('2026-09-14', 'matin', 'Dr Pissas'), a('2026-09-14', 'matin', 'Dr Cpre')])
+    expect(index.get('2026-09-14').map(x => x.absent)).toEqual(['Dr Cpre', 'Dr Pissas'])
   })
 })
 
@@ -91,102 +77,74 @@ describe('bilan du bloc B — combien de salles en moins', () => {
   })
 
   it('compte une journée entière pour le matin ET l\'après-midi', () => {
-    const bilan = bilanBlocB([b('2026-10-20', 'journee', 'Dr Dran'), b('2026-10-20', 'journee', 'Dr Flamein')])
-    expect(segmentsBilanB(bilan)).toEqual(['−2 salles la journée'])
+    expect(segmentsBilanB(bilanBlocB([b('2026-10-20', 'journee', 'Dr Dran'), b('2026-10-20', 'journee', 'Dr Flamein')])))
+      .toEqual(['−2 salles la journée'])
     expect(segmentsBilanB(bilanBlocB([b('2026-10-20', 'journee', 'Dr Dran'), b('2026-10-20', 'apres_midi', 'Dr Pissas')])))
       .toEqual(['−1 salle la journée', '−1 salle l\'après-midi'])
   })
 
   it('ignore le bloc A et reste muet sans ligne', () => {
-    expect(bilanBlocB([a('2026-10-20', 'matin', 'CPRE')]).lignes).toEqual([])
+    expect(bilanBlocB([a('2026-10-20', 'matin', 'Dr Cpre')]).lignes).toEqual([])
     expect(segmentsBilanB(bilanBlocB([]))).toEqual([])
     expect(texteBilanB(null)).toBe('')
   })
 })
 
 describe('aides à la saisie', () => {
-  it('propose les salles du bloc A sans doublon de casse, jamais « Bloc B »', () => {
-    expect(sallesConnues([
-      a('2026-09-14', 'matin', 'CPRE'),
-      a('2026-09-15', 'matin', 'cpre'),
-      a('2026-09-16', 'matin', 'Viscérale'),
-      b('2026-09-16', 'matin', 'Dr Dran'),
-    ])).toEqual(['CPRE', 'Viscérale'])
-  })
-
-  it('propose les opérateurs déjà nommés, tous blocs confondus', () => {
+  it('propose les opérateurs déjà nommés sans doublon de casse, tous blocs confondus', () => {
     expect(operateursConnus([
       b('2026-09-14', 'matin', 'Dr Dran'),
       b('2026-09-15', 'matin', 'dr dran'),
-      a('2026-09-16', 'matin', 'CPRE', { absent: 'Dr Martin' }),
+      a('2026-09-16', 'matin', 'Dr Martin'),
     ])).toEqual(['Dr Dran', 'Dr Martin'])
   })
 })
 
 describe('compte des demi-journées', () => {
   it('compte une journée entière pour deux', () => {
-    expect(compterDemiJournees([a('2026-09-14', 'journee', 'NC'), b('2026-09-15', 'matin', 'Dr Dran')])).toBe(3)
+    expect(compterDemiJournees([a('2026-09-14', 'journee', 'Dr Nc'), b('2026-09-15', 'matin', 'Dr Dran')])).toBe(3)
     expect(compterDemiJournees([])).toBe(0)
   })
 })
 
 describe('contrôle de saisie', () => {
-  it('exige un jour, un moment et un bloc', () => {
-    expect(verifierCreneau({ jour: '', moment: 'matin', secteur: 'A', salle: 'CPRE' })).toMatch(/jour/)
-    expect(verifierCreneau({ jour: '2026-09-14', moment: 'soir', secteur: 'A', salle: 'CPRE' })).toMatch(/journée/)
-    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'C', salle: 'CPRE' })).toMatch(/bloc A ou le bloc B/)
-  })
-
-  it('exige la salle au bloc A, l\'opérateur au bloc B', () => {
-    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', salle: ' ' })).toMatch(/salle/)
-    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'B', absent: '' })).toMatch(/opérateur/)
+  it('exige un jour, un moment, un bloc et un opérateur', () => {
+    expect(verifierCreneau({ jour: '', moment: 'matin', secteur: 'A', absent: 'Dr X' })).toMatch(/jour/)
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'soir', secteur: 'A', absent: 'Dr X' })).toMatch(/journée/)
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'C', absent: 'Dr X' })).toMatch(/bloc A ou le bloc B/)
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', absent: ' ' })).toMatch(/opérateur/)
     expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'B', absent: 'Dr Dran' })).toBe(null)
   })
 
-  describe('bloc A', () => {
-    const existants = [a('2026-09-14', 'matin', 'CPRE')]
+  const existants = [b('2026-09-14', 'matin', 'Dr Dran')]
 
-    it('accepte deux salles différentes le même matin', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', salle: 'NC' }, existants)).toBe(null)
-    })
-
-    it('refuse deux fois la même salle sur le même moment', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', salle: 'cpre' }, existants))
-        .toMatch(/déjà notée fermée/)
-    })
-
-    it('refuse une journée entière quand une demi-journée est déjà posée', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'journee', secteur: 'A', salle: 'CPRE' }, existants))
-        .toMatch(/retirez-la/)
-    })
-
-    it('refuse une demi-journée déjà comprise dans une journée entière', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', salle: 'CPRE' },
-        [a('2026-09-14', 'journee', 'CPRE')])).toMatch(/comprise dedans/)
-    })
-
-    it('ne se bloque pas sur la ligne qu\'on est en train de corriger', () => {
-      expect(verifierCreneau({ ...existants[0], absent: 'Dr Martin' }, existants)).toBe(null)
-    })
+  it('accepte deux opérateurs le même matin — c\'est deux salles en moins', () => {
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'B', absent: 'Dr Flamein' }, existants))
+      .toBe(null)
   })
 
-  describe('bloc B', () => {
-    const existants = [b('2026-09-14', 'matin', 'Dr Dran')]
+  it('refuse deux fois le même opérateur sur le même moment', () => {
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'B', absent: 'dr dran' }, existants))
+      .toMatch(/déjà noté absent/)
+  })
 
-    it('accepte deux opérateurs le même matin — c\'est deux salles en moins', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'B', absent: 'Dr Flamein' }, existants))
-        .toBe(null)
-    })
+  it('refuse une journée entière quand une demi-journée est déjà posée', () => {
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'journee', secteur: 'B', absent: 'Dr Dran' }, existants))
+      .toMatch(/retirez-la/)
+  })
 
-    it('refuse deux fois le même opérateur sur le même moment', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'B', absent: 'dr dran' }, existants))
-        .toMatch(/déjà noté absent/)
-    })
+  it('refuse une demi-journée déjà comprise dans une journée entière', () => {
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', absent: 'Dr Martin' },
+      [a('2026-09-14', 'journee', 'Dr Martin')])).toMatch(/comprise dedans/)
+  })
 
-    it('ne confond pas un opérateur du bloc B avec une salle du bloc A du même nom', () => {
-      expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', salle: 'Dr Dran' }, existants))
-        .toBe(null)
-    })
+  it('ne se bloque pas sur la ligne qu\'on est en train de corriger', () => {
+    expect(verifierCreneau({ ...existants[0], moment: 'matin' }, existants)).toBe(null)
+  })
+
+  it('ne confond pas le même nom dans les deux blocs', () => {
+    expect(verifierCreneau({ jour: '2026-09-14', moment: 'matin', secteur: 'A', absent: 'Dr Dran' }, existants))
+      .toBe(null)
   })
 })
 
@@ -231,44 +189,44 @@ describe('lecture d\'une sélection', () => {
 })
 
 describe('contrôle d\'un lot', () => {
-  const saisieB = { moment: 'matin', secteur: 'B', absent: 'Dr Dran' }
+  const saisie = { moment: 'matin', secteur: 'A', absent: 'Dr Dran' }
 
   it('refuse un lot vide', () => {
-    expect(verifierLot({ jours: [], ...saisieB }).message).toMatch(/au moins un jour/)
+    expect(verifierLot({ jours: [], ...saisie }).message).toMatch(/au moins un jour/)
   })
 
   it('ne dit qu\'une fois ce qui manque à tout le lot', () => {
-    const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], ...saisieB, absent: '' })
+    const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], ...saisie, absent: '' })
     expect(r.message).toMatch(/opérateur/)
     expect(r.aPoser).toEqual([])
   })
 
   it('accepte tous les jours quand rien ne gêne', () => {
-    const r = verifierLot({ jours: ['2026-10-13', '2026-10-12'], ...saisieB })
+    const r = verifierLot({ jours: ['2026-10-13', '2026-10-12'], ...saisie })
     expect(r.message).toBe(null)
     expect(r.aPoser).toEqual(['2026-10-12', '2026-10-13'])
     expect(r.refus).toEqual([])
   })
 
   it('laisse de côté les jours déjà notés sans faire échouer le reste', () => {
-    const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], ...saisieB }, [b('2026-10-12', 'matin', 'Dr Dran')])
+    const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], ...saisie }, [a('2026-10-12', 'matin', 'Dr Dran')])
     expect(r.message).toBe(null)
     expect(r.aPoser).toEqual(['2026-10-13'])
     expect(r.refus.map(x => x.jour)).toEqual(['2026-10-12'])
   })
 
   it('bloque quand plus rien ne reste à poser', () => {
-    const r = verifierLot({ jours: ['2026-10-12'], ...saisieB }, [b('2026-10-12', 'matin', 'Dr Dran')])
+    const r = verifierLot({ jours: ['2026-10-12'], ...saisie }, [a('2026-10-12', 'matin', 'Dr Dran')])
     expect(r.aPoser).toEqual([])
     expect(r.message).toMatch(/déjà noté absent/)
   })
 
   it('dédoublonne les jours', () => {
-    expect(verifierLot({ jours: ['2026-10-12', '2026-10-12'], ...saisieB }).aPoser).toEqual(['2026-10-12'])
+    expect(verifierLot({ jours: ['2026-10-12', '2026-10-12'], ...saisie }).aPoser).toEqual(['2026-10-12'])
   })
 
   it('refuse un lot plus long que le maximum', () => {
     const jours = Array.from({ length: MAX_JOURS_LOT + 1 }, (_, i) => `2026-01-${String(i + 1).padStart(2, '0')}`)
-    expect(verifierLot({ jours, ...saisieB }).message).toMatch(/Pas plus de/)
+    expect(verifierLot({ jours, ...saisie }).message).toMatch(/Pas plus de/)
   })
 })

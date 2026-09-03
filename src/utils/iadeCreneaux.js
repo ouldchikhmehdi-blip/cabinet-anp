@@ -6,13 +6,13 @@
 // IADE qui descend à la demi-journée : ici, c'est le fait métier lui-même — une
 // salle ferme souvent le matin seulement, et l'agent libéré travaille l'après-midi.
 //
-// Deux blocs, deux façons de compter :
-//   • Bloc A : la salle est nommée (NC, Viscérale, CPRE…). On dit laquelle ferme,
-//     et — facultatif — qui manque. Elle s'affiche par son nom.
+// Dans les deux blocs on note la même chose : QUI est absent, quand. Ce qui change,
+// c'est ce qu'on en montre :
+//   • Bloc A (NC, Viscérale, CPRE…) : le nom de l'opérateur, et « — matin » ou
+//     « — après-midi » seulement pour une demi-journée. Rien dit, c'est la journée.
 //   • Bloc B : les opérateurs y font des demi-journées, et UN opérateur = UNE
-//     salle. On dit qui est absent, et ce qui s'affiche est un compte : « −2 salles
-//     le matin ». C'est ça qui sert à la gestion — pas la liste des noms, mais
-//     combien de salles en moins, le matin et l'après-midi.
+//     salle. Ce qui s'affiche est un compte : « −2 salles le matin ». C'est ça qui
+//     sert à la gestion — pas la liste des noms, mais combien de salles en moins.
 //
 // La saisie se fait par lot, parce que c'est comme ça que l'information arrive :
 // un opérateur annonce ses absences d'un bloc (« je ne suis pas là les 12, 15 et
@@ -28,12 +28,12 @@ export const MOMENTS = [
 ]
 
 export const SECTEURS = [
-  { id: 'A', label: 'Bloc A', aide: 'Une salle nommée qui ne tourne pas : NC, Viscérale, CPRE…' },
-  { id: 'B', label: 'Bloc B', aide: 'Un opérateur absent = une salle en moins.' },
+  { id: 'A', label: 'Bloc A', aide: 'NC, Viscérale, CPRE… Le planning affiche le nom de l\'opérateur absent.' },
+  { id: 'B', label: 'Bloc B', aide: 'Un opérateur absent = une salle en moins. Le planning affiche le compte.' },
 ]
 
-// Au bloc B la salle n'est pas nommée : c'est l'opérateur qui compte.
-export const SALLE_BLOC_B = 'Bloc B'
+// La colonne `salle` ne porte plus que le libellé du bloc : c'est l'opérateur qui identifie la ligne.
+export const SALLE_PAR_SECTEUR = { A: 'Bloc A', B: 'Bloc B' }
 
 // Ordre d'affichage dans une journée : la journée entière d'abord, puis le matin,
 // puis l'après-midi. C'est l'ordre dans lequel on lit un planning.
@@ -51,22 +51,19 @@ export function libelleSecteur(id) {
   return SECTEURS.find(s => s.id === id)?.label ?? id
 }
 
-// Ce qui identifie une ligne dans son bloc : la salle au bloc A, l'opérateur au bloc B.
+// Ce qui identifie une ligne dans son bloc : l'opérateur.
 export function cleCreneau(c) {
-  return ((c?.secteur === 'B' ? c?.absent : c?.salle) ?? '').trim()
+  return (c?.absent ?? '').trim()
 }
 
-// Ce qu'on lit pour une ligne.
-// Bloc A : la salle et le nom de la personne absente, « CPRE · Dr Martin ». Le
-// moment n'est précisé QUE pour une demi-journée (« — matin ») : rien de précisé,
-// c'est la journée entière. Bloc B : « Dr Martin — matin » (mais le planning
-// n'affiche pas les lignes du B une à une, il en fait le compte).
+// Ce qu'on lit pour une ligne : le nom de l'opérateur, « Dr Martin ». Le moment
+// n'est précisé QUE pour une demi-journée (« Dr Martin — matin ») : rien de
+// précisé, c'est la journée entière. Au bloc B le planning n'affiche pas les
+// lignes une à une, il en fait le compte — mais la liste, elle, les montre ainsi.
 export function resume(creneau) {
   if (!creneau) return ''
   const demi = creneau.moment === 'journee' ? '' : ` — ${momentCourt(creneau.moment).toLowerCase()}`
-  if (creneau.secteur === 'B') return `${creneau.absent ?? SALLE_BLOC_B}${demi}`
-  const qui = creneau.absent ? ` · ${creneau.absent}` : ''
-  return `${creneau.salle}${qui}${demi}`
+  return `${creneau.absent ?? SALLE_PAR_SECTEUR[creneau.secteur] ?? ''}${demi}`
 }
 
 // jour ISO → créneaux du jour, triés (journée, matin, après-midi, puis nom).
@@ -128,19 +125,8 @@ export function texteBilanB(bilan) {
 
 // ── Aides à la saisie ────────────────────────────────────────────────────────
 
-// Les salles du bloc A déjà saisies, pour les proposer à la frappe : personne ne
-// devrait avoir à retaper « Viscérale » vingt fois, ni inventer une orthographe.
-export function sallesConnues(creneaux) {
-  const vues = new Map()
-  for (const c of creneaux ?? []) {
-    if (c.secteur === 'B') continue
-    const cle = (c.salle ?? '').trim().toLowerCase()
-    if (cle && !vues.has(cle)) vues.set(cle, c.salle.trim())
-  }
-  return [...vues.values()].sort((a, b) => a.localeCompare(b, 'fr'))
-}
-
-// Les opérateurs déjà nommés, tous blocs confondus.
+// Les opérateurs déjà nommés, tous blocs confondus, pour les proposer à la frappe :
+// personne ne devrait avoir à retaper un nom vingt fois, ni en inventer l'orthographe.
 export function operateursConnus(creneaux) {
   const vus = new Map()
   for (const c of creneaux ?? []) {
@@ -160,37 +146,31 @@ export function compterDemiJournees(creneaux) {
 // ── Contrôle de saisie ───────────────────────────────────────────────────────
 
 // Contrôle avant enregistrement. → message d'erreur, ou null si tout est bon.
-// `existants` = les créneaux déjà posés, pour ne pas doubler la même salle (ou le
-// même opérateur au bloc B) et pour refuser un matin quand la journée entière est
-// déjà fermée (et l'inverse).
-export function verifierCreneau({ jour, moment, secteur, salle, absent, id = null }, existants = []) {
+// `existants` = les créneaux déjà posés, pour ne pas noter deux fois le même
+// opérateur et pour refuser un matin quand la journée entière est déjà posée
+// (et l'inverse).
+export function verifierCreneau({ jour, moment, secteur, absent, id = null }, existants = []) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(jour ?? '')) return 'Choisissez le jour concerné.'
   if (!MOMENTS.some(m => m.id === moment)) return 'Choisissez la journée, le matin ou l\'après-midi.'
   if (!SECTEURS.some(s => s.id === secteur)) return 'Choisissez le bloc A ou le bloc B.'
 
-  const blocB = secteur === 'B'
-  const propre = ((blocB ? absent : salle) ?? '').trim()
-  if (propre.length < 2) return blocB ? 'Indiquez l\'opérateur absent.' : 'Indiquez la salle qui ne tourne pas.'
-  if (propre.length > (blocB ? 80 : 60)) {
-    return blocB ? 'Ce nom est trop long (80 caractères au maximum).'
-                 : 'Ce nom de salle est trop long (60 caractères au maximum).'
-  }
+  const propre = (absent ?? '').trim()
+  if (propre.length < 2) return 'Indiquez l\'opérateur absent.'
+  if (propre.length > 80) return 'Ce nom est trop long (80 caractères au maximum).'
 
   const memes = existants.filter(c =>
     c.id !== id && c.jour === jour && (c.secteur ?? 'A') === secteur &&
     cleCreneau(c).toLowerCase() === propre.toLowerCase())
   const quoi = `« ${propre} »`
-  const moments = libelleMoment(moment).toLowerCase()
 
   if (memes.some(c => c.moment === moment)) {
-    return blocB ? `${quoi} est déjà noté absent ce ${moments}-là.`
-                 : `${quoi} est déjà notée fermée ce ${moments}-là.`
+    return `${quoi} est déjà noté absent ce ${libelleMoment(moment).toLowerCase()}-là.`
   }
   if (moment === 'journee' && memes.length > 0) {
     return `${quoi} a déjà une demi-journée notée ce jour-là : retirez-la avant de poser la journée entière.`
   }
   if (moment !== 'journee' && memes.some(c => c.moment === 'journee')) {
-    return `${quoi} est déjà noté${blocB ? '' : 'e'} toute la journée : la demi-journée est comprise dedans.`
+    return `${quoi} est déjà noté absent toute la journée : la demi-journée est comprise dedans.`
   }
   return null
 }
@@ -251,7 +231,7 @@ export function resumeJours(jours = []) {
 // `refus` liste les jours écartés un par un quand les autres peuvent partir.
 // Un jour déjà noté ne fait pas échouer le lot : l'opérateur qui renvoie sa liste
 // avec deux jours en plus ne doit pas avoir à faire le tri lui-même.
-export function verifierLot({ jours, moment, secteur, salle, absent, id = null }, existants = []) {
+export function verifierLot({ jours, moment, secteur, absent, id = null }, existants = []) {
   const liste = [...new Set(jours ?? [])].sort()
   const rien = { aPoser: [], refus: [] }
 
@@ -260,13 +240,13 @@ export function verifierLot({ jours, moment, secteur, salle, absent, id = null }
     return { ...rien, message: `Pas plus de ${MAX_JOURS_LOT} jours à la fois.` }
   }
   // Bloc, moment et nom sont communs au lot : leurs défauts se disent une fois.
-  const commun = verifierCreneau({ jour: liste[0], moment, secteur, salle, absent }, [])
+  const commun = verifierCreneau({ jour: liste[0], moment, secteur, absent }, [])
   if (commun) return { ...rien, message: commun }
 
   const aPoser = []
   const refus = []
   for (const jour of liste) {
-    const probleme = verifierCreneau({ jour, moment, secteur, salle, absent, id }, existants)
+    const probleme = verifierCreneau({ jour, moment, secteur, absent, id }, existants)
     if (probleme) refus.push({ jour, message: probleme })
     else aPoser.push(jour)
   }

@@ -7,12 +7,13 @@
 -- l'information dont la gestion a besoin pour savoir où elle a du monde en trop,
 -- et elle apparaît dans l'onglet « Planning IADE » à côté des remplaçants.
 --
--- Deux blocs, deux façons de nommer la salle (`secteur`) :
---   • 'A' : la salle est nommée (`salle` = NC, Viscérale, CPRE…), `absent` dit
---     facultativement qui manque ;
---   • 'B' : un opérateur = une salle. `salle` vaut toujours « Bloc B », c'est
---     `absent` — l'opérateur — qui identifie la ligne. Le planning n'affiche pas
---     les noms mais un compte : « −2 salles le matin ».
+-- Dans les deux blocs (`secteur`), une ligne = un opérateur absent (`absent`,
+-- obligatoire), un jour, un moment. `salle` ne porte que le libellé du bloc
+-- (« Bloc A » / « Bloc B »). Seul l'affichage diffère :
+--   • 'A' (NC, Viscérale, CPRE…) : le nom de l'opérateur, « — matin » seulement
+--     pour une demi-journée ;
+--   • 'B' : un opérateur = une salle. Le planning n'affiche pas les noms mais un
+--     compte : « −2 salles le matin ».
 --
 -- ⚠️ C'est le SEUL endroit du module IADE qui descend à la DEMI-JOURNÉE. Congés
 -- et heures sup comptent en journées, délibérément (cf. IADE.md). Ici la
@@ -70,15 +71,17 @@ alter table public.iade_creneaux_fermes
 alter table public.iade_creneaux_fermes
   add constraint iade_creneaux_secteur_check check (secteur in ('A', 'B'));
 
--- Au bloc B, l'opérateur est obligatoire : sans lui, la ligne ne dit rien.
+-- L'opérateur est obligatoire : sans lui, la ligne ne dit rien.
 alter table public.iade_creneaux_fermes
   drop constraint if exists iade_creneaux_bloc_b_operateur;
 alter table public.iade_creneaux_fermes
-  add constraint iade_creneaux_bloc_b_operateur
-  check (secteur <> 'B' or length(btrim(coalesce(absent, ''))) > 0);
+  drop constraint if exists iade_creneaux_operateur_requis;
+alter table public.iade_creneaux_fermes
+  add constraint iade_creneaux_operateur_requis
+  check (length(btrim(coalesce(absent, ''))) > 0);
 
--- Une même salle (bloc A) ou un même opérateur (bloc B) ne se note pas deux fois
--- sur le même moment. Deux opérateurs absents le même matin, c'est deux lignes.
+-- Un même opérateur ne se note pas deux fois sur le même moment dans le même bloc.
+-- Deux opérateurs absents le même matin, c'est deux lignes.
 create unique index if not exists iade_creneaux_fermes_unicite
   on public.iade_creneaux_fermes
   (jour, moment, secteur, lower(btrim(salle)), lower(btrim(coalesce(absent, ''))));

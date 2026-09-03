@@ -6,18 +6,18 @@
 // consulte —, seule la gestion IADE écrit. `cree_par` / `maj_par` et le nettoyage
 // des espaces sont posés par un trigger.
 //
-// Au bloc B la salle n'est pas nommée : on écrit « Bloc B » et c'est l'opérateur
-// (`absent`) qui identifie la ligne. Au bloc A, c'est la salle.
+// La salle n'est pas nommée : `salle` ne porte que le libellé du bloc, et c'est
+// l'opérateur (`absent`) qui identifie la ligne.
 // ============================================================
 import { supabase } from '../lib/supabase'
-import { SALLE_BLOC_B } from './iadeCreneaux'
+import { SALLE_PAR_SECTEUR } from './iadeCreneaux'
 
 const CHAMPS = 'id, jour, moment, secteur, salle, absent, note, maj_le'
 
-function normaliser({ secteur, moment, salle, absent, note }) {
+function normaliser({ secteur, moment, absent, note }) {
   return {
     secteur, moment,
-    salle: secteur === 'B' ? SALLE_BLOC_B : salle,
+    salle: SALLE_PAR_SECTEUR[secteur] ?? secteur,
     absent: absent || null,
     note: note || null,
   }
@@ -60,7 +60,7 @@ export async function ajouterCreneaux(jours, saisie) {
   return data ?? []
 }
 
-// Tout se corrige : le bloc, la salle, l'opérateur, le moment, le jour.
+// Tout se corrige : le bloc, l'opérateur, le moment, le jour.
 export async function modifierCreneau(id, { jour, ...reste }) {
   const { data, error } = await supabase
     .from('iade_creneaux_fermes')

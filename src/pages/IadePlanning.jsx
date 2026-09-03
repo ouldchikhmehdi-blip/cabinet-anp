@@ -379,9 +379,9 @@ export default function IadePlanning() {
             Bloc B, un opérateur absent = une salle en moins
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ color: COULEUR_CONGE, fontWeight: 600 }}>CPRE · Dr X</span>
-            <span style={{ color: '#9A5B12', fontWeight: 600 }}>/ — matin</span>
-            Bloc A, qui manque et où — le moment n'est dit que pour une demi-journée
+            <span style={{ color: COULEUR_CONGE, fontWeight: 600 }}>Dr X</span>
+            <span style={{ color: '#9A5B12', fontWeight: 600 }}>/ Dr X — matin</span>
+            Bloc A, l'opérateur absent — le moment n'est dit que pour une demi-journée
           </span>
         </div>
       )}
