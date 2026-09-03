@@ -204,14 +204,14 @@ describe('contrôle d\'un lot', () => {
   it('accepte tous les jours quand rien ne gêne', () => {
     const r = verifierLot({ jours: ['2026-10-13', '2026-10-12'], ...saisie })
     expect(r.message).toBe(null)
-    expect(r.aPoser).toEqual(['2026-10-12', '2026-10-13'])
+    expect(r.aPoser.map(e => e.jour)).toEqual(['2026-10-12', '2026-10-13'])
     expect(r.refus).toEqual([])
   })
 
   it('laisse de côté les jours déjà notés sans faire échouer le reste', () => {
     const r = verifierLot({ jours: ['2026-10-12', '2026-10-13'], ...saisie }, [a('2026-10-12', 'matin', 'Dr Dran')])
     expect(r.message).toBe(null)
-    expect(r.aPoser).toEqual(['2026-10-13'])
+    expect(r.aPoser.map(e => e.jour)).toEqual(['2026-10-13'])
     expect(r.refus.map(x => x.jour)).toEqual(['2026-10-12'])
   })
 
@@ -222,11 +222,41 @@ describe('contrôle d\'un lot', () => {
   })
 
   it('dédoublonne les jours', () => {
-    expect(verifierLot({ jours: ['2026-10-12', '2026-10-12'], ...saisie }).aPoser).toEqual(['2026-10-12'])
+    expect(verifierLot({ jours: ['2026-10-12', '2026-10-12'], ...saisie }).aPoser.map(e => e.jour)).toEqual(['2026-10-12'])
   })
 
   it('refuse un lot plus long que le maximum', () => {
     const jours = Array.from({ length: MAX_JOURS_LOT + 1 }, (_, i) => `2026-01-${String(i + 1).padStart(2, '0')}`)
     expect(verifierLot({ jours, ...saisie }).message).toMatch(/Pas plus de/)
+  })
+})
+
+describe('bloc B — le poids des salles vient de la trame', () => {
+  it('compte DEUX salles pour Fedkovic absent le mercredi matin', () => {
+    // Il tient l'Endo 2 et l'Endo 4 en même temps : « −1 salle » serait faux.
+    const bilan = bilanBlocB([b('2026-09-09', 'matin', 'Fedkovic')])
+    expect(bilan).toMatchObject({ matin: 2, apresMidi: 0 })
+    expect(segmentsBilanB(bilan)).toEqual(['−2 salles le matin'])
+  })
+
+  it('compte une seule salle pour lui les autres jours', () => {
+    expect(bilanBlocB([b('2026-09-08', 'matin', 'Fedkovic')])).toMatchObject({ matin: 1 })
+    expect(bilanBlocB([b('2026-09-11', 'matin', 'Fedkovic')])).toMatchObject({ matin: 1 })
+  })
+
+  it('reconnaît l\'opérateur quelle que soit la façon dont son nom est tapé', () => {
+    expect(bilanBlocB([b('2026-09-09', 'matin', 'Dr FEDKOVIC')])).toMatchObject({ matin: 2 })
+  })
+
+  it('garde « un opérateur = une salle » pour qui la trame ignore', () => {
+    expect(bilanBlocB([b('2026-09-09', 'matin', 'Dr Inconnu')])).toMatchObject({ matin: 1 })
+  })
+
+  it('n\'invente pas de salle perdue sur une demi-journée qu\'il ne tient pas', () => {
+    // Absent LA JOURNÉE le mercredi : 2 salles le matin, aucune l'après-midi,
+    // où il n'opère pas. Compter 1 par défaut ferait apparaître une salle fantôme.
+    const bilan = bilanBlocB([b('2026-09-09', 'journee', 'Fedkovic')])
+    expect(bilan).toMatchObject({ matin: 2, apresMidi: 0 })
+    expect(segmentsBilanB(bilan)).toEqual(['−2 salles le matin'])
   })
 })

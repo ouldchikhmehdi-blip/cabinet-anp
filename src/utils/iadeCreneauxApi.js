@@ -47,11 +47,18 @@ export async function chargerCreneauxPeriode(debut, fin) {
 }
 
 // Un opérateur annonce ses absences d'un bloc : on pose tous ses jours en un
-// seul aller-retour, même bloc, même moment, même nom. Insertion atomique —
-// si une ligne passe mal, aucune n'est écrite et la liste reste lisible.
-export async function ajouterCreneaux(jours, saisie) {
+// seul aller-retour, même bloc, même nom. Insertion atomique — si une ligne passe
+// mal, aucune n'est écrite et la liste reste lisible.
+//
+// Le MOMENT, lui, n'est plus commun au lot : il se décide jour par jour, parce
+// qu'un opérateur n'opère pas à la même demi-journée tous les jours de la semaine
+// (cf. `momentsDuLot` dans iadeCreneaux.js). `aPoser` porte donc des couples
+// { jour, moment } ; une liste d'ISO nus reste acceptée, avec le moment de `saisie`.
+export async function ajouterCreneaux(aPoser, saisie) {
   const commun = normaliser(saisie)
-  const lignes = jours.map(jour => ({ jour, ...commun }))
+  const lignes = (aPoser ?? []).map(e => typeof e === 'string'
+    ? { jour: e, ...commun }
+    : { ...commun, jour: e.jour, moment: e.moment ?? commun.moment })
   const { data, error } = await supabase
     .from('iade_creneaux_fermes')
     .insert(lignes)

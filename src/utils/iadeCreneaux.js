@@ -20,6 +20,7 @@
 // fois, et le lot part en une fois.
 // ============================================================
 import { formatJour, jourSuivant, seSuivent } from './iadeConges'
+import { sallesPerdues, momentSelonTrame } from './iadeBlocB'
 
 export const MOMENTS = [
   { id: 'journee',     label: 'Journée entière', court: 'Journée' },
@@ -84,7 +85,14 @@ export function indexerParJour(creneaux) {
 // ── Bloc B : le compte des salles en moins ───────────────────────────────────
 
 // Pour un jour : combien de salles manquent le matin, combien l'après-midi.
-// Un opérateur absent la journée compte pour une salle le matin ET une l'après-midi.
+// Un opérateur absent la journée compte le matin ET l'après-midi.
+//
+// « Un opérateur = une salle » est la règle, mais PAS une loi : Fedkovic tient
+// l'Endo 2 et l'Endo 4 le mercredi matin, et son absence fait donc sauter DEUX
+// salles. Le poids vient de la trame (`sallesPerdues`), qui vaut 1 partout
+// ailleurs et pour tout opérateur qu'elle ne connaît pas. Compter 1 pour tout le
+// monde dirait « −1 salle » là où il en manque deux — et c'est le nombre qui sert
+// à la gestion pour savoir où elle a du monde en trop.
 //
 // Puis la synthèse : une salle en moins le matin ET une en moins l'après-midi,
 // c'est une salle en moins la journée — peu importe que ce soient deux personnes
@@ -94,8 +102,8 @@ export function bilanBlocB(creneauxDuJour = []) {
   let matin = 0
   let apresMidi = 0
   for (const c of lignes) {
-    if (c.moment !== 'apres_midi') matin++
-    if (c.moment !== 'matin') apresMidi++
+    if (c.moment !== 'apres_midi') matin += sallesPerdues(c.absent, c.jour, 'matin')
+    if (c.moment !== 'matin') apresMidi += sallesPerdues(c.absent, c.jour, 'apres_midi')
   }
   const journee = Math.min(matin, apresMidi)
   return {
@@ -231,27 +239,165 @@ export function resumeJours(jours = []) {
 // `refus` liste les jours écartés un par un quand les autres peuvent partir.
 // Un jour déjà noté ne fait pas échouer le lot : l'opérateur qui renvoie sa liste
 // avec deux jours en plus ne doit pas avoir à faire le tri lui-même.
-export function verifierLot({ jours, moment, secteur, absent, id = null }, existants = []) {
+// `moments` (facultatif) = Map iso → { moment } : le moment PROPRE à chaque jour,
+// déduit des habitudes de l'opérateur. Absent, `moment` s'applique à tous les jours.
+// `aPoser` rend des { jour, moment } et non des ISO nus : c'est ce que l'insertion
+// écrit, un lot pouvant désormais mêler des matins et des après-midi.
+export function verifierLot({ jours, moment, secteur, absent, id = null }, existants = [], moments = null) {
   const liste = [...new Set(jours ?? [])].sort()
   const rien = { aPoser: [], refus: [] }
+  const momentDe = (jour) => moments?.get?.(jour)?.moment ?? moment
 
   if (liste.length === 0) return { ...rien, message: 'Choisissez au moins un jour dans le calendrier.' }
   if (liste.length > MAX_JOURS_LOT) {
     return { ...rien, message: `Pas plus de ${MAX_JOURS_LOT} jours à la fois.` }
   }
-  // Bloc, moment et nom sont communs au lot : leurs défauts se disent une fois.
-  const commun = verifierCreneau({ jour: liste[0], moment, secteur, absent }, [])
+  // Bloc et nom sont communs au lot : leurs défauts se disent une fois. Le moment,
+  // lui, ne l'est plus — il se contrôle jour par jour, plus bas.
+  const commun = verifierCreneau({ jour: liste[0], moment: momentDe(liste[0]), secteur, absent }, [])
   if (commun) return { ...rien, message: commun }
 
   const aPoser = []
   const refus = []
   for (const jour of liste) {
-    const probleme = verifierCreneau({ jour, moment, secteur, absent, id }, existants)
+    const probleme = verifierCreneau({ jour, moment: momentDe(jour), secteur, absent, id }, existants)
     if (probleme) refus.push({ jour, message: probleme })
-    else aPoser.push(jour)
+    else aPoser.push({ jour, moment: momentDe(jour) })
   }
   if (aPoser.length === 0) {
     return { aPoser, refus, message: refus.length === 1 ? refus[0].message : 'Ces jours sont déjà notés.' }
   }
   return { aPoser, refus, message: null }
+}
+
+// ── Ce qu'on retient des opérateurs : QUAND ils opèrent ──────────────────────
+//
+// But : quand la gestion annonce l'absence d'un opérateur un jour donné, le
+// moment est déjà rempli. On ne le demande plus, on le déduit.
+//
+// ⚠️ LE MOMENT N'APPARTIENT PAS À L'OPÉRATEUR, IL APPARTIENT AU COUPLE
+// (opérateur, jour de la semaine). L'historique du cabinet le montre sans
+// ambiguïté : Espérance opère le lundi et le mardi MATIN, mais le jeudi
+// APRÈS-MIDI ; Suma l'après-midi en début de semaine et le vendredi matin.
+// Cinq des neuf opérateurs du bloc B changent ainsi de demi-journée selon le
+// jour. Retenir « Espérance = matin » se tromperait un jeudi sur deux, et se
+// tromperait EN SILENCE — le pire des cas, puisque personne ne relit un champ
+// déjà rempli.
+//
+// D'où la règle : on regarde d'abord le MÊME JOUR DE LA SEMAINE, et on ne
+// retombe sur l'habitude générale de l'opérateur que pour un jour de semaine
+// jamais vu. En cas d'égalité, on ne propose RIEN : une case vide se remarque,
+// une case fausse non.
+//
+// La source est l'historique des créneaux lui-même — rien à tenir à jour. C'est
+// légitime : on ne ferme une salle que si elle devait tourner, donc une absence
+// notée le lundi matin dit que l'opérateur opère le lundi matin.
+
+const MOMENTS_IDS = MOMENTS.map(m => m.id)
+
+const normOperateur = (s) => (s ?? '').trim().toLowerCase()
+
+// Jour de la semaine d'un ISO, en UTC (0 = dimanche), sans dérive de fuseau.
+function jourSemaine(iso) {
+  const [a, m, j] = String(iso).split('-').map(Number)
+  return new Date(Date.UTC(a, m - 1, j)).getUTCDay()
+}
+
+/**
+ * Index des habitudes, construit une fois par lot de créneaux.
+ * → Map opérateur → { total: {moment: n}, parJour: Map jourSemaine → {moment: n} }
+ */
+export function habitudes(creneaux) {
+  const index = new Map()
+  for (const c of creneaux ?? []) {
+    const cle = normOperateur(c?.absent)
+    if (!cle || !MOMENTS_IDS.includes(c.moment) || !c.jour) continue
+    if (!index.has(cle)) index.set(cle, { total: {}, parJour: new Map() })
+    const entree = index.get(cle)
+    entree.total[c.moment] = (entree.total[c.moment] ?? 0) + 1
+    const js = jourSemaine(c.jour)
+    if (!entree.parJour.has(js)) entree.parJour.set(js, {})
+    const comptes = entree.parJour.get(js)
+    comptes[c.moment] = (comptes[c.moment] ?? 0) + 1
+  }
+  return index
+}
+
+// Le moment majoritaire d'un décompte, ou null si personne ne se détache.
+// Une égalité ne se trancherait qu'au hasard : mieux vaut ne rien proposer.
+function majoritaire(comptes) {
+  const paires = Object.entries(comptes ?? {}).filter(([, n]) => n > 0)
+  if (paires.length === 0) return null
+  paires.sort((a, b) => b[1] - a[1])
+  if (paires.length > 1 && paires[0][1] === paires[1][1]) return null
+  const total = paires.reduce((n, [, v]) => n + v, 0)
+  return { moment: paires[0][0], n: paires[0][1], total }
+}
+
+/**
+ * Le moment habituel d'un opérateur un jour donné.
+ * → { moment, source: 'jour' | 'operateur', n, total } ou null si on ne sait pas.
+ *   • 'jour'      : déduit des fois où il était absent CE jour de la semaine ;
+ *   • 'operateur' : ce jour-là n'a jamais été vu, on retombe sur son habitude
+ *                   générale — plus fragile, et l'écran doit le dire.
+ */
+export function momentHabituel(index, absent, jourIso) {
+  const entree = index?.get?.(normOperateur(absent))
+  if (!entree || !jourIso) return null
+
+  const duJour = majoritaire(entree.parJour.get(jourSemaine(jourIso)))
+  if (duJour) return { ...duJour, source: 'jour' }
+
+  const general = majoritaire(entree.total)
+  return general ? { ...general, source: 'operateur' } : null
+}
+
+/**
+ * Le moment retenu pour CHAQUE jour d'un lot. C'est la pièce maîtresse : une
+ * absence annoncée sur lundi ET jeudi ne porte pas le même moment aux deux
+ * jours, et un moment unique pour le lot en écraserait un.
+ * → Map iso → { moment, source: 'jour'|'operateur'|'choisi', n, total }
+ */
+// Ordre des sources, du plus sûr au moins sûr :
+//   1. la TRAME du bloc B (`iadeBlocB.js`) — le fait, pas une statistique ;
+//   2. l'historique des absences, pour qui n'y figure pas (le bloc A, un
+//      remplaçant, un opérateur arrivé depuis) ;
+//   3. la valeur du champ, faute de mieux.
+export function momentsDuLot(index, absent, jours = [], defaut = 'journee') {
+  const out = new Map()
+  for (const iso of jours) {
+    const trame = momentSelonTrame(absent, iso)
+    const trouve = trame
+      ? { moment: trame.moment, source: 'trame', salles: trame.salles, n: 0, total: 0 }
+      : momentHabituel(index, absent, iso)
+    out.set(iso, trouve ?? { moment: defaut, source: 'choisi', n: 0, total: 0 })
+  }
+  return out
+}
+
+// Vrai si le lot mélange plusieurs moments : l'écran doit alors montrer le
+// détail jour par jour plutôt qu'un seul intitulé qui mentirait sur la moitié.
+export function lotPanache(moments) {
+  const vus = new Set([...(moments?.values?.() ?? [])].map(m => m.moment))
+  return vus.size > 1
+}
+
+/**
+ * Ce qu'on sait d'un opérateur, en clair : « lundi matin, mardi matin, jeudi
+ * après-midi ». Affiché à la saisie pour que la gestion voie sur quoi la
+ * déduction se fonde, et la corrige si l'habitude a changé.
+ * → [{ jourSemaine, label, moment, n, total }] du lundi au dimanche.
+ */
+const NOMS_JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+const ORDRE_SEMAINE = [1, 2, 3, 4, 5, 6, 0]
+
+export function habitudesOperateur(index, absent) {
+  const entree = index?.get?.(normOperateur(absent))
+  if (!entree) return []
+  const out = []
+  for (const js of ORDRE_SEMAINE) {
+    const m = majoritaire(entree.parJour.get(js))
+    if (m) out.push({ jourSemaine: js, label: NOMS_JOURS[js], ...m })
+  }
+  return out
 }

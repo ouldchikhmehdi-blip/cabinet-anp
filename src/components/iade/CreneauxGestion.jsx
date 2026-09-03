@@ -22,12 +22,18 @@ import {
   MOMENTS, SECTEURS, momentCourt, libelleSecteur, cleCreneau, indexerParJour,
   operateursConnus, compterDemiJournees, resume,
   verifierCreneau, verifierLot, basculerJour, resumeJours,
+  habitudes, momentsDuLot, lotPanache, habitudesOperateur,
 } from '../../utils/iadeCreneaux'
+import { operateursTrame, semaineType } from '../../utils/iadeBlocB'
 import { formatJour, bornesMois } from '../../utils/iadeConges'
 import { MOIS_FR } from '../../utils/calendrier'
 import CalendrierCreneaux from './CalendrierCreneaux'
 
 const VIDE = { jours: [], secteur: 'A', moment: 'journee', absent: '', note: '' }
+
+// Le moment vient des habitudes de l'opérateur, jour par jour. On peut le
+// reprendre en main : le champ « Moment » redevient alors la règle pour tout le lot.
+const AUTO = 'auto'
 
 export default function CreneauxGestion({ annee }) {
   const maintenant = new Date()
@@ -41,6 +47,8 @@ export default function CreneauxGestion({ annee }) {
   const [erreur, setErreur] = useState(null)
   const [succes, setSucces] = useState(null)
   const [portee, setPortee] = useState('mois')
+  // 'auto' : chaque jour prend le moment habituel de l'opérateur CE jour-là.
+  const [regleMoment, setRegleMoment] = useState(AUTO)
 
   const charger = useCallback(async () => {
     setCharge(true)
@@ -69,7 +77,39 @@ export default function CreneauxGestion({ annee }) {
       cleCreneau(a).localeCompare(cleCreneau(b), 'fr'))
   }, [creneaux, portee, debut, fin])
 
-  const operateurs = useMemo(() => operateursConnus(creneaux), [creneaux])
+  // Proposés à la frappe : les 14 de la trame du bloc B ET ceux déjà saisis
+  // ailleurs (bloc A, remplaçants). La trame d'abord : c'est l'orthographe de
+  // référence, et elle contient des opérateurs jamais encore absents.
+  const operateurs = useMemo(() => {
+    const vus = new Map()
+    for (const n of [...operateursTrame(), ...operateursConnus(creneaux)]) {
+      const cle = n.trim().toLowerCase()
+      if (!vus.has(cle)) vus.set(cle, n.trim())
+    }
+    return [...vus.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [creneaux])
+  // Ce qu'on a retenu des opérateurs : quand ils opèrent, par jour de la semaine.
+  const habs = useMemo(() => habitudes(creneaux), [creneaux])
+  // Ce qu'on montre de l'opérateur : sa semaine type SELON LA TRAME si elle le
+  // connaît, sinon ce que l'historique de ses absences laisse deviner.
+  const semaine = useMemo(() => semaineType(saisie.absent), [saisie.absent])
+  const habOperateur = useMemo(
+    () => semaine.length > 0 ? [] : habitudesOperateur(habs, saisie.absent),
+    [semaine, habs, saisie.absent]
+  )
+  // Le moment retenu pour CHAQUE jour du lot. En 'auto' il est déduit ; sinon
+  // c'est celui du champ « Moment », le même partout.
+  const momentsLot = useMemo(
+    () => regleMoment === AUTO
+      ? momentsDuLot(habs, saisie.absent, saisie.jours, saisie.moment)
+      : new Map(saisie.jours.map(j => [j, { moment: saisie.moment, source: 'choisi', n: 0, total: 0 }])),
+    [regleMoment, habs, saisie.absent, saisie.jours, saisie.moment]
+  )
+  const panache = useMemo(() => lotPanache(momentsLot), [momentsLot])
+  const deduits = useMemo(
+    () => [...momentsLot.values()].filter(m => m.source !== 'choisi').length,
+    [momentsLot]
+  )
   const parJour = useMemo(() => indexerParJour(affiches), [affiches])
   // Le calendrier montre l'année entière : on peut sélectionner à cheval sur deux mois.
   const fermesParJour = useMemo(() => indexerParJour(creneaux), [creneaux])
@@ -101,6 +141,7 @@ export default function CreneauxGestion({ annee }) {
 
   function corriger(c) {
     setEditeId(c.id)
+    setRegleMoment(c.moment)   // une correction se fait au moment près, sans déduction
     setSaisie({
       jours: [c.jour], secteur: c.secteur ?? 'A', moment: c.moment,
       absent: c.absent ?? '', note: c.note ?? '',
@@ -143,7 +184,7 @@ export default function CreneauxGestion({ annee }) {
       return
     }
 
-    const { message, aPoser, refus } = verifierLot(saisie, creneaux)
+    const { message, aPoser, refus } = verifierLot(saisie, creneaux, momentsLot)
     if (message) { setErreur(message); return }
 
     setEnvoi(true)
@@ -152,7 +193,13 @@ export default function CreneauxGestion({ annee }) {
       const ignores = refus.length > 0
         ? ` (${refus.length} jour(s) déjà noté(s), laissé(s) de côté : ${resumeJours(refus.map(r => r.jour))})`
         : ''
-      setSucces(`${aPoser.length} jour(s) noté(s) — ${decrireSaisie()} : ${resumeJours(aPoser)}.${ignores}`)
+      // Le récapitulatif nomme le moment de chaque jour quand le lot en mêle
+      // plusieurs : « 3 jours notés » sans dire lesquels sont des matins ne se
+      // relit pas, et c'est justement ce qu'on vient de déduire à sa place.
+      const detail = panache
+        ? aPoser.map(e => `${formatJour(e.jour)} ${momentCourt(e.moment).toLowerCase()}`).join(', ')
+        : `${decrireSaisie()} : ${resumeJours(aPoser.map(e => e.jour))}`
+      setSucces(`${aPoser.length} jour(s) noté(s) — ${detail}.${ignores}`)
       setSaisie(prev => ({ ...VIDE, secteur: prev.secteur, moment: prev.moment }))
       setAncre(null)
       await charger()
@@ -279,14 +326,7 @@ export default function CreneauxGestion({ annee }) {
               )}
             </div>
 
-            <label>
-              <span style={label}>Quand — s'applique à tous les jours choisis</span>
-              <select value={saisie.moment} onChange={e => changer('moment', e.target.value)}
-                      style={{ ...champ, width: '100%' }}>
-                {MOMENTS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </label>
-
+            {/* L'opérateur d'abord : c'est lui qui détermine le moment, plus l'inverse. */}
             <label>
               <span style={label}>Opérateur absent</span>
               <input type="text" list="operateurs-connus" value={saisie.absent} maxLength={80}
@@ -297,6 +337,99 @@ export default function CreneauxGestion({ annee }) {
             <datalist id="operateurs-connus">
               {operateurs.map(o => <option key={o} value={o} />)}
             </datalist>
+
+            {/* Ce qu'on a retenu de lui : quand il opère, jour de semaine par jour
+                de semaine. Affiché pour que la déduction se vérifie d'un coup d'œil
+                et se corrige si l'habitude a changé. */}
+            {/* Sa semaine type. Elle vient de la TRAME du bloc B quand celle-ci le
+                connaît — un fait, pas une statistique — et de l'historique de ses
+                absences sinon. Affichée pour que la déduction se vérifie d'un coup
+                d'œil, et se corrige si la trame a changé. */}
+            {!editeId && semaine.length > 0 && (
+              <div style={{
+                fontSize: 12, lineHeight: 1.6, color: 'var(--color-text-secondary)',
+                background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
+                borderRadius: 8, padding: '8px 10px',
+              }}>
+                <strong style={{ color: 'var(--color-text)' }}>{saisie.absent.trim()}</strong> opère
+                {' '}{semaine.map((j, i) => (
+                  <span key={j.jourSemaine}>
+                    {i > 0 && (i === semaine.length - 1 ? ' et ' : ', ')}
+                    le {j.label} <strong>{momentCourt(j.moment).toLowerCase()}</strong>
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>
+                      {' '}({j.salles.join(' + ')}{j.alterne ? ', semaines impaires' : ''})
+                    </span>
+                  </span>
+                ))}.
+                {semaine.some(j => j.salles.length > 1) && (
+                  <div style={{ marginTop: 4, color: 'var(--color-amber, #b8860b)' }}>
+                    Il tient <strong>deux salles</strong> en même temps ce jour-là : son absence en
+                    fait sauter deux.
+                  </div>
+                )}
+              </div>
+            )}
+            {!editeId && semaine.length === 0 && habOperateur.length > 0 && (
+              <div style={{
+                fontSize: 12, lineHeight: 1.6, color: 'var(--color-text-secondary)',
+                background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
+                borderRadius: 8, padding: '8px 10px',
+              }}>
+                <strong style={{ color: 'var(--color-text)' }}>{saisie.absent.trim()}</strong> n'est
+                pas dans la trame du bloc B. D'après ses absences passées, il opère
+                {' '}{habOperateur.map((h, i) => (
+                  <span key={h.jourSemaine}>
+                    {i > 0 && (i === habOperateur.length - 1 ? ' et ' : ', ')}
+                    le {h.label} <strong>{momentCourt(h.moment).toLowerCase()}</strong>
+                    <span style={{ color: 'var(--color-text-tertiary)' }}> ({h.n}/{h.total})</span>
+                  </span>
+                ))}.
+              </div>
+            )}
+
+            <label>
+              <span style={label}>Quand</span>
+              <select value={regleMoment}
+                      onChange={e => {
+                        setRegleMoment(e.target.value)
+                        if (e.target.value !== AUTO) changer('moment', e.target.value)
+                      }}
+                      style={{ ...champ, width: '100%' }}>
+                {!editeId && <option value={AUTO}>D'après ses habitudes, jour par jour</option>}
+                {MOMENTS.map(m => <option key={m.id} value={m.id}>{m.label} — pour tous les jours</option>)}
+              </select>
+            </label>
+
+            {/* Le détail jour par jour. Il n'apparaît QUE s'il apprend quelque chose :
+                un lot qui mêle des matins et des après-midi, ou un moment deviné.
+                Un opérateur ne fait pas la même demi-journée tous les jours de la
+                semaine — un seul moment pour tout le lot en écraserait la moitié. */}
+            {!editeId && regleMoment === AUTO && choisis > 0 && (deduits > 0 || panache) && (
+              <div style={{
+                fontSize: 12, lineHeight: 1.7,
+                background: 'var(--color-primary-light)', borderRadius: 8, padding: '8px 10px',
+              }}>
+                <div style={{ color: 'var(--color-text)', marginBottom: 4 }}>
+                  {panache
+                    ? 'Ces jours ne portent pas tous le même moment :'
+                    : 'Moment retenu pour ces jours :'}
+                </div>
+                {saisie.jours.map(iso => {
+                  const m = momentsLot.get(iso)
+                  return (
+                    <div key={iso} style={{ color: 'var(--color-text-secondary)' }}>
+                      {formatJour(iso)} — <strong style={{ color: 'var(--color-text)' }}>
+                        {momentCourt(m.moment).toLowerCase()}
+                      </strong>
+                      {m.source === 'trame' && <span style={{ color: 'var(--color-text-tertiary)' }}> · trame du bloc B{m.salles?.length > 1 ? ` · ${m.salles.length} salles` : ''}</span>}
+                      {m.source === 'jour' && <span style={{ color: 'var(--color-text-tertiary)' }}> · son habitude ce jour-là ({m.n}/{m.total})</span>}
+                      {m.source === 'operateur' && <span style={{ color: 'var(--color-amber, #b8860b)' }}> · jamais vu ce jour de la semaine, d'après son habitude générale</span>}
+                      {m.source === 'choisi' && <span style={{ color: 'var(--color-text-tertiary)' }}> · rien de connu, valeur du champ</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={enregistrer} disabled={envoi || choisis === 0}

@@ -973,6 +973,55 @@ petit dessous, et pour le bloc A le nom de l'opérateur — journée entière en
 demi-journée en **brun** avec « — matin » ou « — après-midi ». Comme les remplaçants, ces lignes appartiennent au dashboard —
 la republication nocturne du miroir Excel ne les touche pas.
 
+### La trame du bloc B — ajoutée le 2026-09-03
+
+**`src/utils/iadeBlocB.js` sait qui opère, quel jour, quelle demi-journée, dans quelle
+salle d'endoscopie.** Transmise par Mehdi (trame « sept-26 ») et relue avec lui. Deux
+usages, et les deux corrigent un défaut réel de la saisie.
+
+**1. Le moment est pré-rempli.** La gestion annonce l'absence d'un opérateur, le
+matin ou l'après-midi est déjà là. Deux pièges que la trame évite :
+
+- **Le moment n'appartient pas à l'opérateur, mais au couple (opérateur, jour de la
+  semaine).** Espérance opère le lundi et le mardi **matin**, le jeudi **après-midi** ;
+  Suma l'après-midi en début de semaine et le vendredi matin. **Neuf opérateurs sur
+  quatorze** changent ainsi de demi-journée selon le jour. Retenir « Espérance = matin »
+  se serait trompé un jeudi sur deux, **en silence** — personne ne relit un champ déjà
+  rempli.
+- **Un lot mêle donc plusieurs moments.** Sélectionner un lundi et un jeudi pour
+  Espérance pose un matin et un après-midi ; un moment unique pour tout le lot en
+  écraserait un. `verifierLot()` et `ajouterCreneaux()` travaillent sur des couples
+  `{ jour, moment }`, et l'écran montre le détail jour par jour avant d'enregistrer.
+
+**2. Le compte des salles est juste.** « Un opérateur = une salle » est la règle, pas
+une loi : **Fedkovic tient l'Endo 2 ET l'Endo 4 le mercredi matin**. Son absence fait
+sauter **deux** salles. `bilanBlocB()` pondère donc chaque ligne par `sallesPerdues()`.
+Symétriquement, un opérateur connu de la trame absent « la journée » ne fait sauter
+**aucune** salle sur la demi-journée où il n'opère pas — compter 1 par défaut y
+inventerait une salle fantôme. Un opérateur **inconnu** de la trame vaut 1, comme avant.
+
+**Alternance** : l'Endo 3 du mercredi après-midi est à **Hanslik les semaines ISO
+impaires**, **Ayral les paires**.
+
+**Ordre des sources**, du plus sûr au moins sûr : la trame ; sinon l'historique des
+absences déjà saisies (`habitudes()` / `momentHabituel()`, même règle par jour de la
+semaine) pour le bloc A et les opérateurs hors trame ; sinon la valeur du champ.
+En cas d'égalité dans l'historique, **rien n'est proposé** : une case vide se remarque,
+une case fausse non.
+
+> L'historique valide la trame : avant de la recevoir, la déduction statistique sur les
+> 49 absences déjà saisies retrouvait **exactement** les habitudes des 8 opérateurs
+> présents dans les deux sources.
+
+**⚠️ La trame est dupliquée dans `vault/Projects/outils-planning/convertir_mois.py`**
+(`TRAME_BLOC_B`, `salles_perdues()`), sinon le fichier Dropbox et le dashboard
+afficheraient deux comptes différents pour la même journée. **Toute modification se fait
+aux deux endroits.** Les deux implémentations ont été comparées sur 10 cas.
+
+**Pour la modifier** : `src/utils/iadeBlocB.js`, et son miroir Python. Une table en base
+et l'écran pour la tenir coûteraient plus cher que ce qu'ils apporteraient — la trame a
+duré toute l'année 2026, et une modification se relit en diff.
+
 ### ⚠️ Les IADE ne voient pas les créneaux en moins — depuis le 2026-09-03
 
 Décision de Mehdi : **les salles qui ne tournent pas sont une donnée d'organisation du
