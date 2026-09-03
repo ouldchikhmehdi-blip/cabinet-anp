@@ -15,6 +15,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
 import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
+import { chargerCreneauxPeriode } from '../utils/iadeCreneauxApi'
+import { indexerParJour as indexerCreneaux, resume as resumeCreneau } from '../utils/iadeCreneaux'
 import {
   POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
   couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, texteCase,
@@ -41,17 +43,20 @@ export default function IadePlanning() {
   // Les données portent le mois qu'elles décrivent : « en chargement » et
   // « en erreur » s'en déduisent, plutôt que d'être remis à zéro à la main à
   // chaque changement de mois (deux états à garder d'accord, donc un à oublier).
-  const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [], rempla: [] })
+  const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [], rempla: [], creneaux: [] })
   const [maj, setMaj] = useState(null)
   const [echec, setEchec] = useState(null)
 
   useEffect(() => {
     let vivant = true
     const { debut, fin } = bornesDuMois(annee, mois)
-    Promise.all([chargerMois(annee, mois), chargerDerniereMaj(), chargerRemplacantsPourvus(debut, fin)])
-      .then(([d, m, r]) => {
+    Promise.all([
+      chargerMois(annee, mois), chargerDerniereMaj(),
+      chargerRemplacantsPourvus(debut, fin), chargerCreneauxPeriode(debut, fin),
+    ])
+      .then(([d, m, r, c]) => {
         if (!vivant) return
-        setDonnees({ annee, mois, ...d, rempla: r })
+        setDonnees({ annee, mois, ...d, rempla: r, creneaux: c })
         setMaj(m)
       })
       .catch(e => {
@@ -74,6 +79,12 @@ export default function IadePlanning() {
   // Remplaçants saisis dans le dashboard : jour → noms. Ceux que le fichier Excel
   // porte déjà ne sont pas répétés (comparaison insensible à la casse et aux
   // espaces) — la même personne ne doit pas apparaître deux fois sur une ligne.
+  // Salles qui ne tournent pas, saisies dans l'onglet « Créneaux ».
+  const creneauxParJour = useMemo(
+    () => indexerCreneaux(aJour ? donnees.creneaux : []),
+    [aJour, donnees.creneaux]
+  )
+
   const remplaDashboard = useMemo(() => {
     const index = new Map()
     for (const r of (aJour ? donnees.rempla : [])) {
@@ -184,6 +195,7 @@ export default function IadePlanning() {
                   <th key={nom} colSpan={2} style={{ ...enTete, fontSize: 12 }}>{nom}</th>
                 ))}
                 <th rowSpan={2} style={{ ...enTete, minWidth: 130 }}>Remplaçants</th>
+                <th rowSpan={2} style={{ ...enTete, minWidth: 140 }}>Créneaux en moins</th>
               </tr>
               <tr>
                 {colonnes.map(nom => (
@@ -205,7 +217,7 @@ export default function IadePlanning() {
                         sans elle, le mois se lit comme un seul bloc. */}
                     {nouvelleSemaine && (
                       <tr aria-hidden="true">
-                        <td colSpan={colonnes.length * 2 + 2}
+                        <td colSpan={colonnes.length * 2 + 3}
                             style={{ height: 14, border: 'none', background: 'transparent', padding: 0 }} />
                       </tr>
                     )}
@@ -262,6 +274,22 @@ export default function IadePlanning() {
                         )
                       })()}
                     </td>
+                    {/* Salles qui ne tournent pas — saisies dans l'onglet « Créneaux ».
+                        Journée entière en rouge, demi-journée en brun : la nuance
+                        se lit sans avoir à relire le texte. */}
+                    <td style={{
+                      ...cellule, fontSize: 10, color: 'var(--color-text-secondary)',
+                      textAlign: 'left', padding: '2px 6px',
+                    }}>
+                      {(creneauxParJour.get(iso) ?? []).map(c => (
+                        <div key={`${c.moment}-${c.salle}`} style={{
+                          color: c.moment === 'journee' ? COULEUR_CONGE : '#9A5B12',
+                          fontWeight: 600, lineHeight: 1.3,
+                        }}>
+                          {resumeCreneau(c)}
+                        </div>
+                      ))}
+                    </td>
                     </tr>
                   </Fragment>
                 )
@@ -302,6 +330,11 @@ export default function IadePlanning() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>Nom</span>
             Remplaçant saisi dans « Rempla » (pas encore dans le fichier)
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ color: COULEUR_CONGE, fontWeight: 600 }}>Salle — journée</span>
+            <span style={{ color: '#9A5B12', fontWeight: 600 }}>/ demi-journée</span>
+            Créneaux en moins
           </span>
         </div>
       )}

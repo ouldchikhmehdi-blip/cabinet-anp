@@ -74,17 +74,19 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 | **Congés de l'équipe** (agent) / **Congés équipe** (gestion) | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
 | **Planning IADE** (lecture seule) | `src/pages/IadePlanning.jsx` | Agent IADE **et** tout associé (cf. § 12) |
 | **Heures sup à valider** | `src/pages/HeuresSupAValider.jsx` | **Tout associé** (MAR) |
-| **Congés, HS et rempla** (4 onglets, cf. ci-dessous) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
+| **Congés, HS et rempla** (5 onglets, cf. ci-dessous) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |
 
-**Congés, HS et rempla** — renommé et découpé en **quatre onglets** le 2026-08-26 (avant :
-un seul long défilement de six sections). Une problématique à la fois : on ouvre cet écran
-pour traiter **une** chose, le reste est du bruit à ce moment-là.
+**Congés, HS et rempla** — renommé et découpé en onglets le 2026-08-26 (avant : un seul
+long défilement de six sections), un cinquième — « Créneaux » — ajouté le 2026-09-03. Une
+problématique à la fois : on ouvre cet écran pour traiter **une** chose, le reste est du
+bruit à ce moment-là.
 
 | Onglet | Contenu | Pastille |
 |---|---|---|
 | **Congés** | demandes à traiter · calendrier des absences · récap par agent · jours traités | jours en attente |
 | **Heures sup** | `HeuresSupGestion` : ajout par la gestion, décisions, liste de l'année | déclarations en attente |
+| **Créneaux** | les salles qui ne tournent pas, à la demi-journée (cf. § 14) | — |
 | **Rempla** | chercher, puis nommer les remplaçants (cf. § 13) | — |
 | **Synthèse comptable** | `SyntheseMensuelle` (d'après le dashboard) **et** `RecapPlanningColle` (d'après le fichier du planning collé, cf. § 10) | — |
 
@@ -864,3 +866,43 @@ fonction de trigger est **révoquée de l'API REST** (elle n'a rien à faire en 
 Fichiers : `supabase/iade_remplacements.sql` · `src/utils/iadeRempla{,Api}.js` ·
 `src/components/iade/{RemplaGestion,CalendrierRempla}.jsx` · `src/pages/IadePlanning.jsx`
 (fusion à l'affichage).
+
+---
+
+## 14. Onglet « Créneaux » — les salles qui ne tournent pas
+
+Ajouté le 2026-09-03. Quatrième onglet de « Congés, HS et rempla » (§ 3), réservé à la
+gestion. Il remplace les deux colonnes **vides et manuelles** du fichier visuel
+(« Salles Bloc B », « Absence Bloc A ») que personne ne remplissait.
+
+Une ligne = **une salle, un jour, un moment**. La gestion note qu'un créneau saute, dit
+quelle salle et — facultatif — qui manque (« Dr Martin absent »). Deux salles fermées le
+même matin font deux lignes ; rien n'interdit « Bloc B le matin » et « Endoscopie
+l'après-midi » le même jour.
+
+> ⚠️ **C'est le seul endroit du module IADE qui descend à la demi-journée.** Congés et
+> heures sup comptent en journées, délibérément (§ 8). Ici la demi-journée est le fait
+> métier lui-même : une salle ferme souvent le matin seulement, et l'agent libéré travaille
+> l'après-midi. Ne pas « harmoniser » en journées, ce serait perdre l'information utile.
+
+| Brique | Fichier | Rôle |
+|---|---|---|
+| Table, RLS | `supabase/iade_creneaux_fermes.sql` | `(jour, moment, salle)` unique ; `moment ∈ journee/matin/apres_midi` ; trigger de traçabilité qui nettoie aussi les espaces |
+| Logique pure | `src/utils/iadeCreneaux.js` | tri d'un jour, salles déjà saisies, compte des demi-journées, contrôles de saisie — testée |
+| Accès Supabase | `src/utils/iadeCreneauxApi.js` | lecture par année ou par période, ajout, correction, retrait |
+| Écran | `src/components/iade/CreneauxGestion.jsx` | saisie, liste du mois ou de l'année, correction et retrait ligne par ligne |
+
+- **Les contrôles refusent l'incohérent** : la même salle deux fois sur le même moment, une
+  journée entière quand une demi-journée est déjà posée, une demi-journée déjà comprise
+  dans une journée entière. Le message dit quoi faire, pas seulement que c'est refusé.
+- **Les salles déjà saisies sont proposées à la frappe** (`datalist`) : personne ne devrait
+  retaper « Endoscopie 2 » vingt fois ni en inventer l'orthographe.
+- Le compte affiché est en **demi-journées** (une journée entière en vaut deux) : c'est
+  l'unité dans laquelle la gestion raisonne pour savoir où elle a du monde en trop.
+
+**Dans le planning** (§ 12), une colonne **« Créneaux en moins »** à droite des remplaçants
+affiche « Bloc B — matin (Dr Martin) ». Journée entière en **rouge**, demi-journée en
+**brun** : la nuance se lit sans relire le texte. Comme les remplaçants, ces lignes
+appartiennent au dashboard — la republication nocturne du miroir Excel ne les touche pas.
+
+Lecture : `is_iade() or acces_cabinet()`. Écriture : `peut_gerer_iade()` seule.

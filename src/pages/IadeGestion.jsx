@@ -22,6 +22,7 @@ import SyntheseMensuelle from '../components/iade/SyntheseMensuelle'
 import HeuresSupGestion from '../components/iade/HeuresSupGestion'
 import RemplaGestion from '../components/iade/RemplaGestion'
 import RecapPlanningColle from '../components/iade/RecapPlanningColle'
+import CreneauxGestion from '../components/iade/CreneauxGestion'
 import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade, notifierConges } from '../utils/iadeCongesApi'
 import { chargerHeuresSupAnnee } from '../utils/iadeHeuresSupApi'
 import {
@@ -37,6 +38,8 @@ const ONGLETS = [
     texte: 'Jours posés par les infirmiers anesthésistes — congés payés et récupérations de jours fériés — à valider ou à refuser.' },
   { id: 'hs',       icone: '⏱', label: 'Heures sup', attente: 'hs',
     texte: 'Heures supplémentaires déclarées par les agents, et heures ajoutées directement par la gestion. Le MAR désigné tranche ; vous pouvez trancher en secours s\'il ne répond pas.' },
+  { id: 'creneaux', icone: '⊘', label: 'Créneaux',
+    texte: 'Les salles qui ne tournent pas — journée entière ou demi-journée. Ce qui est noté ici apparaît dans le planning, en face du jour : c\'est là qu\'on voit où il y a du monde en trop.' },
   { id: 'rempla',   icone: '↺', label: 'Rempla',
     texte: 'Les jours où il faut un remplaçant, le mail à envoyer pour en chercher un, et le nom de celui qu\'on a trouvé — qui s\'inscrit alors dans le planning.' },
   { id: 'synthese', icone: '📊', label: 'Synthèse comptable',
@@ -401,6 +404,13 @@ export default function IadeGestion() {
             annee={annee}
             onChange={charger}
           />
+        </div>
+      )}
+
+      {/* ══ Onglet « Créneaux » ════════════════════════════════════════════ */}
+      {vue === 'creneaux' && (
+        <div style={s.section}>
+          <CreneauxGestion annee={annee} />
         </div>
       )}
 
