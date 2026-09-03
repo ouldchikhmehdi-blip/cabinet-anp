@@ -163,6 +163,51 @@ Si vous n'attendiez pas cette invitation, ignorez ce message : aucun compte n'es
 const PIED_NOTIF = 'Message automatique du dashboard SARM. Inutile de répondre à cet e-mail.'
 const LIBELLE_TYPE = { cp: 'congé payé', recup_ferie: 'récup. jour férié' }
 
+// ── Horodatage : le jour, jamais l'heure ─────────────────────────────────────
+//
+// Chaque demande et chaque décision porte sa date dans l'e-mail : c'est ce qui
+// donne à l'agent comme à la gestion une trace datée, dans leur propre boîte,
+// indépendante du dashboard. Le jour suffit — l'heure n'a jamais servi à trancher
+// quoi que ce soit et alourdit la lecture.
+//
+// Fuseau Europe/Paris imposé : les timestamps sont stockés en UTC, et une demande
+// déposée à 1 h du matin l'été s'afficherait sinon à la date de la veille.
+export function jourSeul(horodatage) {
+  if (!horodatage) return null
+  const d = new Date(horodatage)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString('fr-FR', {
+    timeZone: 'Europe/Paris', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+  })
+}
+
+// La date de dépôt d'un lot : celle de la ligne la plus ancienne. Un lot part en
+// une fois, ses lignes portent la même seconde — mais une correction ultérieure
+// peut en ajouter une, et c'est bien le premier dépôt qui fait foi.
+export function dateDepot(rows) {
+  const dates = (rows ?? []).map(r => r.created_at).filter(Boolean).sort()
+  return jourSeul(dates[0])
+}
+
+// La date de décision : celle de la ligne tranchée en dernier.
+export function dateDecision(rows) {
+  const dates = (rows ?? []).map(r => r.decide_le).filter(Boolean).sort()
+  return jourSeul(dates[dates.length - 1])
+}
+
+// Encadré de traçabilité, en pied de message. Volontairement discret : c'est une
+// pièce à conserver, pas le sujet du message.
+function encadreDates(lignes) {
+  const utiles = lignes.filter(l => l.valeur)
+  if (utiles.length === 0) return { html: '', text: '' }
+  return {
+    html: `<div style="margin-top:22px;padding:12px 14px;background:#f7f6f2;border-radius:8px;font-size:13px;line-height:1.7;color:#5f5e5a;">
+      ${utiles.map(l => `${l.libelle} : <strong style="color:#2c2c2a;">${l.valeur}</strong>`).join('<br>')}
+    </div>`,
+    text: `\n${utiles.map(l => `${l.libelle} : ${l.valeur}`).join('\n')}`,
+  }
+}
+
 // Met en forme une liste de jours [{ jour: 'YYYY-MM-DD', type_conge }] → { html, text, n }.
 function formaterJours(rows) {
   const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
@@ -202,6 +247,39 @@ ${lien}`
   }
 }
 
+// A bis. Le même dépôt, renvoyé à l'AGENT : son accusé de réception.
+// Il vaut preuve datée du jour où il a demandé — dans sa propre boîte, sans
+// dépendre du dashboard ni de la mémoire de qui que ce soit.
+export function emailCongesRecus({ agentNom, rows, lien }) {
+  const j = formaterJours(rows)
+  const dates = encadreDates([{ libelle: 'Demande déposée le', valeur: dateDepot(rows) }])
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`Votre demande de <strong>${j.n} jour(s)</strong> de congé est bien enregistrée :`)}
+    ${j.html}
+    ${dates.html}
+    ${p('Elle est <strong>en attente</strong> : vous recevrez un e-mail dès que la gestion aura répondu.', 'color:#5f5e5a;')}
+    ${bouton(lien, 'Ouvrir « Mes congés »')}
+    ${p('Conservez ce message : il date votre demande.', 'color:#5f5e5a;font-size:13px;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+Votre demande de ${j.n} jour(s) de congé est bien enregistrée :
+${j.text}
+${dates.text}
+
+Elle est en attente : vous recevrez un e-mail dès que la gestion aura répondu.
+Conservez ce message, il date votre demande.
+
+Ouvrez l'onglet « Mes congés » du dashboard :
+${lien}`
+  return {
+    subject: `Votre demande de congé — bien reçue (${j.n} jour(s))`,
+    html: coquille({ apercu: `${j.n} jour(s) enregistré(s), en attente de réponse`, titre: 'Demande de congé enregistrée', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
 // B. L'agent a retiré / modifié des jours → e-mail au gestionnaire.
 export function emailCongesRetires({ agentNom, rows, lien }) {
   const j = formaterJours(rows)
@@ -234,11 +312,16 @@ export function emailCongesDecides({ agentNom, rows, statut, motif, lien }) {
   const corpsMotif = (!valide && motif?.trim())
     ? p(`Motif : <em>${motif.trim()}</em>`, 'color:#5f5e5a;')
     : ''
+  const dates = encadreDates([
+    { libelle: 'Demande déposée le', valeur: dateDepot(rows) },
+    { libelle: valide ? 'Validée le' : 'Réponse du', valeur: dateDecision(rows) },
+  ])
   const corps = `
     ${p(bonjour(agentNom))}
     ${p(`Vos congés suivants ont été <strong>${verbe}</strong> :`)}
     ${j.html}
     ${corpsMotif}
+    ${dates.html}
     ${bouton(lien, 'Ouvrir « Mes congés »')}
     ${!valide ? p('Vous pouvez reposer d\'autres jours depuis l\'onglet <strong>Mes congés</strong>.', 'color:#5f5e5a;') : ''}
     <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
@@ -246,6 +329,7 @@ export function emailCongesDecides({ agentNom, rows, statut, motif, lien }) {
 
 Vos congés suivants ont été ${verbe} :
 ${j.text}${(!valide && motif?.trim()) ? `\n\nMotif : ${motif.trim()}` : ''}
+${dates.text}
 
 Ouvrez l'onglet « Mes congés » du dashboard :
 ${lien}`
@@ -365,6 +449,42 @@ Sinon, onglet` : 'Rendez-vous dans l\'onglet'} « Heures sup à valider » du da
   }
 }
 
+// D bis. La même déclaration, renvoyée à l'AGENT : son accusé de réception.
+// Il dit aussi À QUI la demande est partie — le MAR désigné —, parce que c'est la
+// question qui revient quand la réponse tarde.
+export function emailHsRecues({ agentNom, rows, marNom, lien }) {
+  const h = formaterHeures(rows)
+  const dates = encadreDates([
+    { libelle: 'Déclaration déposée le', valeur: dateDepot(rows) },
+    { libelle: 'Transmise à', valeur: marNom || null },
+  ])
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`Votre déclaration de <strong>${h.total} h</strong> supplémentaires est bien enregistrée :`)}
+    ${h.html}
+    ${dates.html}
+    ${p(`Elle est <strong>en attente</strong>${marNom ? ` de la réponse du <strong>${marNom}</strong>` : ''} : vous recevrez un e-mail dès qu'elle sera tranchée.`, 'color:#5f5e5a;')}
+    ${bouton(lien, 'Ouvrir « Mes heures sup »')}
+    ${p('Conservez ce message : il date votre déclaration.', 'color:#5f5e5a;font-size:13px;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+Votre déclaration de ${h.total} h supplémentaires est bien enregistrée :
+${h.text}
+${dates.text}
+
+Elle est en attente${marNom ? ` de la réponse du ${marNom}` : ''} : vous recevrez un e-mail dès qu'elle sera tranchée.
+Conservez ce message, il date votre déclaration.
+
+Ouvrez l'onglet « Mes heures sup » du dashboard :
+${lien}`
+  return {
+    subject: `Votre déclaration d'heures sup — bien reçue (${h.total} h)`,
+    html: coquille({ apercu: `${h.total} h enregistrées, en attente de validation`, titre: 'Déclaration enregistrée', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
 // E. Le MAR (ou la gestion) a décidé → e-mail à l'agent.
 export function emailHsDecidees({ agentNom, rows, statut, motif, lien }) {
   const h = formaterHeures(rows)
@@ -373,11 +493,16 @@ export function emailHsDecidees({ agentNom, rows, statut, motif, lien }) {
   const corpsMotif = (!valide && motif?.trim())
     ? p(`Motif : <em>${motif.trim()}</em>`, 'color:#5f5e5a;')
     : ''
+  const dates = encadreDates([
+    { libelle: 'Déclaration déposée le', valeur: dateDepot(rows) },
+    { libelle: valide ? 'Validée le' : 'Réponse du', valeur: dateDecision(rows) },
+  ])
   const corps = `
     ${p(bonjour(agentNom))}
     ${p(`Vos heures supplémentaires ont été <strong>${verbe}</strong> :`)}
     ${h.html}
     ${corpsMotif}
+    ${dates.html}
     ${bouton(lien, 'Ouvrir « Mes heures sup »')}
     ${valide ? p('Elles seront reportées dans le planning et transmises à la comptabilité.', 'color:#5f5e5a;') : ''}
     <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
@@ -385,6 +510,7 @@ export function emailHsDecidees({ agentNom, rows, statut, motif, lien }) {
 
 Vos heures supplémentaires ont été ${verbe} :
 ${h.text}${(!valide && motif?.trim()) ? `\n\nMotif : ${motif.trim()}` : ''}
+${dates.text}
 
 Ouvrez l'onglet « Mes heures sup » du dashboard :
 ${lien}`
@@ -399,10 +525,13 @@ ${lien}`
 // Rien à approuver de son côté : ces heures naissent validées (cf. le SQL).
 export function emailHsAjoutees({ agentNom, rows, lien }) {
   const h = formaterHeures(rows)
+  // Ces heures naissent validées : leur date d'ajout EST leur date de décision.
+  const dates = encadreDates([{ libelle: 'Ajoutées le', valeur: dateDepot(rows) }])
   const corps = `
     ${p(bonjour(agentNom))}
     ${p(`<strong>${h.total} h</strong> supplémentaires viennent de vous être ajoutées :`)}
     ${h.html}
+    ${dates.html}
     ${bouton(lien, 'Ouvrir « Mes heures sup »')}
     ${p('Ces heures sont déjà actées : elles seront reportées dans le planning et transmises à la comptabilité. Si quelque chose vous semble inexact, signalez-le à la personne qui gère les IADE.', 'color:#5f5e5a;')}
     <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
@@ -410,6 +539,7 @@ export function emailHsAjoutees({ agentNom, rows, lien }) {
 
 ${h.total} h supplémentaires viennent de vous être ajoutées :
 ${h.text}
+${dates.text}
 
 Ces heures sont déjà actées. En cas d'erreur, signalez-le à la personne qui gère les IADE.
 Ouvrez l'onglet « Mes heures sup » du dashboard :

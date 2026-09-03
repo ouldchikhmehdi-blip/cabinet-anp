@@ -2,8 +2,8 @@ import { supabaseAdmin } from './_lib/supabaseAdmin.js'
 import { requireUser, sendError, setCorsHeaders } from './_lib/auth.js'
 import { envoyerEmail } from './_lib/mailer.js'
 import {
-  emailCongesPoses, emailCongesRetires, emailCongesDecides,
-  emailHsDeclarees, emailHsDecidees, emailHsAjoutees,
+  emailCongesPoses, emailCongesRetires, emailCongesDecides, emailCongesRecus,
+  emailHsDeclarees, emailHsDecidees, emailHsAjoutees, emailHsRecues,
   emailHsCorrigees, emailHsSansSuite,
 } from './_lib/emails.js'
 
@@ -15,10 +15,14 @@ import {
  *
  * Congés :
  *   • 'pose' / 'retrait' → l'agent déclenche, on prévient le(s) gestionnaire(s) ;
+ *                          une 'pose' renvoie EN PLUS son accusé de réception à
+ *                          l'agent, qui date sa demande ;
  *   • 'decision'         → la gestion décide, on prévient l'agent concerné.
  *
  * Heures supplémentaires :
- *   • 'hs_declaration'   → l'agent déclare, on prévient le MAR qu'il a désigné ;
+ *   • 'hs_declaration'   → l'agent déclare, on prévient le MAR qu'il a désigné et on
+ *                          renvoie à l'agent son accusé de réception, qui date sa
+ *                          déclaration et dit à qui elle est partie ;
  *   • 'hs_modification'  → l'agent a corrigé sa déclaration, on renvoie au MAR
  *                          désigné ce qu'elle dit maintenant ;
  *   • 'hs_reassignation' → l'agent va désigner un AUTRE MAR : on prévient celui
@@ -36,6 +40,10 @@ import {
  * `npm run build` local n'y voie rien — il ne compile que le front).
  * Toute nouvelle route doit être ajoutée ici plutôt que dans un fichier de plus.
  *
+ * Traçabilité : chaque message porte ses dates — dépôt et décision, le jour seul,
+ * en heure de Paris. Chacun garde ainsi dans sa boîte une trace datée qui ne
+ * dépend ni du dashboard ni de la mémoire de personne.
+ *
  * Sécurité : le serveur RELIT toujours les lignes en base (jamais le contenu
  * fourni par le client) — ça valide l'appartenance et garantit que l'e-mail
  * reflète l'état réel. Les adresses des destinataires ne sont jamais renvoyées au
@@ -47,12 +55,12 @@ import {
  * Même règle pour 'hs_retrait' et 'hs_reassignation' : ils relisent l'état
  * d'AVANT, celui que le MAR a reçu dans sa boîte.
  */
-const CHAMPS_CONGES = 'id, user_id, jour, type_conge, lot, statut, motif_reponse'
+const CHAMPS_CONGES = 'id, user_id, jour, type_conge, lot, statut, motif_reponse, created_at, decide_le'
 
 // `jeton` sert à fabriquer les boutons Valider / Refuser de l'e-mail du MAR.
 // Il ne sort JAMAIS vers le client : seul ce serverless le lit, pour l'écrire
 // dans un message adressé au MAR désigné.
-const CHAMPS_HS = 'id, user_id, jour, heures, origine, mar_id, commentaire, statut, motif_reponse, jeton'
+const CHAMPS_HS = 'id, user_id, jour, heures, origine, mar_id, commentaire, statut, motif_reponse, jeton, created_at, decide_le'
 
 function nomAgent(profil) {
   return profil?.nom_complet?.trim() || (profil?.email ? profil.email.split('@')[0] : 'Un agent')
@@ -165,7 +173,19 @@ export default async function handler(req, res) {
         const { sent } = await envoyerEmail({ to, subject: message.subject, html: message.html, text: message.text })
         if (sent) notified++
       }
-      return res.status(200).json({ ok: true, notified })
+
+      // Accusé de réception à l'agent lui-même, sur une pose : sa trace datée,
+      // dans sa propre boîte. Pas sur un retrait — retirer un jour n'ouvre
+      // aucune attente de réponse, et un accusé y serait du bruit.
+      let accuse = false
+      if (type === 'pose' && profile.email) {
+        const recu = emailCongesRecus({ agentNom, rows, lien })
+        const { sent } = await envoyerEmail({
+          to: profile.email, subject: recu.subject, html: recu.html, text: recu.text,
+        })
+        accuse = sent
+      }
+      return res.status(200).json({ ok: true, notified, accuse })
     }
 
     // La gestion décide : on prévient l'agent concerné.
@@ -205,7 +225,23 @@ export default async function handler(req, res) {
       if (!rows || rows.length === 0) return rienAFaire('Aucune ligne correspondante.')
 
       const notified = await prevenirMars(rows, lien, nomAgent(profile), MESSAGE_AU_MAR[type])
-      return res.status(200).json({ ok: true, notified })
+
+      // Accusé de réception à l'agent, sur une déclaration seulement : sa trace
+      // datée, avec le nom du MAR à qui elle est partie — la question qui revient
+      // quand la réponse tarde. Une correction ou un retrait n'en méritent pas :
+      // ils n'ouvrent pas d'attente nouvelle.
+      let accuse = false
+      if (type === 'hs_declaration' && profile.email) {
+        const mar = rows[0]?.mar_id ? await profil(rows[0].mar_id) : null
+        const recu = emailHsRecues({
+          agentNom: nomAgent(profile), rows, marNom: mar?.nom_complet?.trim() || null, lien,
+        })
+        const { sent } = await envoyerEmail({
+          to: profile.email, subject: recu.subject, html: recu.html, text: recu.text,
+        })
+        accuse = sent
+      }
+      return res.status(200).json({ ok: true, notified, accuse })
     }
 
     // Décision : on prévient l'agent.

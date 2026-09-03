@@ -320,11 +320,12 @@ Fichiers : `supabase/iade_heures_sup.sql` · `src/utils/iadeHeuresSup{,Api}.js` 
 reviendrait à le laisser valider ses propres heures. Son e-mail l'informe de la décision, il
 n'en prend aucune.
 
-**Les six e-mails des heures sup** (tous par `/api/iade-notify`, sauf le dernier) :
+**Les sept e-mails des heures sup** (tous par `/api/iade-notify`, sauf le dernier) :
 
 | Événement | Déclencheur | Destinataire | Gabarit | Boutons |
 |---|---|---|---|---|
 | **Déclaration** | l'agent | le **MAR désigné** | `emailHsDeclarees` | oui |
+| **Déclaration** | l'agent | l'**agent lui-même** (accusé de réception) | `emailHsRecues` | non |
 | **Correction** | l'agent | le **MAR désigné** (le nouveau, s'il a changé) | `emailHsCorrigees` | oui |
 | **Réattribution** | l'agent | le MAR **abandonné** | `emailHsSansSuite` (`cause: 'reassignation'`) | non |
 | **Retrait** | l'agent | le **MAR désigné** | `emailHsSansSuite` (`cause: 'retrait'`) | non |
@@ -334,6 +335,10 @@ n'en prend aucune.
 Ajouté le 2026-08-25 : correction, réattribution et retrait ne prévenaient personne. Le MAR
 gardait dans sa boîte un message annonçant des heures qui avaient changé — ou qui n'existaient
 plus — sans que rien ne le lui dise.
+
+Ajouté le 2026-09-03 : l'agent reçoit son propre accusé de réception, daté, avec le nom du MAR
+à qui la déclaration est partie. Les dates de dépôt et de décision figurent aussi dans les
+messages de réponse — cf. § 9, « Traçabilité : chaque message porte ses dates ».
 
 - **Réattribution et retrait notifient AVANT l'écriture** (même règle que le retrait d'un
   congé) : après, la ligne porte le nouveau MAR, ou n'existe plus. Ordre respecté dans
@@ -543,8 +548,33 @@ Endpoint unique **`/api/iade-notify`** ; le front l'appelle après chaque mouvem
 | Événement | Déclencheur | Destinataire | Gabarit (`emails.js`) |
 |---|---|---|---|
 | **Pose** d'un lot | l'agent | le(s) **gestionnaire(s)** (`is_gestion_iade` actifs) | `emailCongesPoses` |
+| **Pose** d'un lot | l'agent | l'**agent lui-même** (accusé de réception) | `emailCongesRecus` |
 | **Retrait / modif** de jours | l'agent | le(s) **gestionnaire(s)** | `emailCongesRetires` |
 | **Décision** (validation **ou** refus) | la gestion | l'**agent** concerné | `emailCongesDecides` |
+
+### Traçabilité : chaque message porte ses dates
+
+Ajouté le 2026-09-03. Une demande déposée et une demande tranchée laissent chacune une
+**trace datée dans la boîte de l'agent**, indépendante du dashboard et de la mémoire de
+quiconque. Deux mouvements le garantissent :
+
+- **à la pose / à la déclaration**, l'agent reçoit son propre **accusé de réception**
+  (`emailCongesRecus`, `emailHsRecues`) : le récapitulatif de ce qu'il demande, la date du
+  dépôt, et pour les heures sup **le nom du MAR** à qui c'est parti ;
+- **à la décision**, le message qu'il recevait déjà porte désormais **les deux dates** :
+  celle du dépôt et celle de la réponse.
+
+Trois règles de fabrication, dans `emails.js` :
+
+- `jourSeul()` formate **le jour, jamais l'heure** — l'heure n'a jamais servi à trancher
+  quoi que ce soit — en **`Europe/Paris`** : les timestamps sont stockés en UTC, et une
+  demande déposée à 1 h du matin l'été serait sinon datée de la veille.
+- `dateDepot()` retient le **premier** `created_at` du lot, `dateDecision()` le **dernier**
+  `decide_le` : le premier dépôt fait foi, la dernière décision aussi.
+- Sans horodatage en base, **l'encadré ne s'affiche pas** plutôt que d'afficher un vide.
+
+Aucune migration : `created_at` et `decide_le` existaient déjà dans les deux tables.
+Un **retrait** ne déclenche pas d'accusé — il n'ouvre aucune attente de réponse.
 
 Garde-fous :
 

@@ -143,7 +143,8 @@ export async function deciderHeures(ids, statut, motif) {
 // ── Notifications e-mail (best-effort) ───────────────────────────────────────
 // Ne bloque JAMAIS l'action : toute erreur est avalée (cf. api/iade-notify.js,
 // endpoint commun aux congés et aux heures sup — d'où le préfixe « hs_ »).
-//   type 'declaration'   → { ids } : prévient le MAR désigné
+//   type 'declaration'   → { ids } : prévient le MAR désigné, et renvoie à l'agent
+//                          son accusé de réception daté
 //   type 'modification'  → { ids } : renvoie au MAR désigné la déclaration corrigée
 //   type 'reassignation' → { ids } : prévient le MAR abandonné — AVANT la mise à jour
 //   type 'retrait'       → { ids } : prévient le MAR désigné — AVANT la suppression
