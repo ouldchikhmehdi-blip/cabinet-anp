@@ -842,6 +842,11 @@ l'Excel ne sont pas répétés (comparaison insensible à la casse et aux espace
 > le miroir du fichier Excel ; `iade_remplacements` appartient au dashboard, et
 > `pousser_planning.py` n'y touche pas. C'est le seul endroit où le planning affiché n'est
 > pas strictement le fichier — d'où le marquage visuel, qui doit rester.
+>
+> Depuis le 2026-09-03, le trajet inverse existe : la chaîne nocturne **redescend** ces noms
+> dans le fichier Excel publié sur Dropbox (en violet), pour que les deux supports disent la
+> même chose. Ils restent hors de `planning-iade.json` — le miroir renvoyé vers Supabase —,
+> sans quoi ils reviendraient une seconde fois par la porte du fichier.
 
 ### Tout se défait
 
@@ -916,5 +921,11 @@ l'après-midi » le même jour.
 affiche « Bloc B — matin (Dr Martin) ». Journée entière en **rouge**, demi-journée en
 **brun** : la nuance se lit sans relire le texte. Comme les remplaçants, ces lignes
 appartiennent au dashboard — la republication nocturne du miroir Excel ne les touche pas.
+
+**Et sur la Dropbox** : la chaîne nocturne de 5 h les redescend dans le fichier visuel, dans
+une colonne « Créneaux en moins » qui remplace les deux colonnes vides « Salles Bloc B » et
+« Absence Bloc A ». Même texte, mêmes couleurs. Ce qui est saisi dans la journée y apparaît
+le lendemain matin ; dans le dashboard, c'est immédiat. Détail de la chaîne dans
+`vault/Projects/outils-planning/LISEZ-MOI.md` § 5 et 6.
 
 Lecture : `is_iade() or acces_cabinet()`. Écriture : `peut_gerer_iade()` seule.

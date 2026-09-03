@@ -7,10 +7,13 @@
 // écriture ici : une correction se fait dans le fichier, sinon les deux versions
 // divergent et plus personne ne sait laquelle croire.
 //
-// UNE exception, la colonne des remplaçants : les noms validés dans l'onglet
-// « Rempla » y sont ajoutés à ceux du fichier, et signalés comme tels. Ils vivent
-// dans leur propre table, que la republication nocturne ne touche pas — sans quoi
-// un remplaçant saisi le soir aurait disparu le lendemain matin.
+// DEUX exceptions, ajoutées par-dessus le fichier et signalées comme telles : la
+// colonne des remplaçants (noms validés dans l'onglet « Rempla ») et celle des
+// créneaux en moins (onglet « Créneaux »). Elles vivent dans leurs propres tables,
+// que la republication nocturne ne touche pas — sans quoi un remplaçant saisi le
+// soir aurait disparu le lendemain matin. La chaîne de 5 h fait le trajet inverse :
+// elle les recopie dans le fichier Excel publié sur Dropbox, pour que les deux
+// supports disent la même chose.
 // ============================================================
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
