@@ -973,10 +973,42 @@ petit dessous, et pour le bloc A le nom de l'opérateur — journée entière en
 demi-journée en **brun** avec « — matin » ou « — après-midi ». Comme les remplaçants, ces lignes appartiennent au dashboard —
 la republication nocturne du miroir Excel ne les touche pas.
 
-**Et sur la Dropbox** : la chaîne nocturne de 5 h les redescend dans le fichier visuel, dans
-une colonne « Créneaux en moins » qui remplace les deux colonnes vides « Salles Bloc B » et
-« Absence Bloc A ». Même texte, mêmes couleurs. Ce qui est saisi dans la journée y apparaît
-le lendemain matin ; dans le dashboard, c'est immédiat. Détail de la chaîne dans
-`vault/Projects/outils-planning/LISEZ-MOI.md` § 5 et 6.
+### ⚠️ Les IADE ne voient pas les créneaux en moins — depuis le 2026-09-03
 
-Lecture : `is_iade() or acces_cabinet()`. Écriture : `peut_gerer_iade()` seule.
+Décision de Mehdi : **les salles qui ne tournent pas sont une donnée d'organisation du
+cabinet, pas le planning d'un salarié.** L'information reste visible des associés et de la
+gestion, nulle part ailleurs. Elle a donc été retirée des **deux** supports le même jour —
+en retirer un seul n'aurait rien retiré du tout.
+
+| Support | Ce qui a changé |
+|---|---|
+| **Base** | policy `iade_creneaux_fermes_select` : `acces_cabinet() or peut_gerer_iade()`. **C'est le seul verrou qui compte.** |
+| **Dashboard** | `IadePlanning.jsx` n'affiche la colonne que si `!profile.is_iade`, et ne demande même pas les données sinon |
+| **Dropbox** | deux fichiers désormais, cf. ci-dessous |
+
+**Le masquage dans l'écran ne protège rien** : sans la RLS, un compte IADE interrogeant
+`iade_creneaux_fermes` via l'API REST aurait tout lu, colonne cachée ou pas. C'est la
+policy qui fait le travail ; le front n'est que du confort de lecture. Vérifié en
+transaction annulée sous l'identité réelle d'un IADE (0 ligne) et d'un associé (49 lignes),
+l'écriture restant `peut_gerer_iade()` seule. Migration `iade_creneaux_fermes_hors_iade`.
+
+Le front est prudent dans le bon sens : `voitCreneaux` vaut **faux tant que le profil n'est
+pas chargé**. Mieux vaut une colonne qui apparaît une seconde après que des données qui
+s'affichent une seconde à qui ne doit pas les voir.
+
+**Et sur la Dropbox** : la chaîne nocturne de 5 h génère maintenant **deux fichiers** depuis
+la même donnée (`convertir_mois.py --sans-creneaux`), et les publie dans deux dossiers :
+
+| Fichier | Colonne | Destination |
+|---|---|---|
+| `Planning IADE 2026.xlsx` | **sans** | `SDF 2021/dossier partagé IADE/planning IADE relié/` — partagé avec 19 personnes |
+| `Planning IADE 2026 — créneaux en moins.xlsx` | **avec** | `SDF 2021/2026/` — le dossier des associés |
+
+Cibles dans `~/.config/planning-iade/env` (`DROPBOX_CIBLE`, `DROPBOX_CIBLE_MAR`).
+**Ne jamais publier le fichier « créneaux » dans le dossier partagé IADE** : ce serait
+rendre visible à 19 personnes exactement ce qu'on vient de leur retirer. `publier-dropbox.sh`
+**relit le fichier des IADE avant l'envoi** et s'arrête s'il y trouve la colonne : une
+régression du générateur ne doit pas pouvoir republier l'information sans que rien ne le
+signale. Détail de la chaîne dans `vault/Projects/outils-planning/LISEZ-MOI.md` § 5 et 6.
+
+Lecture : `acces_cabinet() or peut_gerer_iade()`. Écriture : `peut_gerer_iade()` seule.

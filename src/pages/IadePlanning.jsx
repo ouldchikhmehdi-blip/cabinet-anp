@@ -7,6 +7,14 @@
 // écriture ici : une correction se fait dans le fichier, sinon les deux versions
 // divergent et plus personne ne sait laquelle croire.
 //
+// La colonne « Créneaux en moins » N'EST PAS MONTRÉE AUX IADE (décision de Mehdi
+// le 2026-09-03) : les salles qui ne tournent pas sont une donnée d'organisation du
+// cabinet, pas le planning d'un salarié. Le masquage ici n'est que le confort de
+// lecture — ce qui protège vraiment, c'est la RLS de `iade_creneaux_fermes`, qui ne
+// laisse plus un compte IADE lire la table du tout. Un écran ne cache rien : l'API
+// REST répondrait quand même. Même règle sur Dropbox : le fichier des IADE est
+// généré SANS cette colonne (`convertir_mois.py --sans-creneaux`).
+//
 // DEUX exceptions, ajoutées par-dessus le fichier et signalées comme telles : la
 // colonne des remplaçants (noms validés dans l'onglet « Rempla ») et celle des
 // créneaux en moins (onglet « Créneaux »). Elles vivent dans leurs propres tables,
@@ -16,6 +24,7 @@
 // supports disent la même chose.
 // ============================================================
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '../auth/AuthContext'
 import { chargerMois, chargerDerniereMaj } from '../utils/iadePlanningApi'
 import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
 import { chargerCreneauxPeriode } from '../utils/iadeCreneauxApi'
@@ -42,6 +51,12 @@ function isoAujourdHui() {
 }
 
 export default function IadePlanning() {
+  const { profile } = useAuth()
+  // Un compte IADE ne voit pas les créneaux en moins. Par défaut on ne les montre
+  // PAS : tant que le profil n'est pas chargé, mieux vaut une colonne qui apparaît
+  // que des données qui s'affichent une seconde à qui ne doit pas les voir.
+  const voitCreneaux = profile ? !profile.is_iade : false
+
   const aujourdHui = isoAujourdHui()
   const [annee, setAnnee] = useState(() => Number(aujourdHui.slice(0, 4)))
   const [mois, setMois] = useState(() => Number(aujourdHui.slice(5, 7)))
@@ -57,7 +72,9 @@ export default function IadePlanning() {
     const { debut, fin } = bornesDuMois(annee, mois)
     Promise.all([
       chargerMois(annee, mois), chargerDerniereMaj(),
-      chargerRemplacantsPourvus(debut, fin), chargerCreneauxPeriode(debut, fin),
+      chargerRemplacantsPourvus(debut, fin),
+      // Requête inutile pour un IADE : la RLS ne lui rendrait rien de toute façon.
+      voitCreneaux ? chargerCreneauxPeriode(debut, fin) : Promise.resolve([]),
     ])
       .then(([d, m, r, c]) => {
         if (!vivant) return
@@ -68,7 +85,7 @@ export default function IadePlanning() {
         if (vivant) setEchec({ annee, mois, message: e.message || 'Chargement impossible.' })
       })
     return () => { vivant = false }
-  }, [annee, mois])
+  }, [annee, mois, voitCreneaux])
 
   const aJour = donnees.annee === annee && donnees.mois === mois
   const erreur = echec && echec.annee === annee && echec.mois === mois ? echec.message : null
@@ -200,7 +217,9 @@ export default function IadePlanning() {
                   <th key={nom} colSpan={2} style={{ ...enTete, fontSize: 12 }}>{nom}</th>
                 ))}
                 <th rowSpan={2} style={{ ...enTete, minWidth: 130 }}>Remplaçants</th>
-                <th rowSpan={2} style={{ ...enTete, minWidth: 140 }}>Créneaux en moins</th>
+                {voitCreneaux && (
+                  <th rowSpan={2} style={{ ...enTete, minWidth: 140 }}>Créneaux en moins</th>
+                )}
               </tr>
               <tr>
                 {colonnes.map(nom => (
@@ -300,39 +319,42 @@ export default function IadePlanning() {
                         Bloc B : un compte, « −2 salles le matin », parce qu'un
                         opérateur = une salle et que c'est le nombre qui sert. Les
                         noms restent dessous, en petit. Bloc A : la salle nommée,
-                        journée entière en rouge, demi-journée en brun. */}
-                    <td style={{
-                      ...cellule, fontSize: 10, color: 'var(--color-text-secondary)',
-                      textAlign: 'left', padding: '2px 6px',
-                    }}>
-                      {(() => {
-                        const duJour = creneauxParJour.get(iso) ?? []
-                        const bilan = bilanBlocB(duJour)
-                        const blocA = duJour.filter(c => c.secteur !== 'B')
-                        return (
-                          <>
-                            {bilan.lignes.length > 0 && (
-                              <div style={{ lineHeight: 1.3 }}>
-                                {segmentsBilanB(bilan).map(s => (
-                                  <div key={s} style={{ color: COULEUR_CONGE, fontWeight: 700, fontSize: 11 }}>{s}</div>
-                                ))}
-                                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 9 }}>
-                                  Bloc B · {bilan.lignes.map(c => c.absent).join(', ')}
+                        journée entière en rouge, demi-journée en brun.
+                        Colonne absente pour un compte IADE (cf. en-tête du fichier). */}
+                    {voitCreneaux && (
+                      <td style={{
+                        ...cellule, fontSize: 10, color: 'var(--color-text-secondary)',
+                        textAlign: 'left', padding: '2px 6px',
+                      }}>
+                        {(() => {
+                          const duJour = creneauxParJour.get(iso) ?? []
+                          const bilan = bilanBlocB(duJour)
+                          const blocA = duJour.filter(c => c.secteur !== 'B')
+                          return (
+                            <>
+                              {bilan.lignes.length > 0 && (
+                                <div style={{ lineHeight: 1.3 }}>
+                                  {segmentsBilanB(bilan).map(s => (
+                                    <div key={s} style={{ color: COULEUR_CONGE, fontWeight: 700, fontSize: 11 }}>{s}</div>
+                                  ))}
+                                  <div style={{ color: 'var(--color-text-tertiary)', fontSize: 9 }}>
+                                    Bloc B · {bilan.lignes.map(c => c.absent).join(', ')}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                            {blocA.map(c => (
-                              <div key={`${c.moment}-${c.salle}`} style={{
-                                color: c.moment === 'journee' ? COULEUR_CONGE : '#9A5B12',
-                                fontWeight: 600, lineHeight: 1.3,
-                              }}>
-                                {resumeCreneau(c)}
-                              </div>
-                            ))}
-                          </>
-                        )
-                      })()}
-                    </td>
+                              )}
+                              {blocA.map(c => (
+                                <div key={`${c.moment}-${c.salle}`} style={{
+                                  color: c.moment === 'journee' ? COULEUR_CONGE : '#9A5B12',
+                                  fontWeight: 600, lineHeight: 1.3,
+                                }}>
+                                  {resumeCreneau(c)}
+                                </div>
+                              ))}
+                            </>
+                          )
+                        })()}
+                      </td>
+                    )}
                     </tr>
                   </Fragment>
                 )

@@ -122,12 +122,17 @@ revoke execute on function public.iade_creneaux_fermes_trace() from public, anon
 
 alter table public.iade_creneaux_fermes enable row level security;
 
--- Lecture : tout le monde dans l'application. L'information figure dans le
--- planning que les agents et les associés consultent.
+-- Lecture : les associés et la gestion. PAS LES IADE — resserré le 2026-09-03.
+-- Les salles qui ne tournent pas sont une donnée d'organisation du cabinet, pas le
+-- planning d'un salarié (décision de Mehdi). Ce verrou est le vrai : masquer la
+-- colonne dans l'écran ne cache rien, l'API REST répondrait quand même à un compte
+-- IADE qui interroge la table directement.
+-- `peut_gerer_iade()` en plus d'`acces_cabinet()` : qui écrit doit pouvoir relire,
+-- et un gestionnaire IADE n'est pas nécessairement soumis à l'AAL2.
 drop policy if exists iade_creneaux_fermes_select on public.iade_creneaux_fermes;
 create policy iade_creneaux_fermes_select
   on public.iade_creneaux_fermes for select
-  using ( public.is_iade() or public.acces_cabinet() );
+  using ( public.acces_cabinet() or public.peut_gerer_iade() );
 
 -- Écriture : la gestion IADE seule.
 drop policy if exists iade_creneaux_fermes_insert on public.iade_creneaux_fermes;
