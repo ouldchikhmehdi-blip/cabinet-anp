@@ -84,6 +84,41 @@ export function texteCase(c) {
   return { haut: c.matin || c.apres_midi || '', bas: '', pleine: true }
 }
 
+// Poste lu dans le libellé d'une demi-journée : « 13h-18h B » → 'B'.
+//
+// Même ordre de détection que `detect_poste()` dans convertir_mois.py, le script
+// qui peint le fichier Excel : les deux doivent lire le fichier de la même façon,
+// sinon le dashboard et la Dropbox se contrediraient sur la couleur d'une case.
+export function posteDepuisTexte(texte) {
+  const u = (texte ?? '').toUpperCase()
+  if (!u.trim()) return null
+  if (u.includes('CPRE')) return 'CPRE'
+  if (u.includes('VIS')) return 'VISC'
+  if (u.includes('RENFOR')) return 'RENFORT'
+  if (u.startsWith('OFF')) return 'OFF'
+  if (/\bA\b/.test(u)) return 'A'
+  if (/\bB\b/.test(u)) return 'B'
+  return null
+}
+
+// Les moitiés colorées d'une case : une seule pour une journée pleine, deux pour
+// une journée coupée.
+//
+// Une journée coupée porte souvent DEUX postes différents — « CPRE » le matin,
+// « 13h-18h B » l'après-midi. Le miroir n'en retient qu'un (`poste`, celui du
+// matin), alors que le fichier Excel peint bien deux cellules de deux couleurs.
+// On relit donc le poste de chaque moitié dans son propre libellé, sans quoi le
+// vendredi s'affiche violet CPRE toute la journée alors que l'après-midi est au
+// Bloc B — et le dashboard contredit la Dropbox.
+export function moitiesCase(c) {
+  const t = texteCase(c)
+  if (t.pleine) return [{ texte: t.haut, poste: posteDepuisTexte(t.haut) ?? c?.poste ?? null }]
+  return [
+    { texte: t.haut, poste: posteDepuisTexte(t.haut) },
+    { texte: t.bas, poste: posteDepuisTexte(t.bas) },
+  ]
+}
+
 // La note d'une case dit l'une des deux seules choses qui comptent en plus du
 // poste : la personne est en congé, ou elle fait des heures supplémentaires.
 // Le fichier Excel les écrit à sa façon (« Congé », « +10h », « HS ») ; on les

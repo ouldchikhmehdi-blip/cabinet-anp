@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   couleurPoste, decrire, bornesDuMois, colonnesDuMois,
   indexerParJour, texteCase, semaineISO, natureNote, libelleNote,
+  posteDepuisTexte, moitiesCase,
 } from './iadePlanning'
 
 const c = (jour, iade, rang, extra = {}) => ({
@@ -71,6 +72,51 @@ describe('contenu d\'une case', () => {
 
   it('reste vide sans case', () => {
     expect(texteCase(undefined).haut).toBe('')
+  })
+})
+
+describe('poste lu dans le libellé', () => {
+  it('reconnaît les postes tels que le fichier les écrit', () => {
+    expect(posteDepuisTexte('13h-18h B')).toBe('B')
+    expect(posteDepuisTexte('7h30-17h30 A')).toBe('A')
+    expect(posteDepuisTexte('CPRE')).toBe('CPRE')
+    expect(posteDepuisTexte('8h-19h Viscérale')).toBe('VISC')
+    expect(posteDepuisTexte('13-18h Renfort A/B')).toBe('RENFORT')
+    expect(posteDepuisTexte('OFF')).toBe('OFF')
+  })
+
+  it('ne devine rien sur un libellé muet', () => {
+    expect(posteDepuisTexte('')).toBe(null)
+    expect(posteDepuisTexte(null)).toBe(null)
+    expect(posteDepuisTexte('8h-18h')).toBe(null)
+  })
+
+  it('ne prend pas le A ou le B d\'un mot pour un poste', () => {
+    expect(posteDepuisTexte('Astreinte')).toBe(null)
+  })
+})
+
+describe('moitiés colorées d\'une case', () => {
+  it('donne deux postes à une journée coupée — le cas du vendredi CPRE puis Bloc B', () => {
+    expect(moitiesCase({ kind: 'split', matin: 'CPRE', apres_midi: '13h-18h B', poste: 'CPRE' }))
+      .toEqual([
+        { texte: 'CPRE', poste: 'CPRE' },
+        { texte: '13h-18h B', poste: 'B' },
+      ])
+  })
+
+  it('ne fait qu\'une moitié sur une journée pleine', () => {
+    expect(moitiesCase({ kind: 'full', matin: '8h-18h B', apres_midi: '', poste: 'B' }))
+      .toEqual([{ texte: '8h-18h B', poste: 'B' }])
+  })
+
+  it('garde le poste du miroir quand le libellé ne le dit pas', () => {
+    expect(moitiesCase({ kind: 'off', matin: '', apres_midi: '', poste: 'OFF' }))
+      .toEqual([{ texte: 'OFF', poste: 'OFF' }])
+  })
+
+  it('reste muette sans case', () => {
+    expect(moitiesCase(undefined)).toEqual([{ texte: '', poste: null }])
   })
 })
 

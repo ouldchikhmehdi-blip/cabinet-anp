@@ -22,7 +22,7 @@ import { chargerCreneauxPeriode } from '../utils/iadeCreneauxApi'
 import { indexerParJour as indexerCreneaux, resume as resumeCreneau } from '../utils/iadeCreneaux'
 import {
   POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
-  couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, texteCase,
+  couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, moitiesCase,
   semaineISO, natureNote, libelleNote,
 } from '../utils/iadePlanning'
 import { moisAnneeFR } from '../utils/calendrier'
@@ -237,19 +237,36 @@ export default function IadePlanning() {
                     </td>
                     {colonnes.map(nom => {
                       const c = ligne.cases.get(nom)
-                      const t = texteCase(c)
-                      const fond = couleurPoste(c?.poste)
+                      const moities = moitiesCase(c)
                       const nature = natureNote(c?.note)
                       return (
                         <Fragment key={nom}>
                           {/* Horaires : le poste reste intact, même en congé —
-                              c'est celui que le remplaçant vient couvrir. */}
-                          <td style={{
-                            ...cellule, background: fond ?? 'transparent',
-                            color: fond ? '#fff' : 'var(--color-text-secondary)',
-                            fontWeight: fond ? 600 : 400,
-                          }}>
-                            {t.haut}{t.bas && <><br />{t.bas}</>}
+                              c'est celui que le remplaçant vient couvrir.
+                              Une journée coupée porte DEUX bandes de couleur, une
+                              par demi-journée : le vendredi « CPRE le matin, Bloc B
+                              l'après-midi » doit se lire d'un coup d'œil, comme
+                              dans le fichier Excel qui peint deux cellules. */}
+                          <td style={{ ...cellule, padding: 0 }}>
+                            <div style={{
+                              display: 'flex', flexDirection: 'column',
+                              height: '100%', minHeight: 34,
+                            }}>
+                              {moities.map((m, k) => {
+                                const fond = couleurPoste(m.poste)
+                                return (
+                                  <div key={k} style={{
+                                    flex: 1, display: 'flex', alignItems: 'center',
+                                    justifyContent: 'center', padding: '1px 3px',
+                                    background: fond ?? 'transparent',
+                                    color: fond ? '#fff' : 'var(--color-text-secondary)',
+                                    fontWeight: fond ? 600 : 400,
+                                  }}>
+                                    {m.texte}
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </td>
                           <td style={celluleNote(nature)}>
                             {nature ? libelleNote(c.note) : ''}
