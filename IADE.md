@@ -1009,6 +1009,14 @@ semaine) pour le bloc A et les opérateurs hors trame ; sinon la valeur du champ
 En cas d'égalité dans l'historique, **rien n'est proposé** : une case vide se remarque,
 une case fausse non.
 
+**La trame décrit le BLOC B, et rien d'autre.** La liste des opérateurs proposés à la
+frappe suit donc le **bloc sélectionné** : au bloc B, les 14 de la trame plus ceux déjà
+saisis en B ; au bloc A, uniquement ceux déjà saisis en A. Proposer un opérateur du
+mauvais bloc invite à la faute de frappe qu'on cherche à éviter, et une absence rangée
+dans le mauvais bloc fausse le compte des salles. Pour la même raison, `momentsDuLot()`
+n'interroge la trame que si le bloc est B (`{ trame: false }` sinon) : un homonyme du
+bloc A n'a pas à hériter du planning d'endoscopie.
+
 > L'historique valide la trame : avant de la recevoir, la déduction statistique sur les
 > 49 absences déjà saisies retrouvait **exactement** les habitudes des 8 opérateurs
 > présents dans les deux sources.

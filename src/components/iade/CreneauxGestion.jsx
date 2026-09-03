@@ -77,22 +77,34 @@ export default function CreneauxGestion({ annee }) {
       cleCreneau(a).localeCompare(cleCreneau(b), 'fr'))
   }, [creneaux, portee, debut, fin])
 
-  // Proposés à la frappe : les 14 de la trame du bloc B ET ceux déjà saisis
-  // ailleurs (bloc A, remplaçants). La trame d'abord : c'est l'orthographe de
-  // référence, et elle contient des opérateurs jamais encore absents.
+  // Proposés à la frappe : CEUX DU BLOC CHOISI, et eux seuls. Un opérateur du
+  // bloc A n'a rien à faire dans la liste du bloc B — le proposer invite à la
+  // faute de frappe qu'on cherche justement à éviter, et une absence rangée dans
+  // le mauvais bloc fausse le compte des salles.
+  // Au bloc B, les 14 de la trame d'abord : c'est l'orthographe de référence, et
+  // elle contient des opérateurs jamais encore absents. Le bloc A n'a pas de
+  // trame : seuls ceux déjà saisis y sont proposés.
   const operateurs = useMemo(() => {
+    const duBloc = creneaux.filter(c => (c.secteur ?? 'A') === saisie.secteur)
+    const source = saisie.secteur === 'B'
+      ? [...operateursTrame(), ...operateursConnus(duBloc)]
+      : operateursConnus(duBloc)
     const vus = new Map()
-    for (const n of [...operateursTrame(), ...operateursConnus(creneaux)]) {
+    for (const n of source) {
       const cle = n.trim().toLowerCase()
       if (!vus.has(cle)) vus.set(cle, n.trim())
     }
     return [...vus.values()].sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [creneaux])
+  }, [creneaux, saisie.secteur])
   // Ce qu'on a retenu des opérateurs : quand ils opèrent, par jour de la semaine.
   const habs = useMemo(() => habitudes(creneaux), [creneaux])
   // Ce qu'on montre de l'opérateur : sa semaine type SELON LA TRAME si elle le
   // connaît, sinon ce que l'historique de ses absences laisse deviner.
-  const semaine = useMemo(() => semaineType(saisie.absent), [saisie.absent])
+  // La trame décrit le BLOC B : au bloc A, elle n'a rien à dire.
+  const semaine = useMemo(
+    () => saisie.secteur === 'B' ? semaineType(saisie.absent) : [],
+    [saisie.secteur, saisie.absent]
+  )
   const habOperateur = useMemo(
     () => semaine.length > 0 ? [] : habitudesOperateur(habs, saisie.absent),
     [semaine, habs, saisie.absent]
@@ -101,9 +113,9 @@ export default function CreneauxGestion({ annee }) {
   // c'est celui du champ « Moment », le même partout.
   const momentsLot = useMemo(
     () => regleMoment === AUTO
-      ? momentsDuLot(habs, saisie.absent, saisie.jours, saisie.moment)
+      ? momentsDuLot(habs, saisie.absent, saisie.jours, saisie.moment, { trame: saisie.secteur === 'B' })
       : new Map(saisie.jours.map(j => [j, { moment: saisie.moment, source: 'choisi', n: 0, total: 0 }])),
-    [regleMoment, habs, saisie.absent, saisie.jours, saisie.moment]
+    [regleMoment, habs, saisie.absent, saisie.jours, saisie.moment, saisie.secteur]
   )
   const panache = useMemo(() => lotPanache(momentsLot), [momentsLot])
   const deduits = useMemo(

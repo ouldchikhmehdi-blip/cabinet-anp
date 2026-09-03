@@ -363,10 +363,12 @@ export function momentHabituel(index, absent, jourIso) {
 //   2. l'historique des absences, pour qui n'y figure pas (le bloc A, un
 //      remplaçant, un opérateur arrivé depuis) ;
 //   3. la valeur du champ, faute de mieux.
-export function momentsDuLot(index, absent, jours = [], defaut = 'journee') {
+// `trame: false` pour le bloc A : la trame décrit le BLOC B seul. Un opérateur
+// homonyme y ferait pré-remplir un moment qui n'a rien à voir.
+export function momentsDuLot(index, absent, jours = [], defaut = 'journee', { trame: avecTrame = true } = {}) {
   const out = new Map()
   for (const iso of jours) {
-    const trame = momentSelonTrame(absent, iso)
+    const trame = avecTrame ? momentSelonTrame(absent, iso) : null
     const trouve = trame
       ? { moment: trame.moment, source: 'trame', salles: trame.salles, n: 0, total: 0 }
       : momentHabituel(index, absent, iso)

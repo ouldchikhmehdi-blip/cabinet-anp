@@ -4,6 +4,7 @@ import {
   operateursConnus, compterDemiJournees, verifierCreneau,
   bilanBlocB, segmentsBilanB, texteBilanB,
   basculerJour, groupesConsecutifs, resumeJours, verifierLot, MAX_JOURS_LOT,
+  habitudes, momentsDuLot,
 } from './iadeCreneaux'
 
 // Dans les deux blocs, une ligne = un opérateur absent, un jour, un moment.
@@ -258,5 +259,30 @@ describe('bloc B — le poids des salles vient de la trame', () => {
     const bilan = bilanBlocB([b('2026-09-09', 'journee', 'Fedkovic')])
     expect(bilan).toMatchObject({ matin: 2, apresMidi: 0 })
     expect(segmentsBilanB(bilan)).toEqual(['−2 salles le matin'])
+  })
+})
+
+describe('le moment déduit — la trame ne vaut que pour le bloc B', () => {
+  const vide = habitudes([])
+
+  it('pré-remplit depuis la trame au bloc B', () => {
+    const m = momentsDuLot(vide, 'Espérance', ['2026-09-07', '2026-09-10'])
+    expect(m.get('2026-09-07')).toMatchObject({ moment: 'matin', source: 'trame' })
+    expect(m.get('2026-09-10')).toMatchObject({ moment: 'apres_midi', source: 'trame' })
+  })
+
+  it('ignore la trame au bloc A, même pour un nom qu\'elle connaît', () => {
+    // Un homonyme du bloc A ne doit pas hériter du planning d'endoscopie.
+    const m = momentsDuLot(vide, 'Espérance', ['2026-09-07'], 'journee', { trame: false })
+    expect(m.get('2026-09-07')).toMatchObject({ moment: 'journee', source: 'choisi' })
+  })
+
+  it('retombe sur l\'historique quand la trame ne sait pas', () => {
+    const hist = habitudes([
+      b('2026-09-07', 'matin', 'Dr Inconnu'),
+      b('2026-09-14', 'matin', 'Dr Inconnu'),
+    ])
+    const m = momentsDuLot(hist, 'Dr Inconnu', ['2026-09-21'])
+    expect(m.get('2026-09-21')).toMatchObject({ moment: 'matin', source: 'jour' })
   })
 })
