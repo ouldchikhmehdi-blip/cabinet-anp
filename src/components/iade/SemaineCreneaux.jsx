@@ -47,6 +47,14 @@ export default function SemaineCreneaux({ creneaux, lundi, onChoisirLundi }) {
             Cette semaine
           </button>
         )}
+        {/* Aller droit à la semaine voulue : on choisit n'importe quel jour, la
+            vue se cale sur sa semaine. Une flèche par semaine, c'est long. */}
+        <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          Aller à la semaine du
+          <input type="date" value={lundi}
+                 onChange={e => { if (e.target.value) onChoisirLundi(lundiDe(e.target.value)) }}
+                 style={{ ...boutonNav, padding: '3px 8px', colorScheme: 'light dark' }} />
+        </label>
         <span style={{ marginLeft: 'auto', fontSize: 12, color: demiJourneesB > 0 ? ROUGE : 'var(--color-text-tertiary)', fontWeight: demiJourneesB > 0 ? 600 : 400 }}>
           {demiJourneesB > 0
             ? `Bloc B : −${demiJourneesB} demi-journée${demiJourneesB > 1 ? 's' : ''} de salle cette semaine`

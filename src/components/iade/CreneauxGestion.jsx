@@ -476,14 +476,21 @@ export default function CreneauxGestion({ annee }) {
 
       {/* ── Liste (repliable) ── */}
       <div style={carte}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: listeOuverte ? 12 : 0 }}>
-          <button type="button" onClick={() => setListeOuverte(o => !o)}
-                  aria-expanded={listeOuverte}
-                  style={{ ...titre, marginBottom: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        {/* Tout le bandeau se clique pour déplier ou replier ; les commandes qu'il
+            porte (le sélecteur de période) arrêtent le clic pour ne pas basculer
+            la liste quand on change de mois. */}
+        <div role="button" tabIndex={0} aria-expanded={listeOuverte}
+             onClick={() => setListeOuverte(o => !o)}
+             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setListeOuverte(o => !o) } }}
+             style={{
+               display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+               marginBottom: listeOuverte ? 12 : 0, cursor: 'pointer', userSelect: 'none',
+             }}>
+          <span style={{ ...titre, marginBottom: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <span style={{ display: 'inline-block', transition: 'transform .15s', transform: listeOuverte ? 'rotate(90deg)' : 'none', fontSize: 12 }}>▶</span>
             Créneaux en moins
-          </button>
-          <label style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          </span>
+          <label style={{ fontSize: 13, color: 'var(--color-text-secondary)' }} onClick={e => e.stopPropagation()}>
             Voir&nbsp;:
             <select value={portee} onChange={e => setPortee(e.target.value)} style={{ ...champ, marginLeft: 8 }}>
               <option value="mois">{MOIS_FR[mois]} {annee}</option>
@@ -495,12 +502,9 @@ export default function CreneauxGestion({ annee }) {
               ? 'Rien de signalé'
               : `${affiches.length} ligne(s) sur ${parJour.size} jour(s) — bloc B : ${demiB} demi-journée(s) de salle en moins · bloc A : ${demiA}`}
           </span>
-          {!listeOuverte && (
-            <button type="button" onClick={() => setListeOuverte(true)}
-                    style={{ ...bouton('border'), marginLeft: 'auto', color: 'var(--color-text-secondary)' }}>
-              Déplier la liste
-            </button>
-          )}
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+            {listeOuverte ? 'Replier' : 'Déplier'}
+          </span>
         </div>
 
         {!listeOuverte ? null : charge ? (
