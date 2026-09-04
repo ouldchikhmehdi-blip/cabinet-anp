@@ -22,12 +22,13 @@ import {
   MOMENTS, SECTEURS, momentCourt, libelleSecteur, cleCreneau, indexerParJour,
   operateursConnus, compterDemiJournees, resume,
   verifierCreneau, verifierLot, basculerJour, resumeJours,
-  habitudes, momentsDuLot, lotPanache, habitudesOperateur,
+  habitudes, momentsDuLot, lotPanache, habitudesOperateur, lundiDe,
 } from '../../utils/iadeCreneaux'
 import { operateursTrame, semaineType, normNom } from '../../utils/iadeBlocB'
 import { formatJour, bornesMois } from '../../utils/iadeConges'
 import { MOIS_FR } from '../../utils/calendrier'
 import CalendrierCreneaux from './CalendrierCreneaux'
+import SemaineCreneaux from './SemaineCreneaux'
 
 const VIDE = { jours: [], secteur: 'A', moment: 'journee', absent: '', note: '' }
 
@@ -49,6 +50,10 @@ export default function CreneauxGestion({ annee }) {
   const [portee, setPortee] = useState('mois')
   // 'auto' : chaque jour prend le moment habituel de l'opérateur CE jour-là.
   const [regleMoment, setRegleMoment] = useState(AUTO)
+  // La liste ligne par ligne se replie : une fois la saisie faite, c'est la vue
+  // par semaine qu'on lit, pas quarante lignes.
+  const [listeOuverte, setListeOuverte] = useState(false)
+  const [lundi, setLundi] = useState(() => lundiDe(new Date().toISOString().slice(0, 10)))
 
   const charger = useCallback(async () => {
     setCharge(true)
@@ -469,10 +474,15 @@ export default function CreneauxGestion({ annee }) {
         </div>
       </div>
 
-      {/* ── Liste ── */}
+      {/* ── Liste (repliable) ── */}
       <div style={carte}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <div style={{ ...titre, marginBottom: 0 }}>Créneaux en moins</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: listeOuverte ? 12 : 0 }}>
+          <button type="button" onClick={() => setListeOuverte(o => !o)}
+                  aria-expanded={listeOuverte}
+                  style={{ ...titre, marginBottom: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ display: 'inline-block', transition: 'transform .15s', transform: listeOuverte ? 'rotate(90deg)' : 'none', fontSize: 12 }}>▶</span>
+            Créneaux en moins
+          </button>
           <label style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
             Voir&nbsp;:
             <select value={portee} onChange={e => setPortee(e.target.value)} style={{ ...champ, marginLeft: 8 }}>
@@ -485,9 +495,15 @@ export default function CreneauxGestion({ annee }) {
               ? 'Rien de signalé'
               : `${affiches.length} ligne(s) sur ${parJour.size} jour(s) — bloc B : ${demiB} demi-journée(s) de salle en moins · bloc A : ${demiA}`}
           </span>
+          {!listeOuverte && (
+            <button type="button" onClick={() => setListeOuverte(true)}
+                    style={{ ...bouton('border'), marginLeft: 'auto', color: 'var(--color-text-secondary)' }}>
+              Déplier la liste
+            </button>
+          )}
         </div>
 
-        {charge ? (
+        {!listeOuverte ? null : charge ? (
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Chargement…</div>
         ) : affiches.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
@@ -524,6 +540,14 @@ export default function CreneauxGestion({ annee }) {
             </table>
           </div>
         )}
+      </div>
+
+      {/* ── La semaine d'un coup d'œil ── */}
+      <div style={carte}>
+        <div style={titre}>La semaine</div>
+        {charge
+          ? <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Chargement…</div>
+          : <SemaineCreneaux creneaux={creneaux} lundi={lundi} onChoisirLundi={setLundi} />}
       </div>
     </div>
   )

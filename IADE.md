@@ -952,7 +952,8 @@ le matin et une en moins l'après-midi, même tenues par deux personnes différe
 | Logique pure | `src/utils/iadeCreneaux.js` | bilan du bloc B (`bilanBlocB`, `segmentsBilanB`), tri d'un jour, opérateurs déjà saisis, compte des demi-journées, sélection multiple (`basculerJour`, `resumeJours`), contrôles de saisie (`verifierCreneau`, `verifierLot`) — testée |
 | Accès Supabase | `src/utils/iadeCreneauxApi.js` | lecture par année ou par période, ajout d'un lot (`ajouterCreneaux`), correction, retrait |
 | Calendrier | `src/components/iade/CalendrierCreneaux.jsx` | sélection multiple ; les jours déjà fermés sont teintés et comptés |
-| Écran | `src/components/iade/CreneauxGestion.jsx` | saisie par lot, liste du mois ou de l'année, correction et retrait ligne par ligne |
+| Écran | `src/components/iade/CreneauxGestion.jsx` | saisie par lot, liste du mois ou de l'année (repliable, repliée par défaut), correction et retrait ligne par ligne |
+| Semaine | `src/components/iade/SemaineCreneaux.jsx` | la semaine d'un coup d'œil : cinq colonnes lundi → vendredi, qui est absent et combien de salles en moins au bloc B (`bilanSemaine`) ; navigation de semaine en semaine, « Cette semaine » pour revenir |
 
 - **Les contrôles refusent l'incohérent** : le même opérateur deux fois sur le même moment,
   une journée entière quand une demi-journée est déjà posée, une demi-journée déjà comprise

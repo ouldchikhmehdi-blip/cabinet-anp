@@ -131,6 +131,49 @@ export function texteBilanB(bilan) {
   return segmentsBilanB(bilan).join(' / ')
 }
 
+// ── Vue d'une semaine ────────────────────────────────────────────────────────
+// La gestion raisonne à la semaine : « lundi il me manque deux salles le matin,
+// jeudi une l'après-midi ». Cinq jours ouvrés, et pour chacun qui est absent et
+// combien de salles en moins au bloc B.
+
+const pad2 = (n) => String(n).padStart(2, '0')
+
+function isoDe(d) {
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
+}
+
+// Le lundi de la semaine qui contient ce jour (un dimanche appartient à la
+// semaine qui s'achève, pas à celle qui commence).
+export function lundiDe(iso) {
+  const [a, m, j] = iso.split('-').map(Number)
+  const d = new Date(Date.UTC(a, m - 1, j))
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+  return isoDe(d)
+}
+
+export function decalerJours(iso, n) {
+  const [a, m, j] = iso.split('-').map(Number)
+  const d = new Date(Date.UTC(a, m - 1, j + n))
+  return isoDe(d)
+}
+
+// Du lundi au vendredi.
+export function joursOuvres(lundi) {
+  return [0, 1, 2, 3, 4].map(i => decalerJours(lundi, i))
+}
+
+// → [{ iso, bilanB, blocA }] pour les cinq jours, plus le total de la semaine
+// en demi-journées de salle perdues au bloc B (une journée en vaut deux).
+export function bilanSemaine(creneaux, lundi) {
+  const index = indexerParJour(creneaux)
+  const jours = joursOuvres(lundi).map(iso => {
+    const duJour = index.get(iso) ?? []
+    return { iso, bilanB: bilanBlocB(duJour), blocA: duJour.filter(c => c.secteur !== 'B') }
+  })
+  const demiJourneesB = jours.reduce((n, j) => n + j.bilanB.matin + j.bilanB.apresMidi, 0)
+  return { jours, demiJourneesB }
+}
+
 // ── Aides à la saisie ────────────────────────────────────────────────────────
 
 // Les opérateurs déjà nommés, tous blocs confondus, pour les proposer à la frappe :

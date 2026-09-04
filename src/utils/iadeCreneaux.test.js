@@ -5,6 +5,7 @@ import {
   bilanBlocB, segmentsBilanB, texteBilanB,
   basculerJour, groupesConsecutifs, resumeJours, verifierLot, MAX_JOURS_LOT,
   habitudes, momentsDuLot,
+  lundiDe, decalerJours, joursOuvres, bilanSemaine,
 } from './iadeCreneaux'
 
 // Dans les deux blocs, une ligne = un opérateur absent, un jour, un moment.
@@ -88,6 +89,34 @@ describe('bilan du bloc B — combien de salles en moins', () => {
     expect(bilanBlocB([a('2026-10-20', 'matin', 'Dr Cpre')]).lignes).toEqual([])
     expect(segmentsBilanB(bilanBlocB([]))).toEqual([])
     expect(texteBilanB(null)).toBe('')
+  })
+})
+
+describe('vue d\'une semaine', () => {
+  it('trouve le lundi, un dimanche compris dans la semaine qui s\'achève', () => {
+    expect(lundiDe('2026-10-14')).toBe('2026-10-12')   // mercredi
+    expect(lundiDe('2026-10-12')).toBe('2026-10-12')   // lundi
+    expect(lundiDe('2026-10-18')).toBe('2026-10-12')   // dimanche
+    expect(lundiDe('2026-11-02')).toBe('2026-11-02')
+  })
+
+  it('décale sans dérive de fuseau, changement de mois compris', () => {
+    expect(decalerJours('2026-10-30', 3)).toBe('2026-11-02')
+    expect(decalerJours('2026-11-02', -7)).toBe('2026-10-26')
+    expect(joursOuvres('2026-10-12')).toEqual(['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'])
+  })
+
+  it('donne pour chaque jour qui manque et combien de salles en moins au bloc B', () => {
+    const { jours, demiJourneesB } = bilanSemaine([
+      b('2026-10-12', 'matin', 'Espérance'),
+      b('2026-10-13', 'matin', 'Espérance'),
+      a('2026-10-16', 'journee', 'dran'),
+    ], '2026-10-12')
+    expect(jours.map(j => j.iso)).toEqual(joursOuvres('2026-10-12'))
+    expect(jours[0].bilanB.lignes.map(c => c.absent)).toEqual(['Espérance'])
+    expect(jours[4].blocA.map(c => c.absent)).toEqual(['dran'])
+    expect(jours[4].bilanB.lignes).toEqual([])
+    expect(demiJourneesB).toBe(2)
   })
 })
 
