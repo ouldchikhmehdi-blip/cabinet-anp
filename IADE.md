@@ -794,6 +794,11 @@ de 5h du mini PC (`publier-dropbox.sh`).
   le fichier), couleurs des postes identiques à celles de l'Excel, jours de vacances
   scolaires en jaune, jour courant marqué d'un liseré à gauche. Un **espace vide sépare les
   semaines**, comme la ligne vide du fichier : sans elle, le mois se lit comme un seul bloc.
+- **Numéro de semaine ISO dans la case du lundi** (`S38`, en petit à droite de la date) —
+  ajouté le 2026-09-11 : le planning se discute par semaine, le numéro évite de les
+  recompter. Il se pose sur le **premier jour affiché de chaque semaine** : c'est le lundi
+  dans le cas courant, et le mercredi quand le mois commence un mercredi — sinon une
+  semaine entière s'afficherait sans numéro.
 - Sur les fonds jaunes, l'encre est **imposée en sombre** (`#2C2C2A`) : le jaune ne change
   pas avec le thème, le texte ne doit pas changer non plus — en mode sombre,
   `var(--color-text)` y devenait illisible.

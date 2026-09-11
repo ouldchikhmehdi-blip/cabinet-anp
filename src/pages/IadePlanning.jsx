@@ -163,6 +163,16 @@ export default function IadePlanning() {
     color: nature === 'conge' ? '#fff' : nature === 'hs' ? '#7A4A0B' : 'var(--color-text-tertiary)',
   })
 
+  // Numéro de semaine ISO, posé dans la case du lundi. Le fichier Excel se lit
+  // par semaine (« la S38 ») et les échanges de garde se disent comme ça : le
+  // numéro évite de recompter les lundis à chaque fois.
+  const badgeSemaine = (surJaune) => ({
+    fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
+    padding: '0 4px', borderRadius: 3, whiteSpace: 'nowrap',
+    border: '0.5px solid var(--color-border)',
+    color: surJaune ? ENCRE_SUR_JAUNE : 'var(--color-text-tertiary)',
+  })
+
   const vide = !chargement && !erreur && joursTries.length === 0
 
   return (
@@ -212,7 +222,7 @@ export default function IadePlanning() {
                 coiffe SA colonne d'horaires ET sa colonne « Congé / HS ». */}
             <thead>
               <tr>
-                <th rowSpan={2} style={{ ...enTete, minWidth: 92, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
+                <th rowSpan={2} style={{ ...enTete, minWidth: 116, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
                 {colonnes.map(nom => (
                   <th key={nom} colSpan={2} style={{ ...enTete, fontSize: 12 }}>{nom}</th>
                 ))}
@@ -235,6 +245,11 @@ export default function IadePlanning() {
                 const d = decrire(iso)
                 const ligne = index.get(iso)
                 const nouvelleSemaine = i > 0 && semaineISO(iso) !== semaineISO(joursTries[i - 1])
+                // Le numéro se pose sur le lundi. Quand le mois commence en
+                // milieu de semaine — ou qu'un lundi férié manque au fichier —
+                // il se pose sur le premier jour affiché de cette semaine :
+                // une semaine sans numéro obligerait à le recompter.
+                const premierDeLaSemaine = i === 0 || nouvelleSemaine
                 return (
                   <Fragment key={iso}>
                     {/* Respiration entre les semaines, comme la ligne vide du fichier Excel :
@@ -254,7 +269,14 @@ export default function IadePlanning() {
                       color: ligne.infos.vacances ? ENCRE_SUR_JAUNE : 'var(--color-text)',
                       boxShadow: iso === aujourdHui ? 'inset 3px 0 0 var(--color-primary)' : 'none',
                     }}>
-                      {d.court}
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                        <span>{d.court}</span>
+                        {premierDeLaSemaine && (
+                          <span title={`Semaine ${semaineISO(iso)}`} style={badgeSemaine(ligne.infos.vacances)}>
+                            S{semaineISO(iso)}
+                          </span>
+                        )}
+                      </span>
                     </td>
                     {colonnes.map(nom => {
                       const c = ligne.cases.get(nom)
