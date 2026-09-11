@@ -6,6 +6,14 @@
 - **2FA TOTP obligatoire** : code 6 chiffres via Google Authenticator, Authy, ou toute app TOTP. Requis pour chaque compte, à la création et à chaque connexion.
 - **Sessions sécurisées** : JWT signés par Supabase, renouvellement automatique, révocation immédiate sur désactivation.
 - **Liens d'invitation** : token 256 bits, haché en base, expiration 48h, usage unique, envoi via Gmail (SMTP).
+- **Le lien d'invitation prime sur toute session ouverte** (corrigé le 2026-09-11). La
+  condition dans `App.jsx` portait `inviteToken && !session` : sur un appareil où une
+  session traînait — poste partagé, téléphone prêté, test resté ouvert — le lien était
+  **ignoré en silence** et l'invité tombait sur l'écran de la session en place. Une IADE
+  s'est ainsi vu réclamer une **2FA dont elle est dispensée**, alors que son compte
+  n'existait même pas : ce qu'elle voyait était l'enrôlement TOTP de quelqu'un d'autre.
+  La personne invitée n'étant jamais celle qui est connectée, l'application **ferme
+  désormais la session en place** avant d'ouvrir l'écran d'invitation.
 - **Mot de passe oublié (libre-service)** : depuis l'écran de connexion, l'associé demande un lien de réinitialisation par e-mail (envoi **natif Supabase**, voir plus bas), clique le lien, définit un nouveau mot de passe, puis se reconnecte (mot de passe + son code 2FA habituel). Aucune intervention admin.
 - **Couche serveur** : les opérations sensibles (inviter, promouvoir, révoquer) passent par des fonctions Vercel `/api` avec la clé `service_role` — jamais exposée dans le front.
 - **Rôle en base** : champ `role` (`admin` / `user`) dans la table `profiles`, prêt pour les permissions fines à l'étape suivante.

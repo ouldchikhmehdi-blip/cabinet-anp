@@ -41,6 +41,24 @@ import './index.css'
 // page, mêmes données, en lecture seule des deux côtés.
 const PAGES_IADE = ['iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso', 'iade-planning']
 
+// Écran d'attente plein cadre — le même partout, pour qu'une transition ne
+// ressemble jamais à une page cassée.
+function EcranNeutre({ children }) {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'var(--color-bg)',
+      color: 'var(--color-text-secondary)',
+      fontSize: 14,
+    }}>
+      {children}
+    </div>
+  )
+}
+
 export default function App() {
   const { session, profile, aal, nextAal, loading, recovery, siegesPrets, profilCharge } = useAuth()
   // Onglet initial : lu depuis l'URL (?page=...) pour permettre l'ouverture
@@ -86,23 +104,27 @@ export default function App() {
   //   8. Session AAL2 → dashboard (ci-dessous)
 
   if (loading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--color-bg)',
-        color: 'var(--color-text-secondary)',
-        fontSize: 14,
-      }}>
-        Chargement…
-      </div>
-    )
+    return <EcranNeutre>Chargement…</EcranNeutre>
   }
 
-  // Invitation dans l'URL — afficher même si déjà connecté (lien partagé)
-  if (inviteToken && !session) {
+  // Invitation dans l'URL — elle passe AVANT tout le reste, session ouverte ou non.
+  //
+  // La condition portait « && !session », qui contredisait ce commentaire et la
+  // table des priorités ci-dessus : sur un appareil où une session traînait, le
+  // lien d'invitation était IGNORÉ EN SILENCE et l'invité tombait sur l'écran de
+  // la session en place — l'enrôlement 2FA, s'il s'agissait d'un associé sans
+  // TOTP. Une IADE s'est ainsi vu réclamer une 2FA dont elle est dispensée, sans
+  // que son compte existe (2026-09-11).
+  //
+  // La personne invitée n'est jamais celle qui est connectée : on ferme donc la
+  // session en place avant d'ouvrir l'écran d'invitation. Sinon la création du
+  // compte et le `signInWithPassword` qui suit se heurteraient à la session
+  // précédente, et on ne saurait plus qui est connecté.
+  if (inviteToken) {
+    if (session) {
+      supabase.auth.signOut()
+      return <EcranNeutre>Préparation de votre inscription…</EcranNeutre>
+    }
     return <AcceptInvitation token={inviteToken} />
   }
 
@@ -122,19 +144,7 @@ export default function App() {
     // dispensé de 2FA (il n'accède qu'à ses congés, et la base exige l'AAL2
     // pour tout le reste — cf. supabase/securite_aal2.sql).
     if (!profilCharge) {
-      return (
-        <div style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--color-bg)',
-          color: 'var(--color-text-secondary)',
-          fontSize: 14,
-        }}>
-          Chargement…
-        </div>
-      )
+      return <EcranNeutre>Chargement…</EcranNeutre>
     }
 
     if (!profile?.is_iade) {
