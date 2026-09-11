@@ -6,6 +6,19 @@
 - **2FA TOTP obligatoire** : code 6 chiffres via Google Authenticator, Authy, ou toute app TOTP. Requis pour chaque compte, à la création et à chaque connexion.
 - **Sessions sécurisées** : JWT signés par Supabase, renouvellement automatique, révocation immédiate sur désactivation.
 - **Liens d'invitation** : token 256 bits, haché en base, expiration 48h, usage unique, envoi via Gmail (SMTP).
+- **⚠️ Gmail ignore les points et le suffixe « + »** — `nellycantin@gmail.com`,
+  `nelly.cantin@gmail.com` et `nelly.cantin+sarm@gmail.com` sont **une seule boîte**.
+  L'invitation partie à l'une arrive donc bien à l'autre, mais `handle_new_user`
+  cherchait l'invitation par **égalité stricte** de l'adresse. Une IADE invitée à
+  « nellycantin@ » qui se connecte avec **Google** sous « nelly.cantin@ » ne trouvait
+  aucune invitation : compte créé `disabled`, **sans le drapeau `is_iade`**, donc
+  l'écran lui réclamait la 2FA dont les comptes IADE sont dispensés. Arrivé le
+  2026-09-11. L'appariement passe désormais par **`public.email_canonique()`**
+  (migration `invitations_appariement_gmail`). Les autres domaines restent stricts :
+  ailleurs le point est significatif (`a.b@orange.fr` ≠ `ab@orange.fr`).
+  La souplesse est sans risque — deux écritures de même forme canonique désignent la
+  même boîte chez Google ; s'emparer de l'invitation d'un tiers supposerait de lire
+  son courrier.
 - **Le lien d'invitation prime sur toute session ouverte** (corrigé le 2026-09-11). La
   condition dans `App.jsx` portait `inviteToken && !session` : sur un appareil où une
   session traînait — poste partagé, téléphone prêté, test resté ouvert — le lien était

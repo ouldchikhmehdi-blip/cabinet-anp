@@ -137,6 +137,40 @@ create policy iade_conges_delete_self
   using ( user_id = auth.uid() and statut = 'en_attente' and public.is_iade() );
 
 -- ---- 4. handle_new_user : l'invitation fait foi, quel que soit le mode de connexion ----
+-- ---- Forme canonique d'une adresse (ajouté le 2026-09-11) ----
+-- Gmail IGNORE LES POINTS et tout ce qui suit un « + » : nellycantin@gmail.com,
+-- nelly.cantin@gmail.com et nelly.cantin+sarm@gmail.com sont UNE SEULE boîte.
+-- L'invitation partie à l'une arrive donc à l'autre — mais l'appariement se
+-- faisait par égalité stricte. Une IADE invitée à « nellycantin@ » qui se
+-- connecte avec Google sous « nelly.cantin@ » ne trouvait aucune invitation :
+-- compte créé DISABLED, sans le drapeau IADE, donc l'écran lui réclamait une 2FA
+-- dont les comptes IADE sont dispensés. C'est arrivé le 2026-09-11.
+--
+-- La souplesse est sans risque : deux écritures qui se ramènent à la même forme
+-- canonique désignent la MÊME boîte chez Google. S'emparer de l'invitation d'un
+-- tiers supposerait déjà de lire son courrier. Les autres domaines restent
+-- stricts — ailleurs, le point est significatif (a.b@orange.fr ≠ ab@orange.fr).
+create or replace function public.email_canonique(adresse text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+           when d in ('gmail.com', 'googlemail.com')
+             then replace(split_part(l, '+', 1), '.', '') || '@gmail.com'
+           else l || '@' || d
+         end
+  from (select split_part(lower(btrim(adresse)), '@', 1) as l,
+               split_part(lower(btrim(adresse)), '@', 2) as d) x;
+$$;
+
+comment on function public.email_canonique(text) is
+  'Forme canonique d''une adresse pour retrouver une invitation. Chez Gmail, points et suffixe « + » sont ignorés : ils désignent la même boîte.';
+
+revoke all    on function public.email_canonique(text) from public, anon, authenticated;
+grant execute on function public.email_canonique(text) to authenticated;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -151,11 +185,13 @@ declare
   v_status public.user_status := 'disabled';
 begin
   -- Invitation la plus récente pour cette adresse (créée par /api/invite,
-  -- table écrite uniquement par le service_role).
+  -- table écrite uniquement par le service_role). L'appariement passe par la
+  -- forme canonique : chez Gmail, « nellycantin@ » et « nelly.cantin@ » sont la
+  -- même boîte, et l'invitation doit se retrouver dans les deux sens.
   select id, role, is_iade, nom_complet, expires_at, used_at
     into v_inv
     from public.invitations
-   where lower(email) = lower(new.email)
+   where public.email_canonique(email) = public.email_canonique(new.email)
    order by created_at desc
    limit 1;
 
