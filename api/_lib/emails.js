@@ -619,3 +619,107 @@ Le lien de validation reçu précédemment ne fonctionne plus.`
     text,
   }
 }
+
+// ── Planning IADE modifié depuis le dashboard ────────────────────────────────
+// Ajouté le 2026-09-16. La gestion corrige une case (poste, horaires) dans
+// l'onglet « Planning IADE » ; l'agent concerné reçoit ce message. Il dit la
+// nouvelle case ET l'ancienne : sans « avant », l'agent ne sait pas ce qui a
+// changé et relit tout son mois.
+
+// Une case en une ligne — même règle que resumeCase() côté front (iadePlanning.js).
+export function resumeCasePlanning(c) {
+  if (!c) return '—'
+  if (c.poste === 'OFF' || c.kind === 'off') return 'OFF'
+  const m = String(c.matin ?? '').replace(/\s+/g, ' ').trim()
+  const a = String(c.apres_midi ?? '').replace(/\s+/g, ' ').trim()
+  if (m && a) return `${m} / ${a}`
+  if (c.kind === 'matin' && m) return `${m} (matin)`
+  if (c.kind === 'aprem' && a) return `${a} (après-midi)`
+  return m || a || '—'
+}
+
+function jourLong(iso) {
+  const d = new Date(`${iso}T00:00:00`)
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+const echapperHtml = (s) => String(s ?? '').replace(/[&<>"']/g, ch => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+))
+
+// Liste des cases changées : [{ jour, apres, avant }] → { html, text }.
+function formaterCases(lignes) {
+  const tries = [...lignes].sort((a, b) => a.jour.localeCompare(b.jour))
+  const html = `<ul style="font-size:14px;line-height:1.8;color:#2c2c2a;padding-left:20px;margin:8px 0 0;">
+    ${tries.map(l => `<li>${jourLong(l.jour)} — <strong>${echapperHtml(l.apres)}</strong>
+      <span style="color:#5f5e5a;">(avant : ${echapperHtml(l.avant)})</span></li>`).join('')}
+  </ul>`
+  const text = tries.map(l => `- ${jourLong(l.jour)} — ${l.apres} (avant : ${l.avant})`).join('\n')
+  return { html, text, n: tries.length }
+}
+
+// Ce que l'agent doit savoir sur la suite : où c'est déjà visible, et quand le
+// fichier Dropbox suit. Des certitudes, pas des « normalement ».
+const SUITE_PLANNING = 'Votre onglet « Planning IADE » est déjà à jour, votre agenda synchronisé aussi. Le fichier Dropbox est mis à jour dans le quart d\'heure.'
+
+// A. Une ou plusieurs cases modifiées → e-mail à l'agent.
+export function emailPlanningModifie({ agentNom, parNom, rows, lien }) {
+  const lignes = rows.map(r => ({ jour: r.jour, apres: resumeCasePlanning(r), avant: resumeCasePlanning(r.avant) }))
+  const f = formaterCases(lignes)
+  const quand = jourSeul(rows[0]?.maj_le)
+  const dates = encadreDates([{ libelle: 'Modifié le', valeur: quand }, { libelle: 'Par', valeur: parNom }])
+  const objet = f.n === 1 ? `Votre planning a été modifié — ${jourLong(lignes[0].jour)}` : `Votre planning a été modifié — ${f.n} jours`
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`<strong>${echapperHtml(parNom)}</strong> vient de modifier votre planning :`)}
+    ${f.html}
+    ${dates.html}
+    ${bouton(lien, 'Ouvrir « Planning IADE »')}
+    ${p(SUITE_PLANNING, 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+${parNom} vient de modifier votre planning :
+${f.text}
+${dates.text}
+
+${SUITE_PLANNING}
+Ouvrez l'onglet « Planning IADE » du dashboard :
+${lien}`
+  return {
+    subject: objet,
+    html: coquille({ apercu: `${f.n} jour(s) de votre planning ont changé`, titre: 'Planning modifié', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// B. « Revenir au fichier » : la case reprend ce que le planning disait → e-mail à l'agent.
+export function emailPlanningRetour({ agentNom, parNom, rows, lien }) {
+  const lignes = rows.map(r => ({ jour: r.jour, apres: resumeCasePlanning(r.fichier), avant: resumeCasePlanning(r) }))
+  const f = formaterCases(lignes)
+  const quand = jourSeul(rows[0]?.maj_le)
+  const dates = encadreDates([{ libelle: 'Rétabli le', valeur: quand }, { libelle: 'Par', valeur: parNom }])
+  const objet = f.n === 1 ? `Votre planning est rétabli — ${jourLong(lignes[0].jour)}` : `Votre planning est rétabli — ${f.n} jours`
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`<strong>${echapperHtml(parNom)}</strong> a annulé une modification de votre planning. Votre planning redevient :`)}
+    ${f.html}
+    ${dates.html}
+    ${bouton(lien, 'Ouvrir « Planning IADE »')}
+    ${p(SUITE_PLANNING, 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+${parNom} a annulé une modification de votre planning. Votre planning redevient :
+${f.text}
+${dates.text}
+
+${SUITE_PLANNING}
+Ouvrez l'onglet « Planning IADE » du dashboard :
+${lien}`
+  return {
+    subject: objet,
+    html: coquille({ apercu: `${f.n} jour(s) de votre planning sont rétablis`, titre: 'Planning rétabli', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}

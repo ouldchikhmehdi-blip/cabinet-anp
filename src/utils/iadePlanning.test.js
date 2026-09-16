@@ -179,3 +179,114 @@ describe('couleurs', () => {
     expect(couleurPoste('INCONNU')).toBe(null)
   })
 })
+
+// ── Cases modifiées depuis le dashboard ──────────────────────────────────────
+import {
+  remplacerPoste, composerCase, formulaireDeCase, memeCase, appliquerModifs, resumeCase,
+} from './iadePlanning'
+
+describe('remplacerPoste', () => {
+  it('garde les horaires et change le poste, tel que le fichier l\'écrit', () => {
+    expect(remplacerPoste('8h-18h B', 'CPRE')).toBe('8h-18h CPRE')
+    expect(remplacerPoste('8h-18h CPRE', 'A')).toBe('8h-18h A')
+    expect(remplacerPoste('10h-20h Viscérale', 'B')).toBe('10h-20h B')
+    expect(remplacerPoste('13h-18h Renfort', 'VISC')).toBe('13h-18h Viscérale')
+  })
+  it('pose le poste seul quand il n\'y a pas d\'horaire', () => {
+    expect(remplacerPoste('', 'CPRE')).toBe('CPRE')
+    expect(remplacerPoste('CPRE', 'B')).toBe('B')
+  })
+})
+
+describe('composerCase', () => {
+  it('journée pleine : un texte, forme full, poste relu dans le texte', () => {
+    expect(composerCase({ mode: 'pleine', matin: ' 8h-18h  B ', apres_midi: 'ignoré' }))
+      .toEqual({ kind: 'full', matin: '8h-18h B', apres_midi: null, poste: 'B' })
+  })
+  it('journée coupée : deux textes → split, un seul → matin ou aprem', () => {
+    expect(composerCase({ mode: 'coupee', matin: '7h30-13h A', apres_midi: '13h30-17h30 B' }))
+      .toEqual({ kind: 'split', matin: '7h30-13h A', apres_midi: '13h30-17h30 B', poste: 'A' })
+    expect(composerCase({ mode: 'coupee', matin: '7h30-13h A', apres_midi: '' }).kind).toBe('matin')
+    expect(composerCase({ mode: 'coupee', matin: '', apres_midi: '13h-18h B' }))
+      .toEqual({ kind: 'aprem', matin: null, apres_midi: '13h-18h B', poste: 'B' })
+  })
+  it('OFF : aucun texte, poste OFF', () => {
+    expect(composerCase({ mode: 'off', matin: 'x', apres_midi: 'y' }))
+      .toEqual({ kind: 'off', matin: null, apres_midi: null, poste: 'OFF' })
+  })
+  it('rien à enregistrer quand tout est vide', () => {
+    expect(composerCase({ mode: 'pleine', matin: '  ', apres_midi: '' })).toBeNull()
+    expect(composerCase({ mode: 'coupee', matin: '', apres_midi: '' })).toBeNull()
+  })
+})
+
+describe('formulaireDeCase', () => {
+  it('retrouve la forme comme le fichier la lit (parse_trio)', () => {
+    expect(formulaireDeCase(c('2026-09-01', 'CATHY', 0, { matin: '8h-18h B', poste: 'B' })))
+      .toEqual({ mode: 'pleine', matin: '8h-18h B', apres_midi: '' })
+    expect(formulaireDeCase(c('2026-09-01', 'CATHY', 0, { matin: '7h30-13h A', poste: 'A' })))
+      .toEqual({ mode: 'coupee', matin: '7h30-13h A', apres_midi: '' })
+    expect(formulaireDeCase(c('2026-09-01', 'CATHY', 0, { apres_midi: '13h-18h B', poste: 'B' })))
+      .toEqual({ mode: 'coupee', matin: '', apres_midi: '13h-18h B' })
+    expect(formulaireDeCase(c('2026-09-01', 'CATHY', 0, { matin: 'CPRE', apres_midi: '13h-18h B', poste: 'CPRE' })))
+      .toEqual({ mode: 'coupee', matin: 'CPRE', apres_midi: '13h-18h B' })
+    expect(formulaireDeCase(c('2026-09-01', 'CATHY', 0, { poste: 'OFF' })).mode).toBe('off')
+    expect(formulaireDeCase(null).mode).toBe('off')
+  })
+  it('respecte la forme quand la case la porte (modification déjà enregistrée)', () => {
+    expect(formulaireDeCase({ kind: 'matin', matin: '8h-18h B' }).mode).toBe('coupee')
+    expect(formulaireDeCase({ kind: 'full', matin: '7h30-13h A' }).mode).toBe('pleine')
+  })
+})
+
+describe('memeCase', () => {
+  it('ignore les espaces et considère OFF égal à OFF', () => {
+    expect(memeCase({ matin: '8h-18h  B' }, { matin: '8h-18h B', apres_midi: null })).toBe(true)
+    expect(memeCase({ poste: 'OFF' }, { kind: 'off' })).toBe(true)
+    expect(memeCase({ poste: 'OFF' }, { matin: '8h-18h B' })).toBe(false)
+    expect(memeCase({ matin: '8h-18h B' }, { matin: '8h-18h A' })).toBe(false)
+  })
+})
+
+describe('appliquerModifs', () => {
+  const miroir = [
+    c('2026-09-22', 'CATHY', 0, { matin: '7h30-17h30 A', poste: 'A' }),
+    c('2026-09-22', 'NICOLAS', 1, { matin: '8h-18h B', poste: 'B' }),
+  ]
+  it('remplace la case par la modification active, sans toucher la note', () => {
+    const cases = appliquerModifs(
+      miroir.map(x => ({ ...x, note: 'Congé' })),
+      [{ jour: '2026-09-22', iade: 'CATHY', kind: 'full', matin: '8h-18h B', apres_midi: null, poste: 'B', statut: 'active' }]
+    )
+    expect(cases[0]).toMatchObject({ matin: '8h-18h B', poste: 'B', note: 'Congé', kind: 'full' })
+    expect(cases[0].modif.statut).toBe('active')
+    expect(cases[1].modif).toBeUndefined()
+  })
+  it('une modification annulée remet ce que le fichier disait, dès maintenant', () => {
+    const cases = appliquerModifs(miroir, [{
+      jour: '2026-09-22', iade: 'CATHY', kind: 'full', matin: '8h-18h B', poste: 'B', statut: 'annulee',
+      fichier: { matin: '7h30-13h A', apres_midi: null, poste: 'A' },
+    }])
+    expect(cases[0]).toMatchObject({ matin: '7h30-13h A', poste: 'A' })
+    expect(cases[0].modif.retour).toBe(true)
+  })
+  it('ne crée pas de case là où le miroir n\'en a pas', () => {
+    const cases = appliquerModifs(miroir, [{ jour: '2026-09-23', iade: 'CATHY', kind: 'off', statut: 'active' }])
+    expect(cases).toHaveLength(2)
+    expect(cases.every(x => !x.modif)).toBe(true)
+  })
+  it('rend le même tableau sans modification', () => {
+    expect(appliquerModifs(miroir, [])).toBe(miroir)
+  })
+})
+
+describe('resumeCase', () => {
+  it('dit la case en une ligne', () => {
+    expect(resumeCase({ matin: '8h-18h B' })).toBe('8h-18h B')
+    expect(resumeCase({ matin: 'CPRE', apres_midi: '13h-18h B' })).toBe('CPRE / 13h-18h B')
+    expect(resumeCase({ kind: 'matin', matin: '7h30-13h A' })).toBe('7h30-13h A (matin)')
+    expect(resumeCase({ kind: 'aprem', apres_midi: '13h-18h B' })).toBe('13h-18h B (après-midi)')
+    expect(resumeCase({ poste: 'OFF' })).toBe('OFF')
+    expect(resumeCase(null)).toBe('—')
+  })
+})

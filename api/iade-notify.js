@@ -5,6 +5,7 @@ import {
   emailCongesPoses, emailCongesRetires, emailCongesDecides, emailCongesRecus,
   emailHsDeclarees, emailHsDecidees, emailHsAjoutees, emailHsRecues,
   emailHsCorrigees, emailHsSansSuite,
+  emailPlanningModifie, emailPlanningRetour,
 } from './_lib/emails.js'
 
 /**
@@ -34,6 +35,15 @@ import {
  *   • 'hs_ajout'         → la gestion a ajouté des heures déjà validées,
  *                          on informe l'agent (rien à approuver de son côté).
  *
+ * Planning IADE modifié depuis le dashboard (2026-09-16) :
+ *   • 'planning_modif'   → la gestion a modifié des cases (lot) : un e-mail par
+ *                          agent concerné, avec la case d'avant ;
+ *   • 'planning_retour'  → « Revenir au fichier » (ids) : l'agent apprend que sa
+ *                          case reprend ce que le planning disait.
+ *   Ces deux-là RENVOIENT le bilan (prevenus / sansCompte / sansEnvoi) : la case
+ *   porte un prénom de colonne, pas un compte — quand aucun compte IADE ne lui
+ *   correspond, la gestion doit le savoir pour prévenir elle-même.
+ *
  * ⚠️ Les deux familles vivent dans LE MÊME fichier volontairement : le plan Vercel
  * de ce compte plafonne à 12 fonctions serverless par déploiement, et deux
  * endpoints séparés faisaient franchir la limite (le build échoue alors sans que
@@ -61,6 +71,8 @@ const CHAMPS_CONGES = 'id, user_id, jour, type_conge, lot, statut, motif_reponse
 // Il ne sort JAMAIS vers le client : seul ce serverless le lit, pour l'écrire
 // dans un message adressé au MAR désigné.
 const CHAMPS_HS = 'id, user_id, jour, heures, origine, mar_id, commentaire, statut, motif_reponse, jeton, created_at, decide_le'
+
+const CHAMPS_MODIF = 'id, jour, iade, kind, matin, apres_midi, poste, avant, fichier, statut, lot, maj_le'
 
 function nomAgent(profil) {
   return profil?.nom_complet?.trim() || (profil?.email ? profil.email.split('@')[0] : 'Un agent')
@@ -122,6 +134,55 @@ async function prevenirMars(rows, lien, agentNom, construire) {
     if (sent) notified++
   }
   return notified
+}
+
+// « CATHY » → « cathy », « Nelly Cantin » → « nelly » : un prénom de colonne et un
+// nom de compte se comparent sur le prénom, sans accent ni casse.
+function clePrenom(s) {
+  const t = String(s ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+  return t.split(/\s+/)[0] ?? ''
+}
+
+// Le compte IADE derrière un en-tête de colonne du planning. D'abord celui qui a
+// désigné cette colonne pour son agenda (c'est lui qui sait le mieux laquelle est
+// la sienne), sinon le compte IADE actif dont le prénom est celui de la colonne.
+async function profilDeColonne(colonne) {
+  const cle = clePrenom(colonne)
+  if (!cle) return null
+  const { data: abonnements } = await supabaseAdmin
+    .from('iade_agenda').select('user_id, colonne').not('colonne', 'is', null)
+  const designee = (abonnements ?? []).find(a => clePrenom(a.colonne) === cle)
+  if (designee) {
+    const p = await profil(designee.user_id)
+    if (p?.email) return p
+  }
+  const { data: comptes } = await supabaseAdmin
+    .from('profiles').select('email, nom_complet')
+    .eq('is_iade', true).eq('status', 'active')
+  return (comptes ?? []).find(p => clePrenom(p.nom_complet) === cle) ?? null
+}
+
+// Un e-mail par colonne touchée. Renvoie qui a été prévenu, quelles colonnes n'ont
+// aucun compte, et pour qui l'e-mail n'est pas parti — en prénoms de colonne,
+// jamais en adresses.
+async function prevenirColonnes(rows, lien, parNom, construire) {
+  const parColonne = new Map()
+  for (const r of rows) {
+    if (!parColonne.has(r.iade)) parColonne.set(r.iade, [])
+    parColonne.get(r.iade).push(r)
+  }
+  const joli = (c) => c.charAt(0).toUpperCase() + c.slice(1).toLowerCase()
+  const bilan = { prevenus: [], sansCompte: [], sansEnvoi: [] }
+  for (const [colonne, siennes] of parColonne) {
+    const agent = await profilDeColonne(colonne)
+    if (!agent?.email) { bilan.sansCompte.push(joli(colonne)); continue }
+    const message = construire({ agentNom: nomAgent(agent), parNom, rows: siennes, lien })
+    const { sent } = await envoyerEmail({
+      to: agent.email, subject: message.subject, html: message.html, text: message.text,
+    })
+    ;(sent ? bilan.prevenus : bilan.sansEnvoi).push(joli(colonne))
+  }
+  return bilan
 }
 
 // Les quatre mouvements dont le MAR désigné doit être averti. Même destinataire,
@@ -277,6 +338,24 @@ export default async function handler(req, res) {
 
       const notified = await prevenirAgents(rows, lien, emailHsAjoutees)
       return res.status(200).json({ ok: true, notified })
+    }
+
+    // ══ Planning IADE modifié depuis le dashboard ═════════════════════════
+    if (type === 'planning_modif' || type === 'planning_retour') {
+      if (!peutGerer) return sendError(res, 403, 'Droits insuffisants.')
+
+      let requete = supabaseAdmin.from('iade_planning_modifs').select(CHAMPS_MODIF)
+      requete = type === 'planning_modif'
+        ? requete.eq('lot', lot ?? '').eq('statut', 'active')
+        : requete.in('id', idList).eq('statut', 'annulee')
+      const { data: rows } = await requete
+      if (!rows || rows.length === 0) {
+        return res.status(200).json({ ok: true, notified: 0, prevenus: [], sansCompte: [], sansEnvoi: [] })
+      }
+
+      const construire = type === 'planning_modif' ? emailPlanningModifie : emailPlanningRetour
+      const bilan = await prevenirColonnes(rows, lien, nomAgent(profile), construire)
+      return res.status(200).json({ ok: true, notified: bilan.prevenus.length, ...bilan })
     }
 
     return sendError(res, 400, 'Type de notification inconnu.')

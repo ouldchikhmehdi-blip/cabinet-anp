@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './_lib/supabaseAdmin.js'
-import { evenementsDepuisPlanning } from './_lib/evenementsPlanning.js'
+import { evenementsDepuisPlanning, superposerModifs } from './_lib/evenementsPlanning.js'
 import { calendrier, evenement, horodatage } from './_lib/ics.js'
 
 /**
@@ -160,9 +160,20 @@ export default async function handler(req, res) {
         .gte('jour', debut)
         .lte('jour', fin)
         .order('jour')
-      evts = evenementsDepuisPlanning(lignes ?? [])
+      // Les cases modifiées depuis le dashboard passent devant le miroir : l'agent
+      // prévenu par e-mail doit retrouver la même chose dans son agenda, tout de suite.
+      const { data: modifs } = await supabaseAdmin
+        .from('iade_planning_modifs')
+        .select('jour, kind, matin, apres_midi, fichier, statut, maj_le')
+        .eq('iade', ab.colonne)
+        .gte('jour', debut)
+        .lte('jour', fin)
+      evts = evenementsDepuisPlanning(superposerModifs(lignes ?? [], modifs ?? []))
       for (const l of lignes ?? []) {
         if (l?.maj && (!maj || l.maj > maj)) maj = l.maj
+      }
+      for (const m of modifs ?? []) {
+        if (m?.maj_le && (!maj || m.maj_le > maj)) maj = m.maj_le
       }
     } else {
       evts = Array.isArray(ab.data) ? ab.data : []

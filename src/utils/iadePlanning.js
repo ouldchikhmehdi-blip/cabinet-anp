@@ -155,3 +155,116 @@ export function semaineISO(iso) {
   const debutAnnee = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
   return Math.ceil(((d - debutAnnee) / 86400000 + 1) / 7)
 }
+
+// ── Cases modifiées depuis le dashboard ──────────────────────────────────────
+// Depuis le 2026-09-16, la gestion IADE corrige une case (poste, horaires) dans
+// l'onglet lui-même. Ces modifications vivent dans `iade_planning_modifs` et se
+// SUPERPOSENT au miroir à l'affichage — le miroir reste ce que le fichier dit,
+// et la chaîne du mini PC reporte la case modifiée dans le fichier Dropbox.
+// Cf. supabase/iade_planning_modifs.sql et IADE.md § 12 bis.
+
+// Le poste tel que le fichier l'écrit dans une case : « 8h-18h B », « CPRE »,
+// « 10h-20h Viscérale ». C'est ce texte que `posteDepuisTexte` (et le script
+// Excel) relit — écrire autre chose ferait une case sans couleur.
+export const LIBELLE_POSTE_CASE = { A: 'A', B: 'B', CPRE: 'CPRE', VISC: 'Viscérale', RENFORT: 'Renfort' }
+
+const compacter = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+
+// Heures de début et de fin lues dans un texte : « 7h30-13h A » → [7, 13].
+function heuresDe(texte) {
+  const ms = [...(texte ?? '').matchAll(/(\d{1,2})h(\d{0,2})/g)]
+  if (ms.length === 0) return [null, null]
+  return [Number(ms[0][1]), Number(ms[ms.length - 1][1])]
+}
+
+// Retire le poste écrit dans le texte d'une demi-journée et pose le nouveau, en
+// gardant les horaires : « 8h-18h B » + CPRE → « 8h-18h CPRE ».
+export function remplacerPoste(texte, poste) {
+  const sans = compacter(
+    (texte ?? '')
+      .replace(/\bCPRE\b/gi, ' ')
+      .replace(/\bvisc\S*/gi, ' ')
+      .replace(/\brenfor\S*/gi, ' ')
+      .replace(/\bOFF\b/gi, ' ')
+      .replace(/\b[AB]\b/g, ' ')
+  )
+  const libelle = LIBELLE_POSTE_CASE[poste]
+  if (!libelle) return sans
+  return sans ? `${sans} ${libelle}` : libelle
+}
+
+// Ce que le formulaire dit → la case à enregistrer, ou null s'il n'y a rien à
+// enregistrer (journée coupée sans aucun texte, journée pleine vide).
+// La forme (`kind`) suit convertir_mois.py : c'est elle qui décide, dans l'Excel,
+// si les deux cellules sont fusionnées ou non.
+export function composerCase({ mode, matin, apres_midi }) {
+  if (mode === 'off') return { kind: 'off', matin: null, apres_midi: null, poste: 'OFF' }
+  const m = compacter(matin)
+  const a = compacter(apres_midi)
+  if (mode === 'pleine') {
+    if (!m) return null
+    return { kind: 'full', matin: m, apres_midi: null, poste: posteDepuisTexte(m) }
+  }
+  if (m && a) return { kind: 'split', matin: m, apres_midi: a, poste: posteDepuisTexte(m) ?? posteDepuisTexte(a) }
+  if (m) return { kind: 'matin', matin: m, apres_midi: null, poste: posteDepuisTexte(m) }
+  if (a) return { kind: 'aprem', matin: null, apres_midi: a, poste: posteDepuisTexte(a) }
+  return null
+}
+
+// La case affichée → ce que le formulaire ouvre. Le miroir ne garde pas la forme :
+// une demi-journée seule y ressemble à une journée pleine. On la retrouve comme le
+// fichier la lit (parse_trio) : commence à 12 h ou plus → après-midi ; finit avant
+// 14 h → matin ; sinon journée pleine.
+export function formulaireDeCase(c) {
+  if (!c || c.poste === 'OFF' || c.kind === 'off') return { mode: 'off', matin: '', apres_midi: '' }
+  const m = compacter(c.matin)
+  const a = compacter(c.apres_midi)
+  if (c.kind === 'split' || (m && a)) return { mode: 'coupee', matin: m, apres_midi: a }
+  if (c.kind === 'matin') return { mode: 'coupee', matin: m, apres_midi: '' }
+  if (c.kind === 'aprem' || (!m && a)) return { mode: 'coupee', matin: '', apres_midi: a }
+  if (c.kind === 'full') return { mode: 'pleine', matin: m, apres_midi: '' }
+  const [debut, fin] = heuresDe(m)
+  if (debut !== null && debut >= 12) return { mode: 'coupee', matin: '', apres_midi: m }
+  if (debut !== null && fin !== null && fin < 14) return { mode: 'coupee', matin: m, apres_midi: '' }
+  return { mode: 'pleine', matin: m, apres_midi: '' }
+}
+
+// Deux cases disent-elles la même chose ? Sert à ne pas enregistrer (ni annoncer
+// à l'agent) une modification qui ne change rien.
+export function memeCase(a, b) {
+  const off = (c) => !c || c.poste === 'OFF' || c.kind === 'off'
+  if (off(a) || off(b)) return off(a) && off(b)
+  return compacter(a.matin) === compacter(b.matin) && compacter(a.apres_midi) === compacter(b.apres_midi)
+}
+
+// Superpose au miroir les modifications du dashboard. Une modification 'active'
+// remplace la case ; une modification 'annulee' (« Revenir au fichier ») remet
+// dès maintenant ce que le fichier disait, sans attendre la republication.
+// La note (congé, heures sup) n'est jamais touchée : elle a ses propres circuits.
+export function appliquerModifs(cases, modifs) {
+  if (!modifs || modifs.length === 0) return cases
+  const index = new Map(modifs.map(m => [`${m.jour}|${m.iade}`, m]))
+  return cases.map(c => {
+    const m = index.get(`${c.jour}|${c.iade}`)
+    if (!m) return c
+    if (m.statut === 'annulee') {
+      if (!m.fichier) return { ...c, modif: { ...m, retour: true } }
+      const f = m.fichier
+      return { ...c, matin: f.matin ?? null, apres_midi: f.apres_midi ?? null, poste: f.poste ?? null, modif: { ...m, retour: true } }
+    }
+    return { ...c, kind: m.kind, matin: m.matin ?? null, apres_midi: m.apres_midi ?? null, poste: m.poste ?? null, modif: m }
+  })
+}
+
+// Une case en une ligne, pour les messages : « 8h-18h B », « CPRE / 13h-18h B »,
+// « 7h30-13h A (matin) », « OFF », « — » si vide.
+export function resumeCase(c) {
+  if (!c) return '—'
+  if (c.poste === 'OFF' || c.kind === 'off') return 'OFF'
+  const m = compacter(c.matin)
+  const a = compacter(c.apres_midi)
+  if (m && a) return `${m} / ${a}`
+  if (c.kind === 'matin' && m) return `${m} (matin)`
+  if (c.kind === 'aprem' && a) return `${a} (après-midi)`
+  return m || a || '—'
+}

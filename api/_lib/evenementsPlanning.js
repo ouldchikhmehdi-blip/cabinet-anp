@@ -101,3 +101,20 @@ export function evenementsDepuisPlanning(lignes) {
 
   return evenements
 }
+
+// Superpose aux lignes du miroir les cases modifiées depuis le dashboard
+// (`iade_planning_modifs`, cf. IADE.md § 12 bis) — l'agenda de l'agent doit
+// changer quand sa case change, pas au prochain passage de la chaîne. Une
+// modification 'annulee' remet ce que le fichier disait. La note reste celle
+// du miroir : congés et heures sup ont leurs propres circuits.
+export function superposerModifs(lignes, modifs) {
+  if (!modifs || modifs.length === 0) return lignes
+  const parJour = new Map(modifs.map(m => [m.jour, m]))
+  return (lignes ?? []).map(l => {
+    const m = parJour.get(l?.jour)
+    if (!m) return l
+    const source = m.statut === 'annulee' ? (m.fichier ?? null) : m
+    if (!source) return l
+    return { ...l, matin: source.matin ?? null, apres_midi: source.apres_midi ?? null }
+  })
+}

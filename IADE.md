@@ -828,6 +828,121 @@ de 5h du mini PC (`publier-dropbox.sh`).
 
 ---
 
+## 12 bis. Modifier une case depuis l'onglet — ajouté le 2026-09-16
+
+Décidé le 2026-09-16. Corriger un poste ou des horaires supposait d'ouvrir le fichier
+source sur le mini PC et d'attendre 5 h. Désormais la gestion IADE (gestionnaire, faiseur
+de planning, admin — les mêmes que pour « Rempla » et « Créneaux ») **clique une case**
+de l'onglet « Planning IADE », la modifie, et trois choses suivent : **l'agent est prévenu
+par e-mail**, **l'onglet et son agenda synchronisé changent tout de suite**, **le fichier
+Dropbox est mis à jour dans le quart d'heure**.
+
+**Le miroir n'est toujours pas écrit depuis l'application.** La modification vit dans sa
+propre table, `iade_planning_modifs` (une ligne = une case jour × IADE qui diffère du
+fichier), et se **superpose** au miroir à l'affichage — exactement comme les remplaçants
+et les créneaux. La chaîne du mini PC la **peint dans le fichier Excel** à la place de la
+case lue, avec une **bordure violette** et un **commentaire** (quand, par qui, ce que le
+fichier disait). Il n'y a donc qu'une vérité : **la modification l'emporte sur le fichier,
+et le fichier la reprend.**
+
+### Ce que la gestion voit et fait
+
+| Geste | Effet |
+|---|---|
+| Clic sur une case | ouvre l'éditeur (`CaseEditeur.jsx`) : **Journée** / **Matin · Après-midi** / **OFF**, un texte par demi-journée (« 8h-18h B », celui du fichier), des boutons de poste qui **remplacent le poste dans le texte** en gardant les horaires, un aperçu de la case |
+| **Appliquer** | la case passe au **brouillon** (cerclage pointillé) — rien n'est en base |
+| **Enregistrer et prévenir** | toutes les cases du brouillon partent **d'un bloc** (un `lot`), puis **un e-mail par agent** concerné ; la page dit ensuite **qui a été prévenu**, et pour quelle colonne **personne n'a pu l'être** |
+| **Revenir au fichier** | la modification passe `annulee` : la case **reprend la valeur du fichier dès maintenant** (cerclage ambre le temps de la publication), l'agent reçoit un e-mail « planning rétabli » |
+
+Le brouillon existe pour une raison : un agent dont trois jours changent reçoit **un** e-mail,
+pas trois. Une case remise telle qu'elle est en base sort du brouillon d'elle-même — on
+n'enregistre pas, et on n'annonce pas, une modification qui ne change rien.
+
+Le **texte reste libre**, volontairement : le fichier contient des cases comme
+« 13-18h Renfort A/B » qu'aucun formulaire à cases ne saurait dire. Les boutons de poste
+sont une aide (`remplacerPoste`), pas une contrainte. La couleur est relue dans le texte
+(`posteDepuisTexte`, même détection que `detect_poste()` côté Excel) ; l'éditeur prévient
+quand aucun poste n'est reconnu.
+
+La **forme** de la case (`kind` : `full` / `split` / `matin` / `aprem` / `off`, celle de
+`parse_trio()`) est enregistrée, parce que c'est elle qui décide dans l'Excel si les deux
+cellules sont fusionnées. Le miroir ne la garde pas : `formulaireDeCase()` la retrouve
+comme le fichier la lit (commence à 12 h ou plus → après-midi ; finit avant 14 h → matin).
+
+### L'e-mail à l'agent
+
+`emailPlanningModifie` / `emailPlanningRetour` (`api/_lib/emails.js`), envoyés par
+`/api/iade-notify` (types `planning_modif` avec le `lot`, `planning_retour` avec les `ids`).
+Le message dit **la nouvelle case et l'ancienne** (« 8h-18h B — avant : 7h30-17h30 A ») :
+sans « avant », l'agent ne sait pas ce qui a changé et relit tout son mois. Il porte la
+date et l'auteur, et une seule phrase sur la suite, sans « normalement » : *« Votre onglet
+Planning IADE est déjà à jour, votre agenda synchronisé aussi. Le fichier Dropbox est mis
+à jour dans le quart d'heure. »*
+
+**Une case porte un prénom de colonne, pas un compte.** Le serveur retrouve l'agent
+(`profilDeColonne`) d'abord par la colonne qu'il a **désignée pour son agenda**
+(`iade_agenda.colonne` — c'est lui qui sait le mieux laquelle est la sienne), sinon par le
+**prénom** de `profiles.nom_complet` (accents et casse ignorés). Quand rien ne correspond,
+l'endpoint le **renvoie** (`sansCompte`) et la page le dit : *« Aucun compte IADE ne
+correspond à la colonne « Rempla » : prévenez cette personne vous-même. »* C'est la seule
+notification du module qui rend un bilan — la gestion doit savoir ce qui reste à faire.
+
+### Le chemin jusqu'à Dropbox
+
+```
+onglet « Planning IADE »  →  iade_planning_modifs (statut active)
+        └─ toutes les 15 min : publier_si_modifs.py compare une EMPREINTE de la table
+           (nombre de lignes + dernière écriture) à celle de la dernière publication
+              └─ différente → publier-dropbox.sh (la chaîne complète, sous flock)
+                   ├─ sync_planning.py     → conges-valides.json, clé "modifs"
+                   ├─ convertir_mois.py    → la case modifiée remplace celle du fichier,
+                   │                         bordure violette + commentaire ; le JSON miroir
+                   │                         porte la case modifiée
+                   ├─ rclone               → Dropbox (les deux fichiers)
+                   └─ pousser_planning.py  → miroir Supabase ; PURGE des lignes 'annulee'
+                                             de plus de 15 min (déjà republiées sans elles)
+```
+
+- **Si le fichier source change ensuite** sur une case modifiée, `convertir_mois.py` le
+  **signale** dans le journal (« le fichier disait…, il dit maintenant… ») **sans trancher** :
+  la modification du dashboard reste. C'est `fichier` — la case lue au moment de la première
+  modification, conservée par le trigger — qui permet la comparaison.
+- **`Revenir au fichier` ne supprime rien depuis l'application** (pas de politique DELETE) :
+  l'écran affiche `fichier` dès l'annulation, l'e-mail relit la ligne, et la purge attend
+  que le fichier soit republié. Une case annulée puis remodifiée réutilise la même ligne
+  (unicité jour × IADE) et garde son `fichier` d'origine.
+- **Le flux iCal** (`api/agenda-iade.js`) superpose lui aussi la table au miroir
+  (`superposerModifs`) et fait bouger `DTSTAMP` : l'agenda de l'agent change avec l'e-mail,
+  pas au prochain passage de la chaîne.
+- **Le cron de 5 h reste** : il reprend tout, modifications comprises. Les deux passages
+  s'excluent par un verrou (`publication.lock`) ; celui qui arrive pendant l'autre abandonne
+  et revient au tick suivant.
+
+### Fichiers
+
+| Quoi | Fichier |
+|---|---|
+| Table, trigger (`fichier` conservé, traçabilité), RLS | `supabase/iade_planning_modifs.sql` |
+| Éditeur de case | `src/components/iade/CaseEditeur.jsx` |
+| Brouillon, enregistrement, bilan — dans la page | `src/pages/IadePlanning.jsx` |
+| Logique pure (`composerCase`, `formulaireDeCase`, `remplacerPoste`, `appliquerModifs`, `memeCase`, `resumeCase`) — testée | `src/utils/iadePlanning.js` |
+| Lecture / écriture / notification | `src/utils/iadePlanningApi.js` |
+| E-mails, endpoint, flux agenda | `api/_lib/emails.js`, `api/iade-notify.js`, `api/agenda-iade.js` + `_lib/evenementsPlanning.js` |
+| Chaîne mini PC | `outils-planning/{sync_planning,convertir_mois,pousser_planning,publier_si_modifs}.py`, `publier-dropbox.sh` (cf. `LISEZ-MOI.md` § 8) |
+
+### Sécurité
+
+- Lecture : `is_iade() or acces_cabinet()` — les agents doivent voir la case modifiée dès
+  qu'elle l'est. Écriture (insert, update) : `peut_gerer_iade()`. Aucune suppression côté
+  application ; la purge se fait avec la clé de service, sur le mini PC.
+- La forme et les textes sont **contraints ensemble** en base (`iade_planning_modifs_forme`) :
+  un OFF avec des horaires, ou une journée pleine sans texte, est refusé — ni l'écran ni
+  l'Excel ne sauraient le peindre.
+- `cree_par` / `maj_par` / `fichier` sont posés ou conservés par le trigger : le client n'est
+  pas cru là-dessus.
+
+---
+
 ## 13. Onglet « Rempla » — chercher, puis nommer les remplaçants
 
 Ajouté le 2026-08-26. Troisième onglet de « Congés, HS et rempla » (§ 3), réservé à la
