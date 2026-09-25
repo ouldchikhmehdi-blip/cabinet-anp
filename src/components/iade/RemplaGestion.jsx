@@ -340,6 +340,13 @@ export default function RemplaGestion({ annee, conges = [], agents = [] }) {
                           onChange={e => setSaisies(prev => ({ ...prev, [b.id]: e.target.value }))}
                           style={{ ...champ, width: 220 }}
                         />
+                        {b.note && (
+                          // D'où vient ce nom : « confirmé par mail du 24/09 », « aussi : … ».
+                          // Écrit par le worker rempla_mails.py (mini PC), jamais par cet écran.
+                          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4, maxWidth: 320 }}>
+                            {b.note}
+                          </div>
+                        )}
                       </td>
                       <td style={td}><span style={badge(b.statut)}>{libelleStatutRempla(b.statut)}</span></td>
                       <td style={td}>
