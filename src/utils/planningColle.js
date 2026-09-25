@@ -184,6 +184,17 @@ function esc(s) {
 
 const pad = (n) => String(n).padStart(2, '0')
 
+// « 7h30 », « 8h », « 13h30 » — l'heure telle qu'on l'écrit sur le planning.
+const heureFr = ([h, m]) => m ? `${h}h${pad(m)}` : `${h}h`
+
+// Une CPRE qui ne commence pas à 8 h porte son heure dans le titre (le jeudi :
+// 7h30-17h30). Copie de la règle du flux serveur, api/_lib/evenementsPlanning.js.
+export function titreAvecHeure(label, debut) {
+  if (!debut || label.toUpperCase() !== 'CPRE') return label
+  if (debut[0] === 8 && debut[1] === 0) return label
+  return `${label} ${heureFr(debut)} !`
+}
+
 function resoudreIade(iades, cible) {
   const c = String(cible).trim().toLowerCase()
   const exact = iades.filter(x => x.nom.toLowerCase() === c)
@@ -234,7 +245,14 @@ export function extraireEvenementsIade(rows, cible) {
       if (debut == null) {
         evenements.push({ d: ymd, slot, allday: true, fin: demain, titre: label, desc })
       } else {
-        evenements.push({ d: ymd, slot, ts: `${pad(debut[0])}${pad(debut[1])}`, te: `${pad(fin[0])}${pad(fin[1])}`, titre: label, desc })
+        // Même règle que le flux serveur (api/_lib/evenementsPlanning.js) : une CPRE
+        // qui ne commence pas à 8 h a son heure dans le titre (jeudi 7h30).
+        const titre = titreAvecHeure(label, debut)
+        evenements.push({
+          d: ymd, slot, ts: `${pad(debut[0])}${pad(debut[1])}`, te: `${pad(fin[0])}${pad(fin[1])}`,
+          titre,
+          desc: titre === label ? desc : `Début à ${heureFr(debut)} (et non 8h). ${desc}`,
+        })
       }
     }
   }

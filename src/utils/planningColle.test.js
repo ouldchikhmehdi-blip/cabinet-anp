@@ -71,6 +71,16 @@ describe('planningColle — agenda .ics d\'un IADE', () => {
     expect(ics).not.toMatch(/20260128T\d{6}/)
   })
 
+  it('titre une CPRE du jeudi à 7h30 avec son heure, comme le flux serveur', () => {
+    const texte = [
+      ROWS[0], ROWS[1],
+      ['Jeudi', '01/10/2026', '7h30-17h30 CPRE', '', '', '', '8h-18h CPRE', '', '', '', '', '', ''],
+    ].map(COLS).join('\n')
+    const r = lignesDepuisTexte(texte)
+    expect(genererIcs(r, 'Cathy').ics).toMatch(/DTSTART:20261001T073000[\s\S]*SUMMARY:CPRE 7h30 !/)
+    expect(genererIcs(r, 'Nicolas').ics).toMatch(/DTSTART:20261001T080000[\s\S]*SUMMARY:CPRE\r\n/)
+  })
+
   it('nom introuvable -> erreur claire avec la liste des noms', () => {
     expect(() => genererIcs(rows, 'Zorro')).toThrow(/introuvable.*Cathy, Nicolas/)
   })

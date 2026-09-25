@@ -19,6 +19,21 @@ const POSTES_LONG = { A: 'Bloc A', B: 'Bloc B' }
 
 const pad = (n) => String(n).padStart(2, '0')
 
+// « 7h30 », « 8h », « 13h30 » — l'heure telle qu'on l'écrit sur le planning.
+const heureFr = ([h, m]) => m ? `${h}h${pad(m)}` : `${h}h`
+
+// Une CPRE qui ne commence pas à 8 h porte son heure DANS LE TITRE. Le jeudi,
+// la personne en CPRE fait 7h30-17h30 ; l'événement était bien à 7h30 dans
+// l'agenda, mais titré « CPRE » comme les autres jours, et dans les têtes
+// « CPRE = 8 h ». Le titre est la seule chose qu'on lit dans une vue mois ou
+// dans une liste : c'est là que l'heure doit être, avec un « ! » pour dire que
+// ce n'est pas l'horaire habituel.
+export function titreAvecHeure(label, debut) {
+  if (!debut || label.toUpperCase() !== 'CPRE') return label
+  if (debut[0] === 8 && debut[1] === 0) return label
+  return `${label} ${heureFr(debut)} !`
+}
+
 const compact = (iso) => iso.replace(/-/g, '')
 
 // Lendemain au format compact : une journée entière iCal se termine le jour d'après.
@@ -89,11 +104,13 @@ export function evenementsDepuisPlanning(lignes) {
       if (!debut) {
         evenements.push({ d, slot, allday: true, fin: finJournee, titre: label, desc })
       } else {
+        const titre = titreAvecHeure(label, debut)
         evenements.push({
           d, slot,
           ts: `${pad(debut[0])}${pad(debut[1])}`,
           te: `${pad(arret[0])}${pad(arret[1])}`,
-          titre: label, desc,
+          titre,
+          desc: titre === label ? desc : `Début à ${heureFr(debut)} (et non 8h). ${desc}`,
         })
       }
     }

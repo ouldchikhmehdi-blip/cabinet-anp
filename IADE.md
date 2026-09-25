@@ -617,6 +617,13 @@ Garde-fous :
 - **Congé = pas de travail** : dans l'agenda, un jour marqué « Congé » devient une
   journée entière « Congé » ; le poste affiché ce jour-là (pour le remplaçant) **ne
   crée aucun événement** de travail pour l'IADE.
+- **CPRE hors 8 h = l'heure dans le titre** (2026-09-25). Le jeudi, la personne en
+  CPRE fait 7h30-17h30 ; l'événement était bien à 7h30 mais titré « CPRE » comme les
+  autres jours, et dans les têtes « CPRE = 8 h ». Une CPRE qui ne commence pas à
+  8 h s'intitule donc « CPRE 7h30 ! », description « Début à 7h30 (et non 8h) ».
+  Règle `titreAvecHeure`, identique dans `planningColle.js` (mois collé) et
+  `api/_lib/evenementsPlanning.js` (flux vivant). Le Bloc A à 7h30 n'est pas
+  concerné : c'est son horaire habituel.
 - Le compte IADE atteint « Sync agenda » via `PAGES_IADE` (shell cloisonné dans
   `App.jsx`) ; le reste de l'app lui reste fermé.
 - Données de planning (noms de salariés, postes) : le **parsing** se fait dans le
