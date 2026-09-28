@@ -210,7 +210,7 @@ export default async function handler(req, res) {
   const { type, lot, ids } = req.body ?? {}
   const lien = process.env.VITE_APP_URL ?? ''
   const idList = Array.isArray(ids) ? ids : []
-  const peutGerer = profile.is_gestion_iade || profile.is_faiseur || profile.role === 'admin'
+  const peutGerer = profile.is_gestion_iade || profile.is_faiseur || profile.role === 'admin' || profile.is_agent_ia
   const rienAFaire = (note) => res.status(200).json({ ok: true, notified: 0, note })
 
   try {

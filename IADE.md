@@ -24,8 +24,17 @@ Trois populations :
 | **Gestionnaire des IADE** | `profiles.is_gestion_iade` | Les demandes (valider / refuser), les heures sup, le calendrier, le récap par agent. |
 | **Faiseur de planning** | `profiles.is_faiseur` | Idem gestionnaire : les congés IADE conditionnent le planning. |
 | **Admin** | `profiles.role = 'admin'` | Idem, plus la création des comptes (onglet « Comptes »). |
+| **Agent IA** | `profiles.is_agent_ia` (sur un compte `is_iade`) | Deux écrans, rien d'autre : « Congés, HS et rempla » **sans** les onglets Créneaux et Synthèse, et « Planning IADE » avec le droit de modifier une case. Ajouté le 2026-09-28 (`supabase/agent_ia.sql`). |
 
-Fonction SQL de référence : **`public.peut_gerer_iade()`** = gestionnaire IADE **ou** faiseur **ou** admin.
+Fonction SQL de référence : **`public.peut_gerer_iade()`** = gestionnaire IADE **ou** faiseur **ou** admin **ou** agent IA.
+
+**L'agent IA reste un compte IADE.** C'est ce qui le tient hors de `acces_cabinet()` —
+finances, planning MAR, archives — quel que soit le niveau de sa session, et sans 2FA
+comme les autres comptes IADE (le mot de passe est tenu par l'assistant). Le drapeau
+n'ajoute que la gestion IADE, **moins** les créneaux fermés (policies
+`iade_creneaux_fermes_*` : `peut_gerer_iade() and not is_agent_ia()`). Chaque écriture
+reste tracée à son uid. Se pose depuis « Comptes » (case « Agent IA », visible sur un
+compte IADE) ; retirer « IADE » retire aussi « Agent IA ».
 
 **« MAR » n'est pas un nouveau drapeau.** C'est `public.acces_cabinet()`, qui vaut déjà
 « compte actif, 2FA vérifiée, non-IADE » — soit exactement les associés. Ne pas en créer un
@@ -355,9 +364,10 @@ messages de réponse — cf. § 9, « Traçabilité : chaque message porte ses d
 
 ## 4. Modèle de données
 
-**`profiles`** (colonnes ajoutées) : `is_iade`, `is_gestion_iade`.
+**`profiles`** (colonnes ajoutées) : `is_iade`, `is_gestion_iade`, `is_agent_ia`.
 Contrainte **`profiles_iade_exclusif`** : un compte IADE est forcément `role='user'`,
 **ni** faiseur, **ni** gestionnaire IADE, **ni** titulaire d'initiales d'associé.
+Contrainte **`profiles_agent_ia_est_iade`** : `is_agent_ia` implique `is_iade`.
 
 **`invitations`** (colonne ajoutée) : `is_iade` — permet d'inviter directement un IADE.
 

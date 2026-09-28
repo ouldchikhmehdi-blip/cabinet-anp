@@ -16,7 +16,7 @@ import { ASSOCIES, appliquerAssocies } from '../data/associes'
 // Tant que ce fichier n'a pas été exécuté en base, la requête échoue : on
 // recharge alors sans ces colonnes et on signale que le module est à activer.
 const CHAMPS_PROFILS       = 'id, email, role, status, initiales, is_faiseur, nom_complet, created_at'
-const CHAMPS_PROFILS_IADE  = `${CHAMPS_PROFILS}, is_iade, is_gestion_iade`
+const CHAMPS_PROFILS_IADE  = `${CHAMPS_PROFILS}, is_iade, is_gestion_iade, is_agent_ia`
 const CHAMPS_INVITS        = 'id, email, role, expires_at, used_at, created_at'
 const CHAMPS_INVITS_IADE   = `${CHAMPS_INVITS}, is_iade`
 
@@ -148,11 +148,11 @@ export default function AdminUsers() {
 
   // ── Drapeaux du module congés IADE ────────────────────────────────
   // isIade : compte restreint (ne voit que ses congés) · isGestionIade : valide les demandes.
-  async function attribuerIade(userId, isIade, isGestionIade) {
+  async function attribuerIade(userId, isIade, isGestionIade, isAgentIa = false) {
     try {
       const res = await fetch('/api/iade-attribuer', {
         method: 'POST', headers,
-        body: JSON.stringify({ userId, isIade, isGestionIade }),
+        body: JSON.stringify({ userId, isIade, isGestionIade, isAgentIa }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -483,7 +483,7 @@ export default function AdminUsers() {
                     </td>
                     <td style={s.td}>
                       <span style={s.badge(p.role, p.status)}>
-                        {p.role === 'admin' ? 'Admin' : p.is_iade ? 'IADE' : 'Utilisateur'}
+                        {p.role === 'admin' ? 'Admin' : p.is_agent_ia ? 'Agent IA' : p.is_iade ? 'IADE' : 'Utilisateur'}
                       </span>
                     </td>
                     <td style={s.td}>
@@ -548,6 +548,20 @@ export default function AdminUsers() {
                           />
                           Agent
                         </label>
+                        {/* Agent IA : un compte IADE tenu par un assistant — gestion congés / HS /
+                            rempla et planning modifiable, rien d'autre. Ne se pose que sur un compte IADE. */}
+                        {p.is_iade === true && (
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--color-text-secondary)', cursor: moduleIade && p.status === 'active' ? 'pointer' : 'default' }}>
+                            <input
+                              type="checkbox"
+                              checked={p.is_agent_ia === true}
+                              disabled={!moduleIade || p.status !== 'active'}
+                              onChange={e => attribuerIade(p.id, true, false, e.target.checked)}
+                              style={{ accentColor: 'var(--color-primary)' }}
+                            />
+                            Agent IA
+                          </label>
+                        )}
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--color-text-secondary)', cursor: moduleIade && p.status === 'active' ? 'pointer' : 'default' }}>
                           <input
                             type="checkbox"

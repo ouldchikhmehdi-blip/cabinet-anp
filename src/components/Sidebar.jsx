@@ -47,7 +47,13 @@ const iadeAgentItems = [
   { id: 'iade-agenda-perso', label: 'Sync agenda', icon: '📲' },
 ]
 
-export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur, hasInitiales, peutGererIade, isIade }) {
+// Agent IA — sa navigation ENTIÈRE : la gestion congés / HS / rempla et le planning.
+const agentIaItems = [
+  { id: 'iade-gestion', label: 'Congés, HS et rempla', icon: '🗓' },
+  { id: 'iade-planning', label: 'Planning IADE', icon: '📋' },
+]
+
+export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasque, sombre, onToggleSombre, isAdmin, isFaiseur, hasInitiales, peutGererIade, isIade, isAgentIa }) {
   const toggleBtn = (active) => ({
     flex: 1,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -62,7 +68,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
   })
 
   // Un compte IADE ne voit QUE ses deux entrées — ni financier, ni planning, ni comptes.
-  const items = isIade ? iadeAgentItems : [
+  const items = isAgentIa ? agentIaItems : isIade ? iadeAgentItems : [
     ...navItems,
     ...(hasInitiales ? [agendaItem] : []),
     ...(isFaiseur ? [suiviItem, calendrierItem, parServiceItem] : []),
@@ -235,7 +241,7 @@ export default function Sidebar({ currentPage, onNavigate, masque, onToggleMasqu
           ⎋ Déconnexion
         </button>
         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-          {isIade ? 'Équipe IADE' : '8 associés · parts égales'}
+          {isAgentIa ? 'Agent IA · gestion IADE' : isIade ? 'Équipe IADE' : '8 associés · parts égales'}
         </div>
       </div>
     </aside>

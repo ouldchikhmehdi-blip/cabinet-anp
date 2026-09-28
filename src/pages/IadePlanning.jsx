@@ -102,6 +102,7 @@ export default function IadePlanning() {
   // Modifier une case : la gestion IADE (gestionnaire, faiseur de planning, admin) —
   // les mêmes que pour les remplaçants et les créneaux. La RLS le vérifie de son côté.
   const peutModifier = profile?.is_gestion_iade === true || profile?.is_faiseur === true || profile?.role === 'admin'
+    || profile?.is_agent_ia === true
 
   const aujourdHui = isoAujourdHui()
   const [annee, setAnnee] = useState(() => Number(aujourdHui.slice(0, 4)))

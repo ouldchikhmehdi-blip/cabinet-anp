@@ -67,7 +67,7 @@ export async function requireUser(req) {
 
   const { data: profile, error: profErr } = await supabaseAdmin
     .from('profiles')
-    .select('id, role, status, is_iade, is_gestion_iade, is_faiseur, nom_complet, email')
+    .select('id, role, status, is_iade, is_gestion_iade, is_agent_ia, is_faiseur, nom_complet, email')
     .eq('id', user.id)
     .single()
 

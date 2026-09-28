@@ -41,6 +41,13 @@ import './index.css'
 // page, mêmes données, en lecture seule des deux côtés.
 const PAGES_IADE = ['iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso', 'iade-planning']
 
+// Seules pages ouvertes à l'agent IA (compte IADE porteur de is_agent_ia, cf.
+// IADE.md § 1 et supabase/agent_ia.sql) : la gestion des congés, heures sup et
+// remplaçants — sans les onglets Créneaux et Synthèse — et le planning IADE,
+// qu'il peut modifier. Tout le reste lui est fermé, écran ET base.
+const PAGES_AGENT_IA = ['iade-gestion', 'iade-planning']
+const ONGLETS_AGENT_IA = ['conges', 'hs', 'rempla']
+
 // Écran d'attente plein cadre — le même partout, pour qu'une transition ne
 // ressemble jamais à une page cassée.
 function EcranNeutre({ children }) {
@@ -216,7 +223,31 @@ export default function App() {
   // ── Compte IADE : accès limité à ses congés et au calendrier de l'équipe ──
   // Toute autre page (y compris via ?page=…) retombe sur « Mes congés ».
   const estIade = profile?.is_iade === true
+  const estAgentIa = estIade && profile?.is_agent_ia === true
   const peutGererIade = profile?.is_gestion_iade === true || profile?.is_faiseur === true || profile?.role === 'admin'
+
+  // ── Agent IA : deux écrans, rien d'autre ──
+  // Toute autre page (y compris via ?page=…) retombe sur « Congés, HS et rempla ».
+  if (estAgentIa) {
+    const pageAgent = PAGES_AGENT_IA.includes(page) ? page : 'iade-gestion'
+    return (
+      <div className="iade-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Sidebar
+          currentPage={pageAgent}
+          onNavigate={(p) => { if (peutQuitter()) setPage(p) }}
+          masque={masque}
+          onToggleMasque={toggleMasque}
+          sombre={sombre}
+          onToggleSombre={toggleSombre}
+          isIade
+          isAgentIa
+        />
+        <main style={{ flex: 1, overflow: 'auto', padding: '24px', background: 'var(--color-bg)' }}>
+          {pageAgent === 'iade-planning' ? <IadePlanning /> : <IadeGestion onglets={ONGLETS_AGENT_IA} />}
+        </main>
+      </div>
+    )
+  }
 
   if (estIade) {
     const pageIade = PAGES_IADE.includes(page) ? page : 'iade-mes-conges'

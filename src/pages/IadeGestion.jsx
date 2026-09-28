@@ -46,11 +46,14 @@ const ONGLETS = [
     texte: 'Les récapitulatifs mensuels à transmettre : ce que le dashboard a validé, agent par agent, et le récap tiré du fichier du planning collé.' },
 ]
 
-export default function IadeGestion() {
+// `onglets` : les identifiants d'onglets ouverts à ce compte (tous par défaut).
+// L'agent IA n'a que congés, heures sup et rempla (cf. App.jsx, PAGES_AGENT_IA).
+export default function IadeGestion({ onglets = null }) {
   const maintenant = new Date()
+  const ongletsVisibles = onglets ? ONGLETS.filter(o => onglets.includes(o.id)) : ONGLETS
   const [annee, setAnnee] = useState(maintenant.getFullYear())
   const [mois,  setMois]  = useState(maintenant.getMonth())
-  const [vue,   setVue]   = useState('conges')
+  const [vue,   setVue]   = useState(ongletsVisibles[0]?.id ?? 'conges')
 
   const [demandes,  setDemandes]  = useState([])   // jours posés sur l'année
   const [heuresSup, setHeuresSup] = useState([])   // heures sup de l'année
@@ -216,7 +219,7 @@ export default function IadeGestion() {
     background: 'var(--color-danger)', color: '#fff',
   }
 
-  const actif = ONGLETS.find(o => o.id === vue) ?? ONGLETS[0]
+  const actif = ongletsVisibles.find(o => o.id === vue) ?? ongletsVisibles[0]
 
   return (
     <div style={{ maxWidth: 1180 }}>
@@ -228,7 +231,7 @@ export default function IadeGestion() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        {ONGLETS.map(o => {
+        {ongletsVisibles.map(o => {
           const n = compteurs[o.attente] ?? 0
           return (
             <button

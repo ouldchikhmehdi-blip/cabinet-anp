@@ -3,11 +3,13 @@ import { requireAdmin, sendError, setCorsHeaders } from './_lib/auth.js'
 
 /**
  * POST /api/iade-attribuer
- * Body : { userId: string, isIade?: boolean, isGestionIade?: boolean }
+ * Body : { userId: string, isIade?: boolean, isGestionIade?: boolean, isAgentIa?: boolean }
  *
- * Pose les deux drapeaux du module congés IADE sur un compte (cf. IADE.md) :
+ * Pose les drapeaux du module congés IADE sur un compte (cf. IADE.md) :
  *   • is_iade         → compte restreint : ne voit QUE ses congés et le calendrier d'équipe ;
- *   • is_gestion_iade → valide / refuse les demandes des IADE.
+ *   • is_gestion_iade → valide / refuse les demandes des IADE ;
+ *   • is_agent_ia     → compte IADE tenu par un assistant IA : gestion congés / HS /
+ *                       rempla et modification du planning, rien d'autre (agent_ia.sql).
  *
  * Réservé aux administrateurs. Les deux drapeaux sont exclusifs, et un compte
  * IADE ne peut être ni admin, ni faiseur de planning, ni titulaire d'initiales
@@ -31,7 +33,7 @@ export default async function handler(req, res) {
 
   const { data: cible, error: cibleErr } = await supabaseAdmin
     .from('profiles')
-    .select('id, email, role, status, initiales, is_faiseur, is_iade, is_gestion_iade')
+    .select('id, email, role, status, initiales, is_faiseur, is_iade, is_gestion_iade, is_agent_ia')
     .eq('id', userId)
     .single()
 
@@ -46,6 +48,11 @@ export default async function handler(req, res) {
     ? !!body.isGestionIade
     : cible.is_gestion_iade === true
 
+  // L'agent IA est un compte IADE : retirer « IADE » retire aussi « Agent IA ».
+  const isAgentIa = Object.prototype.hasOwnProperty.call(body, 'isAgentIa')
+    ? !!body.isAgentIa && isIade
+    : cible.is_agent_ia === true && isIade
+
   if (isIade && isGestion) {
     return sendError(res, 400, 'Un compte ne peut pas être à la fois IADE et gestionnaire des IADE.')
   }
@@ -57,7 +64,7 @@ export default async function handler(req, res) {
 
   const { error: updateErr } = await supabaseAdmin
     .from('profiles')
-    .update({ is_iade: isIade, is_gestion_iade: isGestion })
+    .update({ is_iade: isIade, is_gestion_iade: isGestion, is_agent_ia: isAgentIa })
     .eq('id', userId)
 
   if (updateErr) {
@@ -69,7 +76,7 @@ export default async function handler(req, res) {
     return sendError(res, 500, 'Erreur lors de la mise à jour.')
   }
 
-  const roles = [isIade && 'IADE', isGestion && 'gestion IADE'].filter(Boolean).join(' · ')
+  const roles = [isIade && 'IADE', isAgentIa && 'agent IA', isGestion && 'gestion IADE'].filter(Boolean).join(' · ')
   return res.status(200).json({
     ok: true,
     message: `Compte ${cible.email} mis à jour${roles ? ` (${roles})` : ' (droits IADE retirés)'}.`,

@@ -45,7 +45,7 @@ export function AuthProvider({ children }) {
   // Colonnes du profil. Les drapeaux IADE viennent de supabase/iade_conges.sql :
   // tant que ce fichier n'a pas été exécuté, la requête échoue (colonne inconnue)
   // — on retombe alors sur le jeu de colonnes historique pour ne verrouiller personne.
-  const CHAMPS_PROFIL        = 'id, email, role, status, initiales, is_faiseur, nom_complet, is_iade, is_gestion_iade'
+  const CHAMPS_PROFIL        = 'id, email, role, status, initiales, is_faiseur, nom_complet, is_iade, is_gestion_iade, is_agent_ia'
   const CHAMPS_PROFIL_LEGACY = 'id, email, role, status, initiales, is_faiseur, nom_complet'
 
   // Charge le profil depuis la table profiles
