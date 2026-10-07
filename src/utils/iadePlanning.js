@@ -256,6 +256,54 @@ export function appliquerModifs(cases, modifs) {
   })
 }
 
+// ── Heures sup éditées depuis la case (2026-10-07) ──────────────────────────
+// Le planning nomme ses colonnes par le prénom (« Sébastien »), le dashboard ses
+// comptes par le nom complet. Même clé que la chaîne du mini PC (cle_nom() dans
+// convertir_mois.py, prenom() dans sync_planning.py) : premier mot, sans accents
+// ni casse. Deux comptes actifs au même prénom : on ne devine pas.
+const clePrenom = (s) => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+  .trim().toLowerCase().split(/\s+/)[0] ?? ''
+
+export function agentDeColonne(colonne, agents) {
+  const cle = clePrenom(colonne)
+  if (!cle) return { agent: null, raison: 'introuvable' }
+  const trouves = (agents ?? []).filter(a => a.actif !== false && clePrenom(a.nom) === cle)
+  if (trouves.length === 1) return { agent: trouves[0], raison: null }
+  return { agent: null, raison: trouves.length > 1 ? 'ambigu' : 'introuvable' }
+}
+
+// Superpose au miroir les heures sup de la base, pour que la case change dès
+// l'enregistrement au lieu d'attendre la republication. Même règle que la chaîne
+// du mini PC : une heure sup VALIDÉE remplace la note du fichier, un congé
+// l'emporte toujours. Chaque case reçoit aussi :
+//   • `hs`      — la ligne de la base (validée ou en attente), pour l'éditeur ;
+//   • `agent`   — le compte rapproché de la colonne, ou null (+ `agentRaison`) ;
+//   • `hsFichier` — la note dit des heures sup qu'aucune ligne validée ne porte :
+//     tapées dans le fichier Excel, ou supprimées avant la republication.
+// `supprimees` : clés « jour|colonne » effacées pendant cette session, pour ne
+// pas réafficher une note que le miroir porte encore jusqu'à la republication.
+export function superposerHeuresSup(cases, heuresSup, agents, supprimees = new Set()) {
+  const parAgentJour = new Map()
+  for (const h of heuresSup ?? []) {
+    if (h.statut === 'refusee') continue
+    parAgentJour.set(`${h.user_id}|${h.jour}`, h)
+  }
+  const parColonne = new Map()
+  return (cases ?? []).map(c => {
+    if (!parColonne.has(c.iade)) parColonne.set(c.iade, agentDeColonne(c.iade, agents))
+    const { agent, raison } = parColonne.get(c.iade)
+    const hs = agent ? (parAgentJour.get(`${agent.id}|${c.jour}`) ?? null) : null
+    const base = { ...c, agent, agentRaison: raison, hs, hsFichier: false }
+    if (natureNote(c.note) === 'conge') return base
+    if (hs?.statut === 'validee') return { ...base, note: `+${hs.heures}h` }
+    if (natureNote(c.note) === 'hs') {
+      if (supprimees.has(`${c.jour}|${c.iade}`)) return { ...base, note: null }
+      return { ...base, hsFichier: true }
+    }
+    return base
+  })
+}
+
 // Une case en une ligne, pour les messages : « 8h-18h B », « CPRE / 13h-18h B »,
 // « 7h30-13h A (matin) », « OFF », « — » si vide.
 export function resumeCase(c) {

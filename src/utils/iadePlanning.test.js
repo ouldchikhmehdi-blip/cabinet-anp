@@ -290,3 +290,65 @@ describe('resumeCase', () => {
     expect(resumeCase(null)).toBe('—')
   })
 })
+
+import { agentDeColonne, superposerHeuresSup } from './iadePlanning'
+
+describe('heures sup éditées depuis la case', () => {
+  const agents = [
+    { id: 'u-seb', nom: 'Sébastien Martin', actif: true },
+    { id: 'u-cat', nom: 'cathy Durand', actif: true },
+    { id: 'u-old', nom: 'Pauline Ancienne', actif: false },
+  ]
+
+  it('rapproche la colonne du compte par le prénom, sans accents ni casse', () => {
+    expect(agentDeColonne('Sébastien', agents).agent.id).toBe('u-seb')
+    expect(agentDeColonne('SEBASTIEN', agents).agent.id).toBe('u-seb')
+    expect(agentDeColonne('CATHY', agents).agent.id).toBe('u-cat')
+  })
+
+  it('ne devine pas : compte inactif, inconnu ou prénom en double', () => {
+    expect(agentDeColonne('PAULINE', agents)).toEqual({ agent: null, raison: 'introuvable' })
+    expect(agentDeColonne('KEVIN', agents)).toEqual({ agent: null, raison: 'introuvable' })
+    const doublon = [...agents, { id: 'u-cat2', nom: 'Cathy Autre', actif: true }]
+    expect(agentDeColonne('CATHY', doublon)).toEqual({ agent: null, raison: 'ambigu' })
+  })
+
+  const hs = (jour, heures, statut = 'validee', user_id = 'u-seb') => ({ id: `${jour}-${user_id}`, user_id, jour, heures, statut })
+
+  it('une heure sup validée en base remplace la note du fichier', () => {
+    const [x] = superposerHeuresSup([c('2026-11-04', 'Sébastien', 6, { note: '+10h' })], [hs('2026-11-04', 8)], agents)
+    expect(x.note).toBe('+8h')
+    expect(x.hs.heures).toBe(8)
+    expect(x.hsFichier).toBe(false)
+  })
+
+  it('pose la note quand le miroir n\'en a pas encore', () => {
+    const [x] = superposerHeuresSup([c('2026-11-04', 'Sébastien', 6)], [hs('2026-11-04', 10)], agents)
+    expect(x.note).toBe('+10h')
+  })
+
+  it('le congé l\'emporte toujours à l\'affichage', () => {
+    const [x] = superposerHeuresSup([c('2026-11-04', 'Sébastien', 6, { note: 'Congé CP' })], [hs('2026-11-04', 10)], agents)
+    expect(x.note).toBe('Congé CP')
+    expect(x.hs.heures).toBe(10)
+  })
+
+  it('une ligne en attente ou refusée ne s\'affiche pas, mais l\'éditeur voit l\'attente', () => {
+    const [a] = superposerHeuresSup([c('2026-11-04', 'Sébastien', 6)], [hs('2026-11-04', 5, 'en_attente')], agents)
+    expect(a.note).toBe(null)
+    expect(a.hs.statut).toBe('en_attente')
+    const [r] = superposerHeuresSup([c('2026-11-04', 'Sébastien', 6)], [hs('2026-11-04', 5, 'refusee')], agents)
+    expect(r.hs).toBe(null)
+  })
+
+  it('signale une note d\'heures sup sans ligne en base, et l\'efface si on vient de la supprimer', () => {
+    const cas = [c('2026-11-04', 'Sébastien', 6, { note: '+10h' })]
+    expect(superposerHeuresSup(cas, [], agents)[0]).toMatchObject({ note: '+10h', hsFichier: true })
+    expect(superposerHeuresSup(cas, [], agents, new Set(['2026-11-04|Sébastien']))[0].note).toBe(null)
+  })
+
+  it('ne rapproche rien d\'une colonne sans compte', () => {
+    const [x] = superposerHeuresSup([c('2026-11-04', 'KEVIN', 5)], [hs('2026-11-04', 10)], agents)
+    expect(x).toMatchObject({ agent: null, agentRaison: 'introuvable', hs: null })
+  })
+})

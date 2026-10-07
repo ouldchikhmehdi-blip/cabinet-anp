@@ -620,6 +620,71 @@ Le lien de validation reçu précédemment ne fonctionne plus.`
   }
 }
 
+// I. La gestion a changé le nombre d'heures depuis l'onglet « Planning IADE »
+// (ajouté le 2026-10-07) → e-mail à l'agent. Il dit l'ancien nombre ET le
+// nouveau : sans « avant », l'agent ne sait pas ce qui a changé.
+// `avant` : { [id]: heures avant la modification }.
+export function emailHsModifiees({ agentNom, rows, avant, lien }) {
+  const tries = [...rows].sort((a, b) => a.jour.localeCompare(b.jour))
+  const items = tries.map(r => {
+    const ancien = avant?.[r.id]
+    return {
+      date: jourLong(r.jour),
+      changement: ancien != null && Number(ancien) !== Number(r.heures) ? `${ancien} h → ${r.heures} h` : `${r.heures} h`,
+    }
+  })
+  const total = tries.reduce((s, r) => s + (Number(r.heures) || 0), 0)
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p('Vos heures supplémentaires ont été <strong>modifiées</strong> par la gestion :')}
+    <ul style="font-size:14px;line-height:1.8;color:#2c2c2a;padding-left:20px;margin:8px 0 0;">
+      ${items.map(i => `<li>${i.date} — <strong>${i.changement}</strong></li>`).join('')}
+    </ul>
+    ${bouton(lien, 'Ouvrir « Mes heures sup »')}
+    ${p('Ce nombre est celui qui sera transmis à la comptabilité. Si quelque chose vous semble inexact, signalez-le à la personne qui gère les IADE.', 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+Vos heures supplémentaires ont été modifiées par la gestion :
+${items.map(i => `- ${i.date} — ${i.changement}`).join('\n')}
+
+Ce nombre est celui qui sera transmis à la comptabilité. En cas d'erreur, signalez-le à la personne qui gère les IADE.
+Ouvrez l'onglet « Mes heures sup » du dashboard :
+${lien}`
+  return {
+    subject: `Heures supplémentaires modifiées — ${total} h`,
+    html: coquille({ apercu: 'Vos heures supplémentaires ont été modifiées', titre: 'Heures supplémentaires modifiées', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
+// J. La gestion a supprimé des heures depuis l'onglet « Planning IADE » (ajouté
+// le 2026-10-07) → e-mail à l'agent. Envoyé AVANT la suppression : le serveur
+// relit la ligne pour dire ce qui disparaît.
+export function emailHsSupprimees({ agentNom, rows, lien }) {
+  const h = formaterHeures(rows)
+  const corps = `
+    ${p(bonjour(agentNom))}
+    ${p(`Des heures supplémentaires ont été <strong>supprimées</strong> par la gestion (<strong>${h.total} h</strong> au total) :`)}
+    ${h.html}
+    ${bouton(lien, 'Ouvrir « Mes heures sup »')}
+    ${p('Elles ne seront pas transmises à la comptabilité. Si quelque chose vous semble inexact, signalez-le à la personne qui gère les IADE.', 'color:#5f5e5a;')}
+    <div style="margin-top:16px;">${lienDeSecours(lien)}</div>`
+  const text = `${bonjour(agentNom)}
+
+Des heures supplémentaires ont été supprimées par la gestion (${h.total} h au total) :
+${h.text}
+
+Elles ne seront pas transmises à la comptabilité. En cas d'erreur, signalez-le à la personne qui gère les IADE.
+Ouvrez l'onglet « Mes heures sup » du dashboard :
+${lien}`
+  return {
+    subject: `Heures supplémentaires supprimées — ${h.total} h`,
+    html: coquille({ apercu: 'Des heures supplémentaires ont été supprimées', titre: 'Heures supplémentaires supprimées', corps, pied: PIED_NOTIF }),
+    text,
+  }
+}
+
 // ── Planning IADE modifié depuis le dashboard ────────────────────────────────
 // Ajouté le 2026-09-16. La gestion corrige une case (poste, horaires) dans
 // l'onglet « Planning IADE » ; l'agent concerné reçoit ce message. Il dit la

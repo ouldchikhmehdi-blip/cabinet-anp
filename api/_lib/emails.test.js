@@ -114,3 +114,29 @@ describe('réponse à une déclaration d\'heures sup', () => {
     expect(m.text).toContain('Validée le : vendredi 04 septembre 2026')
   })
 })
+
+import { emailHsModifiees, emailHsSupprimees } from './emails.js'
+
+describe('heures sup modifiées ou supprimées depuis la case du planning', () => {
+  it('dit l\'ancien et le nouveau nombre d\'heures', () => {
+    const m = emailHsModifiees({
+      agentNom: 'Sébastien', rows: [hs('2026-11-04', 8, { statut: 'validee' })], avant: { '2026-11-04': 10 }, lien: '',
+    })
+    expect(m.subject).toBe('Heures supplémentaires modifiées — 8 h')
+    expect(m.text).toContain('mercredi 04 novembre 2026 — 10 h → 8 h')
+    expect(m.html).toContain('10 h → 8 h')
+  })
+
+  it('reste lisible sans « avant »', () => {
+    const m = emailHsModifiees({ agentNom: 'Sébastien', rows: [hs('2026-11-04', 8)], avant: {}, lien: '' })
+    expect(m.text).toContain('mercredi 04 novembre 2026 — 8 h')
+    expect(m.text).not.toContain('→')
+  })
+
+  it('annonce les heures supprimées et dit qu\'elles ne partent pas en paie', () => {
+    const m = emailHsSupprimees({ agentNom: 'Sébastien', rows: [hs('2026-11-04', 10, { statut: 'validee' })], lien: '' })
+    expect(m.subject).toBe('Heures supplémentaires supprimées — 10 h')
+    expect(m.text).toContain('10 h')
+    expect(m.text).toContain('ne seront pas transmises à la comptabilité')
+  })
+})

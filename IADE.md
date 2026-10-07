@@ -259,6 +259,29 @@ la gestion choisit un agent, un jour, un nombre d'heures. La ligne naît **déj�
 c'est le trigger qui l'impose, pas le front. L'agent est **informé** par e-mail ; il n'a rien
 à approuver.
 
+**Chemin 3 — la gestion corrige depuis la case du planning** (ajouté le 2026-10-07). Dans
+l'onglet « Planning IADE », la case « Congé / HS » d'un agent s'ouvre d'un clic
+(`src/components/iade/HeuresSupCase.jsx`, mêmes droits que la modification d'une case) :
+ajouter des heures (comme le chemin 2), **changer le nombre**, ou **supprimer** la ligne.
+
+- Changer le nombre est une décision de gestion : la ligne passe `validee`, même si
+  l'agent l'avait déclarée et qu'elle attendait son MAR. E-mail `hs_modif_gestion` à
+  l'agent, qui dit l'ancien et le nouveau nombre (`emailHsModifiees`).
+- Supprimer efface la ligne (policy `iade_heures_sup_delete_gestion`). L'agent est prévenu
+  **avant** (`hs_suppression_gestion`, `emailHsSupprimees`) : le serveur relit la ligne pour
+  la décrire.
+- **La grille lit la base.** Pour la gestion, `superposerHeuresSup` (`iadePlanning.js`) pose
+  les heures validées par-dessus la note du miroir — même règle que `convertir_mois.py` :
+  la base remplace le fichier, le congé l'emporte. La case dit donc tout de suite ce que la
+  synthèse comptable lira, sans attendre la republication.
+- Colonne → compte : `agentDeColonne`, par le prénom sans accents ni casse, comme la chaîne
+  du mini PC. Deux comptes actifs au même prénom : rien n'est proposé.
+- Une note d'heures sup sans ligne validée (tapée dans le fichier Excel) est signalée dans
+  l'éditeur : elle n'entre pas dans la synthèse. Les « 10 HS » systématiques du mercredi de
+  Sem P ont été retirés du fichier le 2026-10-07, et `appliquer_trame.py` n'en pose plus.
+- Dropbox suit dans le quart d'heure : `publier_si_modifs.py` surveille aussi les heures
+  validées.
+
 **Répondre depuis l'e-mail, sans se connecter.** L'e-mail du MAR porte, pour chaque jour,
 deux boutons **Valider** / **Refuser**. Ils ouvrent une page de confirmation (`api/hs-decision.js`)
 qui affiche la déclaration et demande un dernier clic — ni mot de passe, ni 2FA. L'agent est

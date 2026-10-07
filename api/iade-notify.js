@@ -4,7 +4,7 @@ import { envoyerEmail } from './_lib/mailer.js'
 import {
   emailCongesPoses, emailCongesRetires, emailCongesDecides, emailCongesRecus,
   emailHsDeclarees, emailHsDecidees, emailHsAjoutees, emailHsRecues,
-  emailHsCorrigees, emailHsSansSuite,
+  emailHsCorrigees, emailHsSansSuite, emailHsModifiees, emailHsSupprimees,
   emailPlanningModifie, emailPlanningRetour,
 } from './_lib/emails.js'
 
@@ -207,7 +207,7 @@ export default async function handler(req, res) {
   }
   const { user, profile } = auth
 
-  const { type, lot, ids } = req.body ?? {}
+  const { type, lot, ids, avant } = req.body ?? {}
   const lien = process.env.VITE_APP_URL ?? ''
   const idList = Array.isArray(ids) ? ids : []
   const peutGerer = profile.is_gestion_iade || profile.is_faiseur || profile.role === 'admin' || profile.is_agent_ia
@@ -324,6 +324,27 @@ export default async function handler(req, res) {
           motif:  siennes[0].motif_reponse,
           lien:   l,
         }))
+      return res.status(200).json({ ok: true, notified })
+    }
+
+    // La gestion a changé le nombre d'heures, ou les supprime, depuis l'onglet
+    // « Planning IADE » (2026-10-07) : on informe l'agent. Une suppression est
+    // annoncée AVANT d'être faite, pour que la ligne soit encore là à relire.
+    // `avant` ({ id: heures }) ne sert qu'au texte du message : il vient du client,
+    // il n'est jamais écrit nulle part.
+    if (type === 'hs_modif_gestion' || type === 'hs_suppression_gestion') {
+      if (!peutGerer) return sendError(res, 403, 'Droits insuffisants.')
+
+      const { data: rows } = await supabaseAdmin
+        .from('iade_heures_sup').select(CHAMPS_HS).in('id', idList)
+
+      if (!rows || rows.length === 0) return rienAFaire('Aucune ligne correspondante.')
+
+      const notified = await prevenirAgents(rows, lien, (args) => (
+        type === 'hs_modif_gestion'
+          ? emailHsModifiees({ ...args, avant: avant && typeof avant === 'object' ? avant : {} })
+          : emailHsSupprimees(args)
+      ))
       return res.status(200).json({ ok: true, notified })
     }
 

@@ -37,6 +37,9 @@ import {
   chargerMois, chargerDerniereMaj, chargerModifsPeriode, enregistrerModifs, annulerModifs, notifierPlanning,
 } from '../utils/iadePlanningApi'
 import CaseEditeur from '../components/iade/CaseEditeur'
+import HeuresSupCase from '../components/iade/HeuresSupCase'
+import { chargerHeuresSupPeriode } from '../utils/iadeHeuresSupApi'
+import { chargerAgentsIade } from '../utils/iadeCongesApi'
 import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
 import { chargerCreneauxPeriode } from '../utils/iadeCreneauxApi'
 import {
@@ -45,7 +48,7 @@ import {
 import {
   POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
   couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, moitiesCase,
-  semaineISO, natureNote, libelleNote, appliquerModifs, memeCase, resumeCase,
+  semaineISO, natureNote, libelleNote, appliquerModifs, memeCase, resumeCase, superposerHeuresSup,
 } from '../utils/iadePlanning'
 import { moisAnneeFR } from '../utils/calendrier'
 
@@ -110,13 +113,18 @@ export default function IadePlanning() {
   // Les données portent le mois qu'elles décrivent : « en chargement » et
   // « en erreur » s'en déduisent, plutôt que d'être remis à zéro à la main à
   // chaque changement de mois (deux états à garder d'accord, donc un à oublier).
-  const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [], rempla: [], creneaux: [], modifs: [] })
+  const [donnees, setDonnees] = useState({ annee: null, mois: null, cases: [], jours: [], rempla: [], creneaux: [], modifs: [], hs: [], agents: [] })
   const [maj, setMaj] = useState(null)
   const [echec, setEchec] = useState(null)
   // Cases modifiées mais pas encore enregistrées : clé jour|IADE →
   //   { type: 'modif', cas, avant, fichier } ou { type: 'retour', id }.
   const [brouillon, setBrouillon] = useState(() => new Map())
   const [edition, setEdition] = useState(null)          // { jour, iade } de la case ouverte
+  // Heures sup (2026-10-07) : la case « Congé / HS » ouverte, et les cases dont on
+  // vient de supprimer les heures — le miroir les porte encore jusqu'à la
+  // republication du quart d'heure, il ne faut pas les réafficher entre-temps.
+  const [editionHs, setEditionHs] = useState(null)      // { jour, iade }
+  const [hsSupprimees, setHsSupprimees] = useState(() => new Set())
   const [enregistrement, setEnregistrement] = useState(false)
   const [succes, setSucces] = useState(null)
   const [erreurAction, setErreurAction] = useState(null)
@@ -130,17 +138,21 @@ export default function IadePlanning() {
       // Requête inutile pour un IADE : la RLS ne lui rendrait rien de toute façon.
       voitCreneaux ? chargerCreneauxPeriode(debut, fin) : Promise.resolve([]),
       chargerModifsPeriode(debut, fin),
+      // Heures sup et comptes : seulement pour la gestion, qui seule les édite.
+      // Un agent n'a le droit de lire que les siennes — la grille resterait à moitié vraie.
+      peutModifier ? chargerHeuresSupPeriode(debut, fin) : Promise.resolve([]),
+      peutModifier ? chargerAgentsIade() : Promise.resolve([]),
     ])
-      .then(([d, m, r, c, md]) => {
+      .then(([d, m, r, c, md, hs, ag]) => {
         if (!vivant) return
-        setDonnees({ annee, mois, ...d, rempla: r, creneaux: c, modifs: md })
+        setDonnees({ annee, mois, ...d, rempla: r, creneaux: c, modifs: md, hs, agents: ag })
         setMaj(m)
       })
       .catch(e => {
         if (vivant) setEchec({ annee, mois, message: e.message || 'Chargement impossible.' })
       })
     return () => { vivant = false }
-  }, [annee, mois, voitCreneaux])
+  }, [annee, mois, voitCreneaux, peutModifier])
 
   const aJour = donnees.annee === annee && donnees.mois === mois
   const erreur = echec && echec.annee === annee && echec.mois === mois ? echec.message : null
@@ -149,7 +161,13 @@ export default function IadePlanning() {
   // Le mois précédent ne doit pas rester affiché pendant le chargement du suivant.
   // `casesBase` = ce que la base dit (miroir + modifications enregistrées) ;
   // `cases` = la même chose, avec le brouillon par-dessus — ce qu'on affiche.
-  const casesBase = useMemo(() => (aJour ? appliquerModifs(donnees.cases, donnees.modifs) : []), [aJour, donnees.cases, donnees.modifs])
+  // Pour la gestion, les heures sup de la base se posent par-dessus la note du
+  // miroir : la case dit tout de suite ce que la synthèse comptable lira.
+  const casesBase = useMemo(() => {
+    if (!aJour) return []
+    const avecModifs = appliquerModifs(donnees.cases, donnees.modifs)
+    return peutModifier ? superposerHeuresSup(avecModifs, donnees.hs, donnees.agents, hsSupprimees) : avecModifs
+  }, [aJour, donnees.cases, donnees.modifs, donnees.hs, donnees.agents, hsSupprimees, peutModifier])
   const cases = useMemo(() => {
     if (brouillon.size === 0) return casesBase
     return casesBase.map(c => {
@@ -222,6 +240,24 @@ export default function IadePlanning() {
     }
   }
   const colonnesBrouillon = [...new Set([...brouillon.values()].map(b => joli(b.iade)))]
+
+  // Heures sup enregistrées depuis la case : on relit celles du mois, et une
+  // suppression masque la note que le miroir porte encore.
+  async function heuresSupFaites(message, geste) {
+    const ouverte = editionHs
+    setEditionHs(null)
+    setSucces(message); setErreurAction(null)
+    if (geste === 'suppression' && ouverte) {
+      setHsSupprimees(prev => new Set(prev).add(cleCase(ouverte.jour, ouverte.iade)))
+    }
+    try {
+      const { debut, fin } = bornesDuMois(annee, mois)
+      const hs = await chargerHeuresSupPeriode(debut, fin)
+      setDonnees(d => (d.annee === annee && d.mois === mois ? { ...d, hs } : d))
+    } catch {
+      setErreurAction('Heures sup enregistrées, mais la grille n\'a pas pu être relue : rechargez la page.')
+    }
+  }
 
   // Remplaçants saisis dans le dashboard : jour → noms. Ceux que le fichier Excel
   // porte déjà ne sont pas répétés (comparaison insensible à la casse et aux
@@ -310,7 +346,8 @@ export default function IadePlanning() {
           {peutModifier ? (
             <>Le planning de l'équipe IADE, repris du fichier du planning. <strong>Cliquez une case</strong> pour
             changer le poste ou les horaires : l'agent est prévenu par e-mail à l'enregistrement, et le
-            fichier Dropbox est mis à jour dans le quart d'heure.</>
+            fichier Dropbox est mis à jour dans le quart d'heure. La case <strong>Congé / HS</strong> s'ouvre
+            pour ajouter, changer ou supprimer les heures sup du jour ; c'est ce que lit la synthèse comptable.</>
           ) : (
             <>Le planning de l'équipe IADE, en lecture seule. Il reprend le fichier du planning ; une case
             cerclée a été modifiée par la gestion, qui vous en a prévenu(e) par e-mail.</>
@@ -474,7 +511,13 @@ export default function IadePlanning() {
                               })}
                             </div>
                           </td>
-                          <td style={celluleNote(nature)}>
+                          {/* Congé / HS : la gestion clique pour ajouter, changer ou
+                              supprimer les heures sup du jour (HeuresSupCase). */}
+                          <td style={{ ...celluleNote(nature), cursor: peutModifier && c ? 'pointer' : 'default' }}
+                              title={peutModifier && c
+                                ? (c.hsFichier ? 'Heures sup venues du fichier Excel — cliquer pour voir' : 'Cliquer pour les heures sup')
+                                : undefined}
+                              onClick={peutModifier && c ? () => setEditionHs({ jour: iso, iade: nom }) : undefined}>
                             {nature ? libelleNote(c.note) : ''}
                           </td>
                         </Fragment>
@@ -606,6 +649,16 @@ export default function IadePlanning() {
           onAppliquer={appliquerBrouillon}
           onRevenirFichier={revenirFichier}
           onFermer={() => setEdition(null)}
+        />
+      )}
+
+      {editionHs && (
+        <HeuresSupCase
+          jour={editionHs.jour}
+          colonne={editionHs.iade}
+          caseAffichee={indexBase.get(editionHs.jour)?.cases.get(editionHs.iade) ?? null}
+          onFermer={() => setEditionHs(null)}
+          onFait={heuresSupFaites}
         />
       )}
     </div>

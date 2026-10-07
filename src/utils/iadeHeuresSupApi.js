@@ -125,6 +125,57 @@ export async function ajouterHeuresGestion({ userId, jour, heures, commentaire }
   return data
 }
 
+// Heures d'une période (onglet « Planning IADE » : le mois affiché).
+export async function chargerHeuresSupPeriode(debut, fin) {
+  const { data, error } = await supabase
+    .from('iade_heures_sup')
+    .select(CHAMPS)
+    .gte('jour', debut)
+    .lte('jour', fin)
+  if (error) throw error
+  return data ?? []
+}
+
+// La gestion change le nombre d'heures depuis la case du planning (2026-10-07).
+// C'est une décision de gestion : la ligne passe validée, quel que soit son état
+// (le trigger iade_heures_sup_garde horodate decide_par / decide_le).
+export async function modifierHeuresGestion(id, heures) {
+  const { data, error } = await supabase
+    .from('iade_heures_sup')
+    .update({ heures: Number(heures), statut: 'validee', motif_reponse: null })
+    .eq('id', id)
+    .select(CHAMPS)
+    .single()
+  if (error) throw error
+  return data
+}
+
+// La gestion supprime la ligne (RLS iade_heures_sup_delete_gestion). Prévenir
+// l'agent AVANT : le serveur relit la ligne pour la décrire.
+export async function supprimerHeuresGestion(id) {
+  const { error } = await supabase.from('iade_heures_sup').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Comme notifierHeuresSup, mais rend le bilan du serveur ({ notified }) pour que
+// l'écran dise si l'agent a bien été prévenu. Ne lève jamais : null en cas d'échec.
+export async function notifierHeuresSupBilan({ type, ids, avant }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const jwt = session?.access_token
+    if (!jwt) return null
+    const res = await fetch('/api/iade-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwt}` },
+      body: JSON.stringify({ type: `hs_${type}`, ids, avant }),
+    })
+    return res.ok ? await res.json() : null
+  } catch (err) {
+    console.error('Notification heures sup (non bloquante):', err)
+    return null
+  }
+}
+
 // ── Décision (MAR désigné ou gestion en secours) ─────────────────────────────
 
 // decide_par / decide_le sont posés par la base, jamais par le client.
