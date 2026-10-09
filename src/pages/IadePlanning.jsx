@@ -48,7 +48,7 @@ import {
 import {
   POSTES, COULEUR_CONGE, COULEUR_HS, COULEUR_VACANCES,
   couleurPoste, decrire, bornesDuMois, colonnesDuMois, indexerParJour, moitiesCase,
-  semaineISO, natureNote, libelleNote, appliquerModifs, memeCase, resumeCase, superposerHeuresSup,
+  semaineISO, natureNote, libelleNote, appliquerModifs, rotationDeLaSemaine, memeCase, resumeCase, superposerHeuresSup,
 } from '../utils/iadePlanning'
 import { moisAnneeFR } from '../utils/calendrier'
 
@@ -334,6 +334,16 @@ export default function IadePlanning() {
     color: surJaune ? ENCRE_SUR_JAUNE : 'var(--color-text-tertiary)',
   })
 
+  // Semaine de rotation (« Sem 4 ») : discrète quand tout va bien, rouge quand le
+  // contrôle de rotation signale un saut ou un doublon.
+  const pastilleSem = (alerte) => ({
+    display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 10,
+    whiteSpace: 'nowrap', cursor: 'default',
+    background: alerte ? COULEUR_CONGE : 'var(--color-bg)',
+    color: alerte ? '#fff' : 'var(--color-text-secondary)',
+    border: alerte ? 'none' : '0.5px solid var(--color-border)',
+  })
+
   const vide = !chargement && !erreur && joursTries.length === 0
 
   return (
@@ -437,14 +447,37 @@ export default function IadePlanning() {
                 const premierDeLaSemaine = i === 0 || nouvelleSemaine
                 return (
                   <Fragment key={iso}>
-                    {/* Respiration entre les semaines, comme la ligne vide du fichier Excel :
-                        sans elle, le mois se lit comme un seul bloc. */}
-                    {nouvelleSemaine && (
-                      <tr aria-hidden="true">
-                        <td colSpan={colonnes.length * 2 + 3}
-                            style={{ height: 14, border: 'none', background: 'transparent', padding: 0 }} />
-                      </tr>
-                    )}
+                    {/* Ligne de rotation en tête de chaque semaine (la première du mois
+                        aussi) : elle sépare les semaines, comme la ligne vide du fichier
+                        Excel, et dit sous chaque IADE sa semaine de rotation. En rouge
+                        quand le contrôle de convertir_mois.py a relevé une anomalie. */}
+                    {premierDeLaSemaine && (() => {
+                      const rotation = rotationDeLaSemaine(
+                        index, joursTries.filter(j => semaineISO(j) === semaineISO(iso)), colonnes)
+                      return (
+                        <tr>
+                          <td style={{ height: 20, padding: '0 10px', border: 'none', fontSize: 9, fontWeight: 700,
+                                       color: 'var(--color-text-tertiary)', letterSpacing: '0.04em', textAlign: 'left',
+                                       paddingTop: i > 0 ? 8 : 2 }}>
+                            ROTATION
+                          </td>
+                          {colonnes.map(nom => {
+                            const { sem, alerte } = rotation.get(nom)
+                            return (
+                              <td key={nom} colSpan={2} style={{ border: 'none', padding: i > 0 ? '8px 2px 2px' : '2px', textAlign: 'center' }}>
+                                {(sem || alerte) && (
+                                  <span title={alerte ? `Rotation à vérifier : ${alerte}` : `Semaine de rotation de ${joli(nom)}`}
+                                        style={pastilleSem(alerte)}>
+                                    {sem ?? '?'}{alerte ? ' ⚠' : ''}
+                                  </span>
+                                )}
+                              </td>
+                            )
+                          })}
+                          <td colSpan={voitCreneaux ? 2 : 1} style={{ border: 'none' }} />
+                        </tr>
+                      )
+                    })()}
                     <tr>
                     <td style={{
                       ...cellule, textAlign: 'left', paddingLeft: 10, fontWeight: 600,
@@ -619,6 +652,11 @@ export default function IadePlanning() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: COULEUR_VACANCES }} />
             Vacances scolaires
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={pastilleSem(null)}>Sem 4</span>
+            Semaine de rotation, en tête de chaque semaine —
+            <span style={pastilleSem('x')}>Sem 4 ⚠</span> rotation à vérifier (détail au survol)
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, boxShadow: 'inset 0 0 0 2px var(--color-primary)' }} />

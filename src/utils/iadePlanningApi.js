@@ -9,7 +9,7 @@
 import { supabase } from '../lib/supabase'
 import { bornesDuMois } from './iadePlanning'
 
-const CHAMPS_CASE = 'jour, iade, rang, matin, apres_midi, poste, note'
+const CHAMPS_CASE = 'jour, iade, rang, matin, apres_midi, poste, note, sem, sem_alerte'
 
 // Le mois complet : une requête pour les cases, une pour les infos du jour.
 export async function chargerMois(annee, mois) {

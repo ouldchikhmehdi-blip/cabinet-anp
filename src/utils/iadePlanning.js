@@ -316,3 +316,25 @@ export function resumeCase(c) {
   if (c.kind === 'aprem' && a) return `${a} (après-midi)`
   return m || a || '—'
 }
+
+// ── Semaine de rotation ──────────────────────────────────────────────────────
+// Ajouté le 2026-10-09. Chaque IADE suit une trame de semaines qui tourne d'un cran
+// par semaine (« Sem 1 » … « Sem 6 », « Sem P » hors rotation). Le fichier source
+// l'écrit au-dessus de chaque bloc de semaine ; convertir_mois.py la reprend dans le
+// miroir (`sem`) et la contrôle (`sem_alerte` : null quand tout va bien).
+
+// La rotation d'une semaine : pour chaque colonne, la « Sem » du premier jour de la
+// semaine qui en porte une. `jours` = les jours ISO de CETTE semaine, triés.
+//   → Map(nom → { sem: 'Sem 4' | null, alerte: string | null })
+export function rotationDeLaSemaine(index, jours, colonnes) {
+  const out = new Map()
+  for (const nom of colonnes) {
+    let trouve = null
+    for (const iso of jours) {
+      const c = index.get(iso)?.cases.get(nom)
+      if (c?.sem) { trouve = c; break }
+    }
+    out.set(nom, { sem: trouve?.sem ?? null, alerte: trouve?.sem_alerte ?? null })
+  }
+  return out
+}

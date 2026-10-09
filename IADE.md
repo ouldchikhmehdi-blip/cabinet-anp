@@ -839,6 +839,15 @@ de 5h du mini PC (`publier-dropbox.sh`).
   recompter. Il se pose sur le **premier jour affiché de chaque semaine** : c'est le lundi
   dans le cas courant, et le mercredi quand le mois commence un mercredi — sinon une
   semaine entière s'afficherait sans numéro.
+- **Semaine de rotation en tête de chaque semaine** — ajouté le 2026-10-09 : une ligne
+  « ROTATION » donne, sous chaque IADE, sa semaine de trame (« Sem 1 » … « Sem 6 »,
+  « Sem P » hors rotation), lue dans la ligne « Sem » du fichier source par
+  `convertir_mois.py` (colonnes `sem`, `sem_alerte` du miroir ; `rotationDeLaSemaine()`).
+  Le script **contrôle** la rotation au passage : chacun avance d'un cran par semaine
+  (6 → 1), aucun numéro en double, aucune case vide. Une anomalie passe la pastille
+  **en rouge** (raison au survol), est peinte en rouge avec commentaire dans le fichier
+  Dropbox et écrite en `⚠ rotation` dans le journal — sans bloquer la publication.
+  Une semaine à cheval sur deux onglets garde la « Sem » de l'onglet précédent.
 - Sur les fonds jaunes, l'encre est **imposée en sombre** (`#2C2C2A`) : le jaune ne change
   pas avec le thème, le texte ne doit pas changer non plus — en mode sombre,
   `var(--color-text)` y devenait illisible.

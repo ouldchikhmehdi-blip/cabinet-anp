@@ -34,6 +34,13 @@ create table if not exists public.iade_planning (
 
 create index if not exists iade_planning_jour_idx on public.iade_planning (jour);
 
+-- Ajouté le 2026-10-09 : la semaine de rotation (« Sem 1 » … « Sem 6 », « Sem P »)
+-- lue dans le fichier source, et le résultat du contrôle de rotation fait par
+-- convertir_mois.py (null = rien à signaler). Affichées en tête de chaque semaine.
+alter table public.iade_planning
+  add column if not exists sem text,
+  add column if not exists sem_alerte text;
+
 -- ---- 2. Une ligne = UN JOUR (ce qui ne dépend pas d'un agent) ----
 create table if not exists public.iade_planning_jour (
   jour         date    primary key,

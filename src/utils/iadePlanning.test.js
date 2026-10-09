@@ -352,3 +352,21 @@ describe('heures sup éditées depuis la case', () => {
     expect(x).toMatchObject({ agent: null, agentRaison: 'introuvable', hs: null })
   })
 })
+
+// ── Semaine de rotation ──────────────────────────────────────────────────────
+import { rotationDeLaSemaine } from './iadePlanning'
+
+describe('rotationDeLaSemaine', () => {
+  const cases = [
+    c('2026-10-01', 'CATHY', 0, { sem: 'Sem 4' }),
+    c('2026-10-01', 'NICOLAS', 1, {}),
+    c('2026-10-02', 'NICOLAS', 1, { sem: 'Sem 5', sem_alerte: 'Sem 5 — attendu Sem 4' }),
+  ]
+  const index = indexerParJour(cases, [])
+  it('prend la Sem du premier jour de la semaine qui en porte une', () => {
+    const r = rotationDeLaSemaine(index, ['2026-10-01', '2026-10-02'], ['CATHY', 'NICOLAS', 'KEVIN'])
+    expect(r.get('CATHY')).toEqual({ sem: 'Sem 4', alerte: null })
+    expect(r.get('NICOLAS')).toEqual({ sem: 'Sem 5', alerte: 'Sem 5 — attendu Sem 4' })
+    expect(r.get('KEVIN')).toEqual({ sem: null, alerte: null })
+  })
+})
