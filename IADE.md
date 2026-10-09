@@ -845,6 +845,21 @@ de 5h du mini PC (`publier-dropbox.sh`).
   `border-collapse: collapse`, la bordure partagée est peinte par la colonne voisine et
   s'en allait avec elle. Écarté : ramener la colonne de l'agent connecté en premier —
   l'ordre du fichier est le même pour tous, c'est là que l'équipe cherche une colonne.
+- **Sur téléphone (< 700 px), UNE seule colonne d'IADE** — ajouté le 2026-10-09 : la
+  colonne figée ne suffit pas sur un téléphone, et ce n'est pas corrigeable en CSS.
+  `position: sticky` est calculé par rapport au **layout viewport**, pas à ce que l'œil
+  voit : dès qu'on pince pour zoomer, la colonne figée est agrandie et sort de l'écran
+  comme le reste. Or avec 8 IADE à deux colonnes (≈ 1500 px) et un texte à 11 px sur un
+  écran de 390 px, l'agent zoome forcément. Donc sous 700 px la grille n'affiche que les
+  **dates + une colonne** (≈ 280 px : plus rien à faire glisser, plus rien à zoomer),
+  avec un sélecteur « Planning de » pour aller voir un collègue. Les colonnes
+  « Remplaçants » et « Créneaux en moins » sont retirées sur téléphone — ce sont des
+  colonnes d'organisation, et elles repousseraient la grille hors de l'écran.
+  Quelle colonne est la sienne : `iade_agenda.colonne`, celle qu'il a **cliquée** dans
+  « Mon agenda » (réponse sûre) ; à défaut `suggererColonne()` sur `nom_complet` ; à
+  défaut la première du mois. Un seul chemin de rendu — c'est la **liste des colonnes**
+  qui est réduite (`colonnesVues`), pas une seconde table : édition des cases, ligne
+  ROTATION, numéro de semaine et couleurs suivent sans duplication.
 - **Numéro de semaine ISO dans la case du lundi** (`S38`, en petit à droite de la date) —
   ajouté le 2026-09-11 : le planning se discute par semaine, le numéro évite de les
   recompter. Il se pose sur le **premier jour affiché de chaque semaine** : c'est le lundi

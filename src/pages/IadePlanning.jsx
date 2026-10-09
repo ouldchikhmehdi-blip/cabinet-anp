@@ -40,6 +40,8 @@ import CaseEditeur from '../components/iade/CaseEditeur'
 import HeuresSupCase from '../components/iade/HeuresSupCase'
 import { chargerHeuresSupPeriode } from '../utils/iadeHeuresSupApi'
 import { chargerAgentsIade } from '../utils/iadeCongesApi'
+import { chargerAbonnementIade } from '../utils/iadeAgendaApi'
+import { suggererColonne } from '../utils/iadeAgenda'
 import { chargerRemplacantsPourvus } from '../utils/iadeRemplaApi'
 import { chargerCreneauxPeriode } from '../utils/iadeCreneauxApi'
 import {
@@ -96,6 +98,24 @@ function messageBilan(entrees, bilans) {
   return parts.join(' ')
 }
 
+// Vrai sous 700 px, le même seuil que la vue IADE sur smartphone d'index.css.
+// Il faut le connaître en JS et pas seulement en CSS : sur un téléphone on ne
+// montre qu'UNE colonne d'IADE, ce qui change ce qu'on rend, pas sa mise en forme.
+function useEcranTelephone() {
+  const [petit, setPetit] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(max-width: 700px)').matches
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia('(max-width: 700px)')
+    const suivre = (e) => setPetit(e.matches)
+    mq.addEventListener('change', suivre)
+    return () => mq.removeEventListener('change', suivre)
+  }, [])
+  return petit
+}
+
 export default function IadePlanning() {
   const { profile } = useAuth()
   // Un compte IADE ne voit pas les créneaux en moins. Par défaut on ne les montre
@@ -128,6 +148,14 @@ export default function IadePlanning() {
   const [enregistrement, setEnregistrement] = useState(false)
   const [succes, setSucces] = useState(null)
   const [erreurAction, setErreurAction] = useState(null)
+  // Téléphone : la grille complète (8 IADE × 2 colonnes ≈ 1500 px) ne peut pas s'y
+  // lire. `position: sticky` étant calculé sur le layout viewport, la colonne figée
+  // part de l'écran dès qu'on pince pour zoomer — et à 11 px de texte, on zoome
+  // forcément. On n'affiche donc qu'une colonne : la sienne par défaut, et plus rien
+  // à faire glisser ni à zoomer.
+  const estTelephone = useEcranTelephone()
+  const [maColonne, setMaColonne] = useState(null)       // celle choisie dans « Mon agenda »
+  const [colonneChoisie, setColonneChoisie] = useState(null)  // celle qu'il regarde, s'il en a changé
 
   useEffect(() => {
     let vivant = true
@@ -153,6 +181,19 @@ export default function IadePlanning() {
       })
     return () => { vivant = false }
   }, [annee, mois, voitCreneaux, peutModifier])
+
+  // La colonne que l'agent a déjà désignée dans « Mon agenda » (iade_agenda.colonne) :
+  // c'est la réponse sûre, puisque c'est lui qui l'a cliquée. Un compte de gestion n'a
+  // pas de ligne — la RLS rend null — et on retombe sur le rapprochement par le nom.
+  useEffect(() => {
+    const userId = profile?.id
+    if (!userId || !estTelephone) return
+    let vivant = true
+    chargerAbonnementIade(userId)
+      .then(a => { if (vivant) setMaColonne(a?.colonne ?? null) })
+      .catch(() => { if (vivant) setMaColonne(null) })
+    return () => { vivant = false }
+  }, [profile?.id, estTelephone])
 
   const aJour = donnees.annee === annee && donnees.mois === mois
   const erreur = echec && echec.annee === annee && echec.mois === mois ? echec.message : null
@@ -185,6 +226,26 @@ export default function IadePlanning() {
   const index = useMemo(() => indexerParJour(cases, jours), [cases, jours])
   const indexBase = useMemo(() => indexerParJour(casesBase, jours), [casesBase, jours])
   const joursTries = useMemo(() => [...index.keys()].sort(), [index])
+
+  // Sur téléphone : une seule colonne. Celle qu'il a choisie à l'écran, sinon la
+  // sienne (« Mon agenda », puis rapprochement par le nom du compte), sinon la
+  // première du mois — mieux vaut la grille de quelqu'un que rien du tout. Le
+  // repli vérifie que la colonne existe encore ce mois-ci : un agent peut partir.
+  const colonneAffichee = useMemo(() => {
+    if (colonnes.length === 0) return null
+    const candidates = [colonneChoisie, maColonne, suggererColonne(profile?.nom_complet, colonnes)]
+    return candidates.find(c => c && colonnes.includes(c)) ?? colonnes[0]
+  }, [colonnes, colonneChoisie, maColonne, profile?.nom_complet])
+
+  const colonnesVues = useMemo(
+    () => (estTelephone && colonneAffichee ? [colonneAffichee] : colonnes),
+    [estTelephone, colonneAffichee, colonnes]
+  )
+  // Remplaçants et créneaux en moins sont des colonnes d'organisation : sur téléphone
+  // elles repousseraient la grille hors de l'écran, ce qu'on vient précisément de fuir.
+  const montreRempla = !estTelephone
+  const montreCreneaux = voitCreneaux && !estTelephone
+  const colonnesDeQueue = (montreRempla ? 1 : 0) + (montreCreneaux ? 1 : 0)
 
   // ── Édition d'une case ──────────────────────────────────────────────────
   const caseBaseEnEdition = edition ? (indexBase.get(edition.jour)?.cases.get(edition.iade) ?? null) : null
@@ -390,6 +451,27 @@ export default function IadePlanning() {
         {chargement && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>chargement…</span>}
       </div>
 
+      {/* Téléphone : de qui on regarde le planning. La sienne est présélectionnée,
+          le sélecteur ne sert qu'à aller voir un collègue. Le 16 px d'index.css sur
+          les `select` de `.iade-shell` évite le zoom automatique d'iOS. */}
+      {estTelephone && colonnes.length > 1 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          Planning de
+          <select value={colonneAffichee ?? ''} onChange={e => setColonneChoisie(e.target.value)}
+                  style={{
+                    flex: 1, padding: '8px 10px', borderRadius: 'var(--radius-md)',
+                    border: '0.5px solid var(--color-border)', background: 'var(--color-surface)',
+                    color: 'var(--color-text)', fontWeight: 600,
+                  }}>
+            {colonnes.map(nom => (
+              <option key={nom} value={nom}>
+                {joli(nom)}{nom === maColonne ? ' — moi' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {erreur && (
         <div style={{ ...carte, borderColor: COULEUR_CONGE, color: COULEUR_CONGE, fontSize: 13 }}>
           {erreur}
@@ -420,9 +502,13 @@ export default function IadePlanning() {
         </div>
       )}
 
-      {/* ── Grille du mois : la vue d'ensemble, comme dans le fichier ── */}
+      {/* ── Grille du mois : la vue d'ensemble, comme dans le fichier ──
+           Hauteur en `dvh` et non `vh` : sur un téléphone, `vh` ignore la barre d'URL,
+           donc la zone de défilement de la grille dépassait la hauteur réellement
+           visible et on se retrouvait avec deux défilements verticaux imbriqués. Le
+           `.iade-shell` est déjà en `100dvh` pour la même raison (cf. index.css). */}
       {joursTries.length > 0 && (
-        <div style={{ ...carte, padding: 0, overflow: 'auto', maxHeight: '70vh' }}>
+        <div style={{ ...carte, padding: 0, overflow: 'auto', maxHeight: '70dvh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             {/* En-tête sur deux lignes, comme le fichier : le nom de l'IADE
                 coiffe SA colonne d'horaires ET sa colonne « Congé / HS ». */}
@@ -432,16 +518,18 @@ export default function IadePlanning() {
                     les en-têtes qui défilent (2) ET devant la colonne figée (1), d'où le
                     zIndex 3 gardé après le spread. */}
                 <th rowSpan={2} style={{ ...enTete, ...colonneFigee, minWidth: 116, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
-                {colonnes.map(nom => (
+                {colonnesVues.map(nom => (
                   <th key={nom} colSpan={2} style={{ ...enTete, fontSize: 12 }}>{nom}</th>
                 ))}
-                <th rowSpan={2} style={{ ...enTete, minWidth: 130 }}>Remplaçants</th>
-                {voitCreneaux && (
+                {montreRempla && (
+                  <th rowSpan={2} style={{ ...enTete, minWidth: 130 }}>Remplaçants</th>
+                )}
+                {montreCreneaux && (
                   <th rowSpan={2} style={{ ...enTete, minWidth: 140 }}>Créneaux en moins</th>
                 )}
               </tr>
               <tr>
-                {colonnes.map(nom => (
+                {colonnesVues.map(nom => (
                   <Fragment key={nom}>
                     <th style={sousEnTete}>Horaires</th>
                     <th style={enTeteNote}>Congé / HS</th>
@@ -467,7 +555,7 @@ export default function IadePlanning() {
                         quand le contrôle de convertir_mois.py a relevé une anomalie. */}
                     {premierDeLaSemaine && (() => {
                       const rotation = rotationDeLaSemaine(
-                        index, joursTries.filter(j => semaineISO(j) === semaineISO(iso)), colonnes)
+                        index, joursTries.filter(j => semaineISO(j) === semaineISO(iso)), colonnesVues)
                       return (
                         <tr>
                           {/* Fond opaque obligatoire : la bande de rotation était
@@ -481,7 +569,7 @@ export default function IadePlanning() {
                                        paddingTop: i > 0 ? 8 : 2 }}>
                             ROTATION
                           </td>
-                          {colonnes.map(nom => {
+                          {colonnesVues.map(nom => {
                             const { sem, alerte } = rotation.get(nom)
                             return (
                               <td key={nom} colSpan={2} style={{ border: 'none', padding: i > 0 ? '8px 2px 2px' : '2px', textAlign: 'center' }}>
@@ -494,7 +582,9 @@ export default function IadePlanning() {
                               </td>
                             )
                           })}
-                          <td colSpan={voitCreneaux ? 2 : 1} style={{ border: 'none' }} />
+                          {colonnesDeQueue > 0 && (
+                            <td colSpan={colonnesDeQueue} style={{ border: 'none' }} />
+                          )}
                         </tr>
                       )
                     })()}
@@ -521,7 +611,7 @@ export default function IadePlanning() {
                         )}
                       </span>
                     </td>
-                    {colonnes.map(nom => {
+                    {colonnesVues.map(nom => {
                       const c = ligne.cases.get(nom)
                       const moities = moitiesCase(c)
                       const nature = natureNote(c?.note)
@@ -581,6 +671,7 @@ export default function IadePlanning() {
                         </Fragment>
                       )
                     })}
+                    {montreRempla && (
                     <td style={{ ...cellule, fontSize: 10, color: 'var(--color-text-secondary)' }}>
                       {(() => {
                         const duFichier = ligne.infos.remplacants ?? []
@@ -601,13 +692,14 @@ export default function IadePlanning() {
                         )
                       })()}
                     </td>
+                    )}
                     {/* Salles qui ne tournent pas — saisies dans l'onglet « Créneaux ».
                         Bloc B : un compte, « −2 salles le matin », parce qu'un
                         opérateur = une salle et que c'est le nombre qui sert. Les
                         noms restent dessous, en petit. Bloc A : la salle nommée,
                         journée entière en rouge, demi-journée en brun.
                         Colonne absente pour un compte IADE (cf. en-tête du fichier). */}
-                    {voitCreneaux && (
+                    {montreCreneaux && (
                       <td style={{
                         ...cellule, fontSize: 10, color: 'var(--color-text-secondary)',
                         textAlign: 'left', padding: '2px 6px',
