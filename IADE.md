@@ -834,6 +834,17 @@ de 5h du mini PC (`publier-dropbox.sh`).
   le fichier), couleurs des postes identiques à celles de l'Excel, jours de vacances
   scolaires en jaune, jour courant marqué d'un liseré à gauche. Un **espace vide sépare les
   semaines**, comme la ligne vide du fichier : sans elle, le mois se lit comme un seul bloc.
+- **Colonne « Jour » figée à gauche, ligne des noms collée en haut** — ajouté le
+  2026-10-09 : chaque IADE occupant deux colonnes, le mois part loin sur la droite ;
+  l'agent qui allait chercher sa colonne perdait la date de vue et ne savait plus quel
+  jour il lisait. La grille a donc sa propre zone de défilement (`maxHeight: '70vh'`,
+  comme `PlanningParService`) — sans hauteur maximale, le `top: 0` des en-têtes ne
+  collait à rien, `overflow-x: auto` faisant déjà du conteneur un scrollport sur les deux
+  axes. Fond opaque y compris sur la ligne « ROTATION », sinon les pastilles de semaine
+  passaient dessous, et séparateur vertical redessiné en `box-shadow` : en
+  `border-collapse: collapse`, la bordure partagée est peinte par la colonne voisine et
+  s'en allait avec elle. Écarté : ramener la colonne de l'agent connecté en premier —
+  l'ordre du fichier est le même pour tous, c'est là que l'équipe cherche une colonne.
 - **Numéro de semaine ISO dans la case du lundi** (`S38`, en petit à droite de la date) —
   ajouté le 2026-09-11 : le planning se discute par semaine, le numéro évite de les
   recompter. Il se pose sur le **premier jour affiché de chaque semaine** : c'est le lundi

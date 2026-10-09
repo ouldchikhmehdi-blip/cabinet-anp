@@ -316,6 +316,17 @@ export default function IadePlanning() {
   // en-tête : on la repère avant même qu'elle soit remplie.
   const enTeteNote = { ...sousEnTete, background: COULEUR_HS, color: '#7A4A0B' }
 
+  // Colonne « Jour » figée à gauche : avec 7-8 IADE à deux colonnes chacun, le mois part
+  // loin sur la droite et l'agent qui allait chercher SA colonne perdait la date de vue —
+  // la ligne ne disait plus quel jour elle était. Le `boxShadow` redessine le séparateur
+  // vertical : en `border-collapse: collapse`, la bordure partagée est peinte par la
+  // colonne voisine, qui l'emporte avec elle quand elle défile. Il est à 1 px et non
+  // 0,5 px comme `cellule.border` : un inset sous-pixel disparaît à certains zooms.
+  const colonneFigee = {
+    position: 'sticky', left: 0, zIndex: 1,
+    boxShadow: 'inset -1px 0 0 var(--color-border)',
+  }
+
   // Couleurs de la case « Congé / HS ». Congé en rouge plein, heures sup sur le
   // beige — exactement le fichier Excel, pour qu'on lise les deux pareil.
   const celluleNote = (nature) => ({
@@ -411,13 +422,16 @@ export default function IadePlanning() {
 
       {/* ── Grille du mois : la vue d'ensemble, comme dans le fichier ── */}
       {joursTries.length > 0 && (
-        <div style={{ ...carte, padding: 0, overflowX: 'auto' }}>
+        <div style={{ ...carte, padding: 0, overflow: 'auto', maxHeight: '70vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             {/* En-tête sur deux lignes, comme le fichier : le nom de l'IADE
                 coiffe SA colonne d'horaires ET sa colonne « Congé / HS ». */}
             <thead>
               <tr>
-                <th rowSpan={2} style={{ ...enTete, minWidth: 116, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
+                {/* Seule cellule collante sur les deux axes : elle doit passer devant
+                    les en-têtes qui défilent (2) ET devant la colonne figée (1), d'où le
+                    zIndex 3 gardé après le spread. */}
+                <th rowSpan={2} style={{ ...enTete, ...colonneFigee, minWidth: 116, textAlign: 'left', paddingLeft: 10, zIndex: 3 }}>Jour</th>
                 {colonnes.map(nom => (
                   <th key={nom} colSpan={2} style={{ ...enTete, fontSize: 12 }}>{nom}</th>
                 ))}
@@ -456,7 +470,13 @@ export default function IadePlanning() {
                         index, joursTries.filter(j => semaineISO(j) === semaineISO(iso)), colonnes)
                       return (
                         <tr>
-                          <td style={{ height: 20, padding: '0 10px', border: 'none', fontSize: 9, fontWeight: 700,
+                          {/* Fond opaque obligatoire : la bande de rotation était
+                              transparente, les pastilles des colonnes de droite
+                              défileraient visiblement sous la colonne figée.
+                              `--color-surface` est ce qu'elle laissait déjà voir (le
+                              `carte`), donc l'apparence ne change pas d'un pixel. */}
+                          <td style={{ ...colonneFigee, height: 20, padding: '0 10px', border: 'none',
+                                       fontSize: 9, fontWeight: 700, background: 'var(--color-surface)',
                                        color: 'var(--color-text-tertiary)', letterSpacing: '0.04em', textAlign: 'left',
                                        paddingTop: i > 0 ? 8 : 2 }}>
                             ROTATION
@@ -480,12 +500,17 @@ export default function IadePlanning() {
                     })()}
                     <tr>
                     <td style={{
-                      ...cellule, textAlign: 'left', paddingLeft: 10, fontWeight: 600,
+                      ...cellule, ...colonneFigee, textAlign: 'left', paddingLeft: 10, fontWeight: 600,
                       background: ligne.infos.vacances ? COULEUR_VACANCES : 'var(--color-bg)',
                       // Sur le jaune vif, l'encre reste sombre quel que soit le thème : en
                       // mode sombre, var(--color-text) est clair et devient illisible.
                       color: ligne.infos.vacances ? ENCRE_SUR_JAUNE : 'var(--color-text)',
-                      boxShadow: iso === aujourdHui ? 'inset 3px 0 0 var(--color-primary)' : 'none',
+                      // Un seul `boxShadow` par élément : le liseré du jour courant et le
+                      // séparateur de la colonne figée cohabitent dans la même déclaration.
+                      // Cette clé doit rester APRÈS `...colonneFigee`, sinon le liseré saute.
+                      boxShadow: iso === aujourdHui
+                        ? 'inset 3px 0 0 var(--color-primary), inset -1px 0 0 var(--color-border)'
+                        : 'inset -1px 0 0 var(--color-border)',
                     }}>
                       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                         <span>{d.court}</span>
