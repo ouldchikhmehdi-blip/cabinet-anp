@@ -865,6 +865,14 @@ de 5h du mini PC (`publier-dropbox.sh`).
   défaut la première du mois. Un seul chemin de rendu — c'est la **liste des colonnes**
   qui est réduite (`colonnesVues`), pas une seconde table : édition des cases, ligne
   ROTATION, numéro de semaine et couleurs suivent sans duplication.
+- **Bascule « Mon planning / Tous les IADE » sur téléphone** — ajoutée le 2026-10-09 à
+  la demande de Mehdi : une colonne ne suffit pas toujours, on veut aussi savoir qui
+  travaille. « Tous les IADE » rend la grille entière, remplaçants et créneaux en moins
+  compris — on a alors accepté de faire glisser et de zoomer, c'est le prix de la vue
+  d'ensemble sur un petit écran. La consigne affichée dit le geste (« Faites glisser la
+  grille vers la droite »), pas une hypothèse. Absente sur ordinateur, où la grille est
+  déjà complète : un seul drapeau, `vueComplete = !estTelephone || vueEquipe`, décide
+  des colonnes rendues et des deux colonnes de queue.
 - **Numéro de semaine ISO dans la case du lundi** (`S38`, en petit à droite de la date) —
   ajouté le 2026-09-11 : le planning se discute par semaine, le numéro évite de les
   recompter. Il se pose sur le **premier jour affiché de chaque semaine** : c'est le lundi

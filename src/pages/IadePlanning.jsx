@@ -156,6 +156,11 @@ export default function IadePlanning() {
   const estTelephone = useEcranTelephone()
   const [maColonne, setMaColonne] = useState(null)       // celle choisie dans « Mon agenda »
   const [colonneChoisie, setColonneChoisie] = useState(null)  // celle qu'il regarde, s'il en a changé
+  // Bascule « Mon planning / Tous les IADE », sur téléphone seulement : la grille
+  // complète y demande de faire glisser et de zoomer, mais c'est parfois ce qu'on
+  // veut — savoir qui travaille. Elle ne sert à rien sur ordinateur, où la grille
+  // est déjà entière.
+  const [vueEquipe, setVueEquipe] = useState(false)
 
   useEffect(() => {
     let vivant = true
@@ -237,14 +242,17 @@ export default function IadePlanning() {
     return candidates.find(c => c && colonnes.includes(c)) ?? colonnes[0]
   }, [colonnes, colonneChoisie, maColonne, profile?.nom_complet])
 
+  // La grille entière : toujours sur ordinateur, sur téléphone quand il l'a demandée.
+  const vueComplete = !estTelephone || vueEquipe
   const colonnesVues = useMemo(
-    () => (estTelephone && colonneAffichee ? [colonneAffichee] : colonnes),
-    [estTelephone, colonneAffichee, colonnes]
+    () => (vueComplete || !colonneAffichee ? colonnes : [colonneAffichee]),
+    [vueComplete, colonneAffichee, colonnes]
   )
-  // Remplaçants et créneaux en moins sont des colonnes d'organisation : sur téléphone
-  // elles repousseraient la grille hors de l'écran, ce qu'on vient précisément de fuir.
-  const montreRempla = !estTelephone
-  const montreCreneaux = voitCreneaux && !estTelephone
+  // Remplaçants et créneaux en moins sont des colonnes d'organisation : en vue « ma
+  // colonne » elles repousseraient la grille hors de l'écran, ce qu'on cherche à fuir.
+  // En vue équipe elles reviennent : on a déjà accepté de faire glisser.
+  const montreRempla = vueComplete
+  const montreCreneaux = voitCreneaux && vueComplete
   const colonnesDeQueue = (montreRempla ? 1 : 0) + (montreCreneaux ? 1 : 0)
 
   // ── Édition d'une case ──────────────────────────────────────────────────
@@ -451,10 +459,42 @@ export default function IadePlanning() {
         {chargement && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>chargement…</span>}
       </div>
 
-      {/* Téléphone : de qui on regarde le planning. La sienne est présélectionnée,
-          le sélecteur ne sert qu'à aller voir un collègue. Le 16 px d'index.css sur
-          les `select` de `.iade-shell` évite le zoom automatique d'iOS. */}
+      {/* Téléphone : « Mon planning » (une colonne, rien à zoomer) ou « Tous les
+          IADE » (la grille entière, qu'on fait glisser). Absente sur ordinateur, où
+          la grille est déjà complète. */}
       {estTelephone && colonnes.length > 1 && (
+        <div style={{
+          display: 'flex', alignSelf: 'flex-start',
+          border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+          overflow: 'hidden',
+        }}>
+          {[[false, 'Mon planning'], [true, 'Tous les IADE']].map(([valeur, libelle]) => (
+            <button key={libelle} onClick={() => setVueEquipe(valeur)}
+                    aria-pressed={vueEquipe === valeur}
+                    style={{
+                      padding: '8px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
+                      fontWeight: vueEquipe === valeur ? 600 : 400,
+                      background: vueEquipe === valeur ? 'var(--color-primary)' : 'var(--color-surface)',
+                      color: vueEquipe === valeur ? '#fff' : 'var(--color-text-secondary)',
+                    }}>
+              {libelle}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {estTelephone && vueEquipe && (
+        <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+          Faites glisser la grille vers la droite pour parcourir l'équipe. La colonne des
+          dates reste à gauche. Pour lire votre seule colonne sans rien faire glisser,
+          revenez sur <strong>Mon planning</strong>.
+        </p>
+      )}
+
+      {/* Téléphone, vue « Mon planning » : de qui on regarde le planning. La sienne est
+          présélectionnée, le sélecteur ne sert qu'à aller voir un collègue. Le 16 px
+          d'index.css sur les `select` de `.iade-shell` évite le zoom automatique d'iOS. */}
+      {estTelephone && !vueEquipe && colonnes.length > 1 && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text-secondary)' }}>
           Planning de
           <select value={colonneAffichee ?? ''} onChange={e => setColonneChoisie(e.target.value)}
