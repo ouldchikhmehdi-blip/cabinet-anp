@@ -82,6 +82,11 @@ Agent IADE                          Gestion (gestionnaire · faiseur · admin)
 | **Mes heures sup** | `src/pages/IadeMesHeuresSup.jsx` | Agent IADE |
 | **Congés de l'équipe** (agent) / **Congés équipe** (gestion) | `src/pages/IadeCalendrier.jsx` | Agent IADE · gestion |
 | **Planning IADE** (lecture seule) | `src/pages/IadePlanning.jsx` | Agent IADE **et** tout associé (cf. § 12) |
+
+**Page d'arrivée d'un compte IADE : « Planning IADE »** (`App.jsx`, `PAGES_IADE[0]`) —
+changé le 2026-10-09 : un agent qui se connecte vient d'abord voir SES journées, pas
+poser un congé. C'est aussi le premier onglet du menu, les deux concordent désormais.
+Un lien direct (`?page=…`) garde la main : il mène où il dit.
 | **Heures sup à valider** | `src/pages/HeuresSupAValider.jsx` | **Tout associé** (MAR) |
 | **Congés, HS et rempla** (5 onglets, cf. ci-dessous) | `src/pages/IadeGestion.jsx` | Gestion uniquement |
 | **Aperçu compte IADE** | `src/pages/IadeApercu.jsx` | Gestion uniquement |

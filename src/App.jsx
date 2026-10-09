@@ -39,7 +39,7 @@ import './index.css'
 // planning, comptes — lui est fermé côté écran ET côté base (RLS).
 // « iade-planning » est le seul écran commun aux agents et aux associés : même
 // page, mêmes données, en lecture seule des deux côtés.
-const PAGES_IADE = ['iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso', 'iade-planning']
+const PAGES_IADE = ['iade-planning', 'iade-mes-conges', 'iade-mes-heures-sup', 'iade-calendrier', 'iade-agenda-perso']
 
 // Seules pages ouvertes à l'agent IA (compte IADE porteur de is_agent_ia, cf.
 // IADE.md § 1 et supabase/agent_ia.sql) : la gestion des congés, heures sup et
@@ -250,7 +250,10 @@ export default function App() {
   }
 
   if (estIade) {
-    const pageIade = PAGES_IADE.includes(page) ? page : 'iade-mes-conges'
+    // Un agent qui se connecte vient d'abord voir SES journées, pas poser un congé :
+    // il arrive donc sur « Planning IADE », qui est aussi le premier onglet du menu.
+    // Un lien direct (`?page=…`) garde la main : il mène où il dit.
+    const pageIade = PAGES_IADE.includes(page) ? page : 'iade-planning'
     // .iade-shell : bascule en bandeau horizontal sous 700 px (cf. src/index.css).
     // Ces comptes consultent l'app depuis leur téléphone.
     return (
