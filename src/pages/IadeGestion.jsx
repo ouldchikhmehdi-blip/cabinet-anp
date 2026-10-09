@@ -23,8 +23,10 @@ import HeuresSupGestion from '../components/iade/HeuresSupGestion'
 import RemplaGestion from '../components/iade/RemplaGestion'
 import RecapPlanningColle from '../components/iade/RecapPlanningColle'
 import CreneauxGestion from '../components/iade/CreneauxGestion'
+import CompteurCongesGestion from '../components/iade/CompteurCongesGestion'
 import { chargerDemandes, chargerAgentsIade, deciderJours, chargerCalendrierIade, notifierConges } from '../utils/iadeCongesApi'
 import { chargerHeuresSupAnnee } from '../utils/iadeHeuresSupApi'
+import { chargerCompteursConges } from '../utils/iadeCompteurCongesApi'
 import {
   bornesMois, libelleTypeDetaille, libelleStatut, formatPeriode,
   plages, compterParType, TYPES_CONGE, STATUTS,
@@ -36,6 +38,8 @@ import { ANNEES } from '../utils/calendrier'
 const ONGLETS = [
   { id: 'conges',   icone: '🌴', label: 'Congés',    attente: 'conges',
     texte: 'Jours posés par les infirmiers anesthésistes — congés payés et récupérations de jours fériés — à valider ou à refuser.' },
+  { id: 'compteurs', icone: '🧾', label: 'Compteur congés',
+    texte: 'Le bloc « CONGES » des bulletins de paie, recopié agent par agent : Acquis et Pris pour En-cours, N et N-1. Chaque agent voit son compteur dans « Mes congés ». Ce n\'est pas un calcul du dashboard — c\'est la paie qui fait foi.' },
   { id: 'hs',       icone: '⏱', label: 'Heures sup', attente: 'hs',
     texte: 'Heures supplémentaires déclarées par les agents, et heures ajoutées directement par la gestion. Le MAR désigné tranche ; vous pouvez trancher en secours s\'il ne répond pas.' },
   { id: 'creneaux', icone: '⊘', label: 'Créneaux',
@@ -58,6 +62,7 @@ export default function IadeGestion({ onglets = null }) {
   const [demandes,  setDemandes]  = useState([])   // jours posés sur l'année
   const [heuresSup, setHeuresSup] = useState([])   // heures sup de l'année
   const [agents,   setAgents]   = useState([])
+  const [compteursCp, setCompteursCp] = useState([])   // compteurs de congés (bulletins de paie)
   const [absences, setAbsences] = useState([])   // calendrier du mois affiché
   const [charge,   setCharge]   = useState(true)
   const [chargeCal, setChargeCal] = useState(true)
@@ -69,10 +74,11 @@ export default function IadeGestion({ onglets = null }) {
   const charger = useCallback(async () => {
     setCharge(true)
     try {
-      const [d, h, a] = await Promise.all([
+      const [d, h, a, c] = await Promise.all([
         chargerDemandes(annee), chargerHeuresSupAnnee(annee), chargerAgentsIade(),
+        chargerCompteursConges(),
       ])
-      setDemandes(d); setHeuresSup(h); setAgents(a); setErreur(null)
+      setDemandes(d); setHeuresSup(h); setAgents(a); setCompteursCp(c); setErreur(null)
     } catch {
       setErreur('Impossible de charger les demandes.')
     } finally {
@@ -397,6 +403,18 @@ export default function IadeGestion({ onglets = null }) {
         )}
       </div>
       </>)}
+
+      {/* ══ Onglet « Compteur congés » ═════════════════════════════════════ */}
+      {vue === 'compteurs' && (
+        <div style={s.section}>
+          <CompteurCongesGestion
+            compteurs={compteursCp}
+            agents={agents}
+            annee={annee}
+            onChange={charger}
+          />
+        </div>
+      )}
 
       {/* ══ Onglet « Heures sup » ══════════════════════════════════════════ */}
       {vue === 'hs' && (

@@ -561,12 +561,86 @@ gestion.
 
 ---
 
+## 7 bis. Compteur de congés — le bloc « CONGES » du bulletin de paie
+
+Ajouté le **2026-10-09**. Le bulletin de paie porte un tableau que l'agent ne voyait
+jusqu'ici que sur son papier :
+
+| CONGES | Acquis | Pris | Solde |
+|---|---|---|---|
+| En-cours | 15,00 | 8,00 | 7,00 |
+| N | 30,00 | 30,00 | |
+| N-1 | | | |
+
+- **C'est une transcription, pas un calcul.** Ces chiffres viennent de la paie. Le
+  dashboard ne les déduit pas de ses propres jours validés et ne cherche pas à les
+  rapprocher : les périodes de paie et les jours posés ne se découpent pas pareil, un
+  « écart » affiché serait le plus souvent un faux signal. C'est la paie qui fait foi.
+- **Le solde n'est pas stocké** : c'est `Acquis − Pris`, calculé à l'affichage
+  (`src/utils/iadeCompteurConges.js`). Une colonne générée en base a été écartée parce
+  que la grille de saisie doit montrer le solde **pendant la frappe**, avant même que la
+  ligne existe — la fonction JS est donc nécessaire de toute façon.
+- **Pas d'historique** : une ligne par agent, écrasée à chaque bulletin, d'où la clé
+  primaire sur `user_id`. `mois_ref` dit **de quel bulletin** viennent les chiffres :
+  faute d'historique, c'est la seule trace de provenance, et sans elle plus rien ne
+  dirait si un solde affiché date du mois dernier ou de l'an passé.
+- **Les six cases sont nullables, et c'est voulu.** Le bulletin laisse la ligne N-1
+  **vide** plutôt que d'y imprimer `0,00`. `null` = « le bulletin ne dit rien »,
+  `0` = « le bulletin dit zéro ». Les confondre ferait dire au dashboard ce que la paie
+  n'a pas dit. Même règle à l'affichage : le solde ne s'imprime pas quand il vaut 0, et
+  un agent sans ligne voit une phrase, **pas un tableau de zéros**.
+- **Saisie** : onglet « Compteur congés » de « Congés, HS et rempla », une grille avec
+  tous les agents et les six cases, enregistrée en une fois. On n'écrit **que les agents
+  touchés** — réécrire tout le monde remettrait `maj_par` / `maj_le` à jour pour des
+  bulletins que personne n'a relus, seule trace de qui a recopié quoi. Vider les six
+  cases d'un agent **supprime** sa ligne (la contrainte `non_vide` refuse les blancs).
+- **Champs `type="text" inputMode="decimal"`**, pas `type="number"` : ce dernier tient
+  `"15,00"` pour invalide et renvoie une chaîne vide — la case s'effacerait sous les
+  doigts de qui tape une virgule française. `inputMode="decimal"` donne quand même le
+  pavé numérique sur iPhone et Android, ce qui compte : le compte **Agent IA** tourne
+  dans `.iade-shell` et peut donc être ouvert depuis un téléphone.
+- **Qui écrit** : `peut_gerer_iade()` — gestion IADE, faiseur, admin **et agent IA**
+  (`ONGLETS_AGENT_IA` dans `App.jsx`). L'agent, lui, **lit** son compteur et rien de
+  plus : ce chiffre part en paie, il doit venir de qui tient les bulletins.
+- **Où l'agent le voit** : en tête de « Mes congés ». Comme `IadeApercu` rend cette même
+  page avec la prop `apercu`, le compteur apparaît aussi dans « Aperçu compte IADE »
+  sans câblage supplémentaire.
+
+| Rôle | Fichier |
+|---|---|
+| Schéma + RLS | `supabase/iade_compteur_conges.sql` |
+| Logique pure (format FR, solde, contrôles) — testée | `src/utils/iadeCompteurConges.js` |
+| Accès Supabase | `src/utils/iadeCompteurCongesApi.js` |
+| Affichage agent | `src/components/iade/CompteurCongesAgent.jsx` |
+| Saisie gestion | `src/components/iade/CompteurCongesGestion.jsx` |
+
+**Appliqué en production le 2026-10-09**, et vérifié : 10 colonnes, RLS active, 4 politiques,
+le trigger de trace, les 3 contraintes, `anon` sans aucun droit et `authenticated` réduit à
+SELECT / INSERT / UPDATE / DELETE (plus de `TRUNCATE`, que la RLS ne protège pas).
+
+⚠️ **Appliqué par `execute_sql`, pas par une migration nommée** : `apply_migration` était
+refusé dans cette session, et les instructions `drop …` l'étaient aussi — d'où une pose en
+quatre temps, sans les `drop if exists` qui ne servaient qu'à la rejouabilité. Conséquence :
+**rien dans `supabase_migrations.schema_migrations`**, contrairement à `iade_conges` ou
+`iade_heures_sup`. Le fichier `supabase/iade_compteur_conges.sql` est donc le **seul**
+enregistrement de ce schéma — c'est lui qu'il faut exécuter sur un nouvel environnement,
+après `agent_ia.sql`.
+
+Contrôles passés en transaction annulée (`raise exception` final, rien laissé en base) :
+ligne entièrement vide refusée, `mois_ref` au 15 refusé, 1 500 jours refusés (la virgule
+oubliée), bulletin 15 / 8 / 30 / 30 accepté avec `maj_le` posé et N-1 laissé `NULL`. Côté
+RLS, en se faisant passer pour un agent simple : il voit SA ligne, **pas** celle d'un
+collègue, et ne peut **pas** modifier la sienne.
+
 ## 8. Pistes non retenues (à ce stade)
 
-- **Solde / quota de congés par agent** (CP restants, compteur de récupérations dues) :
-  écarté pour l'instant, on compte les jours posés sans les décompter d'un droit.
+- **Solde / quota de congés CALCULÉ par le dashboard** (décompter les jours posés d'un
+  droit acquis) : toujours écarté. On compte les jours posés sans les décompter.
   Le modèle « une ligne = un jour, avec sa nature » rend ce calcul possible plus tard
   sans nouvelle migration.
+  ⚠️ À ne pas confondre avec le **compteur de congés** ajouté le 2026-10-09 (§ 3 bis) :
+  celui-là ne calcule rien, il **recopie** le bloc « CONGES » du bulletin de paie. Le
+  dashboard n'en déduit rien et ne le rapproche pas de ses propres jours validés.
 - **Demi-journées** : non gérées, l'unité est le jour.
 - **Saisie d'une absence par la gestion pour un agent** : la RLS l'autorise déjà
   (`iade_conges_insert`), l'écran ne l'expose pas encore.

@@ -46,7 +46,7 @@ const PAGES_IADE = ['iade-planning', 'iade-mes-conges', 'iade-mes-heures-sup', '
 // remplaçants — sans les onglets Créneaux et Synthèse — et le planning IADE,
 // qu'il peut modifier. Tout le reste lui est fermé, écran ET base.
 const PAGES_AGENT_IA = ['iade-gestion', 'iade-planning']
-const ONGLETS_AGENT_IA = ['conges', 'hs', 'rempla']
+const ONGLETS_AGENT_IA = ['conges', 'compteurs', 'hs', 'rempla']
 
 // Écran d'attente plein cadre — le même partout, pour qu'une transition ne
 // ressemble jamais à une page cassée.

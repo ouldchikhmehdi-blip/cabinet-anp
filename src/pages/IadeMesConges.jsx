@@ -14,7 +14,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import CalendrierSaisie from '../components/iade/CalendrierSaisie'
+import CompteurCongesAgent from '../components/iade/CompteurCongesAgent'
 import { chargerMesConges, poserJours, supprimerJours, notifierConges } from '../utils/iadeCongesApi'
+import { chargerMonCompteurConges } from '../utils/iadeCompteurCongesApi'
 import {
   TYPES_CONGE, TYPE_DEFAUT, STATUTS,
   libelleTypeDetaille, libelleStatut, formatPeriode, resumeTypes,
@@ -31,6 +33,9 @@ export default function IadeMesConges({ apercu = null }) {
   const [mois,  setMois]  = useState(maintenant.getMonth())
 
   const [demandes, setDemandes] = useState([])
+  // Le bloc « CONGES » du bulletin de paie, recopié par la gestion. null tant
+  // qu'aucun bulletin n'a été saisi — on ne montre alors pas un tableau de zéros.
+  const [compteur, setCompteur] = useState(null)
   const [charge,   setCharge]   = useState(true)
   const [erreur,   setErreur]   = useState(null)
   const [succes,   setSucces]   = useState(null)
@@ -50,10 +55,13 @@ export default function IadeMesConges({ apercu = null }) {
   const attendFerie = typeActif === 'recup_ferie' && !ferieActif
 
   const charger = useCallback(async () => {
-    if (!userId) { setDemandes([]); setCharge(false); return }
+    if (!userId) { setDemandes([]); setCompteur(null); setCharge(false); return }
     setCharge(true)
     try {
-      setDemandes(await chargerMesConges(userId))
+      const [d, c] = await Promise.all([
+        chargerMesConges(userId), chargerMonCompteurConges(userId),
+      ])
+      setDemandes(d); setCompteur(c)
       setErreur(null)
     } catch {
       setErreur('Impossible de charger vos congés.')
@@ -203,6 +211,18 @@ export default function IadeMesConges({ apercu = null }) {
 
       {erreur && <div style={{ fontSize: 13, color: 'var(--color-danger)', background: 'var(--color-danger-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{erreur}</div>}
       {succes && <div style={{ fontSize: 13, color: 'var(--color-success)', background: 'var(--color-success-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>{succes}</div>}
+
+      {/* ── Compteur du bulletin de paie ──
+           Même bloc dans « Aperçu compte IADE » : IadeApercu rend cette page avec
+           la prop `apercu`, le compteur suit sans rien à câbler de plus.
+           La garde `charge` évite que la phrase « aucun bulletin » clignote à
+           chaque chargement. */}
+      <div style={s.section}>
+        <div style={s.titre}>Compteur de congés — bulletin de paie</div>
+        {charge
+          ? <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Chargement…</div>
+          : <CompteurCongesAgent compteur={compteur} lectureSeule={lectureSeule} />}
+      </div>
 
       {/* ── Poser des jours ── */}
       <div style={s.section}>

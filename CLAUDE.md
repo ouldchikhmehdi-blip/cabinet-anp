@@ -23,7 +23,7 @@
 | Authentification, 2FA (TOTP/AAL2), invitations, connexion Google, gestion des comptes | **`AUTH.md`** | `src/auth/`, `src/pages/AdminUsers.jsx`, `api/{invite,accept,promote,revoke}.js` |
 | Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
 | Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
-| Congés IADE, **heures supplémentaires** et **affichage du planning IADE** (comptes restreints, dépôt / validation, lecture) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/pages/HeuresSupAValider.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/iadeHeuresSup{,Api}.js`, `src/utils/iadePlanning{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `api/iade-notify.js`, `supabase/iade_conges.sql`, `supabase/iade_heures_sup.sql`, `supabase/iade_agenda.sql`, `supabase/iade_planning.sql` |
+| Congés IADE, **heures supplémentaires** et **affichage du planning IADE** (comptes restreints, dépôt / validation, lecture) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/pages/HeuresSupAValider.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/iadeHeuresSup{,Api}.js`, `src/utils/iadePlanning{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `api/iade-notify.js`, `supabase/iade_conges.sql`, `supabase/iade_compteur_conges.sql`, `supabase/iade_heures_sup.sql`, `supabase/iade_agenda.sql`, `supabase/iade_planning.sql` |
 | Schéma DB, RLS, triggers, sécurité en base | **`supabase/schema.sql`** (+ `securite_aal2.sql`, `connexion_google.sql`) | `supabase/*.sql` |
 
 Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « fait foi ») ; ce tableau est le point d'entrée rapide.
@@ -270,6 +270,10 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
       `api/hs-decision.js`) + **fenêtre de correction jusqu'à la fin du mois suivant**
       pour le MAR — 2026-08-24 (cf. `IADE.md` § 3 ter)
 - [x] **Cumul mensuel + calendrier des heures sup** côté agent, repris dans « Aperçu compte IADE » — 2026-08-24
+- [ ] ⚠️ **Exécuter `supabase/iade_compteur_conges.sql`** (compteur de congés, bloc
+      « CONGES » du bulletin de paie). Déjà posé en production le 2026-10-09, mais
+      **hors historique de migrations** (appliqué par `execute_sql`) : ce fichier est
+      le seul enregistrement du schéma.
 - [ ] ⚠️ **Exécuter `supabase/iade_heures_sup.sql`** sur un nouvel environnement
       (déjà appliqué en production : migrations `iade_heures_sup`,
       `iade_heures_sup_jeton_et_fenetre`, `iade_hs_decision_par_jeton`)
