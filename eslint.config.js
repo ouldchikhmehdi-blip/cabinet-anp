@@ -19,8 +19,8 @@ export default defineConfig([
     },
   },
   {
-    // Vercel Functions (/api) : code Node côté serveur (process.env, etc.).
-    files: ['api/**/*.js'],
+    // Vercel Functions (/api) et script de classement compta : code Node (process, etc.).
+    files: ['api/**/*.js', 'compta/**/*.js'],
     languageOptions: {
       globals: globals.node,
     },

@@ -1,0 +1,336 @@
+{
+  "version": 1,
+  "description": "Règles de classement des relevés bancaires de la SARM. Uniquement des motifs, des noms de tiers et des statuts : jamais de montant ni de ligne bancaire réelle (cf. CLAUDE.md §4).",
+  "taxonomie": {
+    "Recettes": [
+      "Honoraires clinique",
+      "Tiers payant consultations",
+      "Versements CPAM hors tiers payant",
+      "Remboursement reçu"
+    ],
+    "Associés": [
+      "Reversement mensuel",
+      "Complément d'honoraires",
+      "Reliquat exercice précédent",
+      "Régularisation",
+      "Remboursement RCP",
+      "Remboursement de frais avancés",
+      "Prévoyance associés"
+    ],
+    "Remplaçants": [
+      "Remplaçant MAR",
+      "Remplaçant IADE (CDD)",
+      "Frais de remplaçant"
+    ],
+    "Salariés": [
+      "Salaire IADE CDI"
+    ],
+    "Charges sociales et fiscales": [
+      "URSSAF",
+      "Retraite complémentaire",
+      "Prévoyance et mutuelle salariés",
+      "Épargne salariale",
+      "Médecine du travail",
+      "Impôts et taxes"
+    ],
+    "Fonctionnement": [
+      "Expert-comptable",
+      "AGA",
+      "Banque",
+      "Logiciels et abonnements",
+      "Parking et locaux",
+      "Impression et fournitures",
+      "Vie du groupe et réceptions"
+    ],
+    "À arbitrer": [
+      "À arbitrer"
+    ]
+  },
+  "associes": {
+    "EH": "HATTERER",
+    "MP": "PARNEIX",
+    "RC": "CHOUKI",
+    "FXD": "DON+ET+E?",
+    "BA": "ABBAL",
+    "FF": "FEDIDE?",
+    "YC": "COISEL",
+    "MOC": "OULD(?:[- ]?CHI(?:KH|CK))?"
+  },
+  "iade_cdi": [
+    "PODER",
+    "VAILLANT",
+    "CANTIN",
+    "MATHIEU",
+    "GUIBB?ERT",
+    "PLUVINAGE",
+    "LEGLISE",
+    "DENTAN",
+    "LOUDCHER"
+  ],
+  "iade_cdd": [
+    "DUPEU",
+    "DAUNAY",
+    "LAGRAVE",
+    "GAUTHIER",
+    "COLIN",
+    "BOULILA",
+    "AICHOUR",
+    "GAUDY"
+  ],
+  "mar_remplacants": [
+    "DELBERT",
+    "HANNEQUIN",
+    "PENSIER",
+    "GARCIN",
+    "BERTHOD",
+    "ROMAN[- ]?GIL",
+    "FERNANDEZ",
+    "PENNE",
+    "DI SIMONE",
+    "DIARRA",
+    "DEBOURDEAU",
+    "DANVY",
+    "MACIAS",
+    "COLLINSON",
+    "LOYER",
+    "LEROUX",
+    "CHAIX",
+    "LANCELOT"
+  ],
+  "caisses_tiers_payant": "CPAM|C\\.P\\.A\\.M|\\bMSA\\b|MUTUALITE SOCIALE|CGSS|CCSS|CNMSS|CAMIEG|MGEN|MUTUELLE|\\bMGP\\b|\\bCPR\\b|CRPCEN|\\bENIM\\b|SENAT|ASSEMBLEE NATIONALE|\\bMINES\\b|CPRPF|INTERIALE|RELYENS|YVELIN|CAISSE DE PREVOYANCE|CAISSE GENERALE|VILLE DE MONTPELLIER|SECURITE SOCIALE",
+  "tiers_payant_montant_max": 500,
+  "commercants_carte": "PETIT JARDIN|AU BUREAU|BRASSEURS|GROUPE LAGRANGE|AKS2",
+  "regles": [
+    {
+      "id": "honoraires-clinique",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^COMPTE MEDECINS MILLENAIRE"
+      },
+      "categorie": "Honoraires clinique"
+    },
+    {
+      "id": "cpam-herault-hors-tiers-payant",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^C\\.P\\.A\\.M\\. DE L HERAULT",
+        "montant_min": 500.01
+      },
+      "categorie": "Versements CPAM hors tiers payant"
+    },
+    {
+      "id": "reversement-mensuel",
+      "quand": {
+        "sens": "debit",
+        "memo": "^VR\\.PERMANENT VIREMENT SDF"
+      },
+      "categorie": "Reversement mensuel"
+    },
+    {
+      "id": "reversement-mensuel-2",
+      "quand": {
+        "sens": "debit",
+        "memo": "^VR\\.PERMANENT"
+      },
+      "categorie": "Reversement mensuel",
+      "alerte": "second virement permanent du mois (référence ZZ1…) : à confirmer sur le relevé détaillé BNP"
+    },
+    {
+      "id": "indu-cpam",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^CPAM REMBOURSEMENTS"
+      },
+      "categorie": "Tiers payant consultations",
+      "alerte": "indu reversé à la CPAM"
+    },
+    {
+      "id": "urssaf",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^URSSAF"
+      },
+      "categorie": "URSSAF"
+    },
+    {
+      "id": "ag2r",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "AG2R"
+      },
+      "categorie": "Retraite complémentaire"
+    },
+    {
+      "id": "agmf",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^AGMF"
+      },
+      "categorie": "Prévoyance associés"
+    },
+    {
+      "id": "apivia",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^APIVIA"
+      },
+      "categorie": "Prévoyance et mutuelle salariés"
+    },
+    {
+      "id": "cep-treso-sante",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^CEP TRESO SANTE"
+      },
+      "categorie": "Prévoyance et mutuelle salariés"
+    },
+    {
+      "id": "dgfip",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^DGFIP"
+      },
+      "categorie": "Impôts et taxes"
+    },
+    {
+      "id": "epsor",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^EPSOR"
+      },
+      "categorie": "Épargne salariale"
+    },
+    {
+      "id": "ensante",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^ENSANTE"
+      },
+      "categorie": "Médecine du travail"
+    },
+    {
+      "id": "a2-expertise",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^A2 EXPERTISE"
+      },
+      "categorie": "Expert-comptable"
+    },
+    {
+      "id": "aga",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^AGA PL"
+      },
+      "categorie": "AGA"
+    },
+    {
+      "id": "aatlantide",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^AATLANTIDE"
+      },
+      "categorie": "Logiciels et abonnements"
+    },
+    {
+      "id": "tisspark",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "TISSPARK"
+      },
+      "categorie": "Parking et locaux"
+    },
+    {
+      "id": "imprimerie",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^SAS IMPRIMERIE"
+      },
+      "categorie": "Impression et fournitures"
+    },
+    {
+      "id": "frais-bnp",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^BNP PARIBAS"
+      },
+      "categorie": "Banque"
+    },
+    {
+      "id": "commissions",
+      "quand": {
+        "type": "^COMMISSIONS"
+      },
+      "categorie": "Banque"
+    },
+    {
+      "id": "interets",
+      "quand": {
+        "type": "^INTERETS ET COMMISSIONS"
+      },
+      "categorie": "Banque"
+    },
+    {
+      "id": "societe-generale",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "SOCIETE GENERALE"
+      },
+      "categorie": "À arbitrer",
+      "alerte": "nature du prélèvement Société Générale à confirmer avec la comptable"
+    },
+    {
+      "id": "clinique-millenaire-prlv",
+      "quand": {
+        "type": "^PRLV",
+        "tiers": "^CLINIQUE DU MILLENAIRE"
+      },
+      "categorie": "À arbitrer",
+      "alerte": "petits prélèvements de la clinique, à vérifier"
+    },
+    {
+      "id": "millenaire-clinique-recu",
+      "quand": {
+        "sens": "credit",
+        "tiers": "MILLENAIRE CLINIQUE"
+      },
+      "categorie": "À arbitrer",
+      "alerte": "virement reçu de la clinique, nature à préciser"
+    },
+    {
+      "id": "clementville",
+      "quand": {
+        "sens": "credit",
+        "tiers": "CLEMENTVILLE"
+      },
+      "categorie": "À arbitrer",
+      "alerte": "virement reçu de la clinique Clémentville, nature à préciser"
+    },
+    {
+      "id": "infogem",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^INFOGEM"
+      },
+      "categorie": "À arbitrer",
+      "alerte": "Infogem, nature à préciser"
+    },
+    {
+      "id": "sie",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^SIE "
+      },
+      "categorie": "À arbitrer",
+      "alerte": "remboursement du service des impôts, à rapprocher"
+    },
+    {
+      "id": "remise-cheques",
+      "quand": {
+        "type": "^REMISE CHEQUES"
+      },
+      "categorie": "À arbitrer",
+      "alerte": "remise de chèques, émetteur inconnu"
+    }
+  ]
+}

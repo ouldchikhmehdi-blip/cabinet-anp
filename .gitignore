@@ -28,3 +28,10 @@ dist-ssr
 
 # Réglages Claude Code personnels (permissions locales) — hors repo partagé
 .claude/settings.local.json
+
+# Compta : relevés bancaires et sorties du classement — jamais dans le dépôt (CLAUDE.md §4)
+compta/*.ofx
+compta/*.csv
+compta/*.xlsx
+compta/sorties/
+compta/classe/
