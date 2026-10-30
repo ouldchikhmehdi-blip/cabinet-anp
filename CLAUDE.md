@@ -47,7 +47,7 @@ Tableau de bord financier privé pour **SARM** (Service Anesthésie Réanimation
 - `Depenses.jsx` — Dépenses
 - `ReglesVirements.jsx` — Règles virements
 - `Retrocessions.jsx` — Rétrocessions
-- `ChargesSalariales.jsx` — Charges salariales : sous-onglets `SalariesCDI.jsx` (Salariés CDI), `RemplacantsMAR.jsx` (Rempla MAR), `RemplacantsIADE.jsx` (Rempla IADE)
+- `ChargesSalariales.jsx` — Charges salariales : sous-onglets `SalariesCDI.jsx` (Salariés CDI), `RemplacantsMAR.jsx` (Rempla MAR), `RemplacantsIADE.jsx` (Rempla IADE), `ComparaisonCharges.jsx` (Comparaison des trois postes, cochables)
 - `AdminUsers.jsx` — Gestion des accès (entrée **« Comptes »** dans la sidebar, **admins uniquement**)
 
 Fonctionnalités transverses : **filtres par période** et **comparaison année vs année**.

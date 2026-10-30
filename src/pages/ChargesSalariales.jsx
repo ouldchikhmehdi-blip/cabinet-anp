@@ -1,17 +1,19 @@
 // ============================================================
 // ChargesSalariales — un seul onglet pour tout ce que coûte le personnel :
-// salariés CDI, remplaçants MAR, remplaçants IADE. Chaque sous-onglet reste la
-// page existante, affichée telle quelle ; seul le point d'entrée change.
+// salariés CDI, remplaçants MAR, remplaçants IADE, et leur comparaison dans le temps.
+// Chaque sous-onglet est une page à part, avec son propre filtre de période.
 // ============================================================
 import { useState } from 'react'
 import SalariesCDI from './SalariesCDI'
 import RemplacantsMAR from './RemplacantsMAR'
 import RemplacantsIADE from './RemplacantsIADE'
+import ComparaisonCharges from './ComparaisonCharges'
 
 const ONGLETS = [
   { id: 'salaries-cdi', label: 'Salariés CDI', icone: '👤', Page: SalariesCDI },
   { id: 'remplacants-mar', label: 'Rempla MAR', icone: '⚕', Page: RemplacantsMAR },
   { id: 'remplacants-iade', label: 'Rempla IADE', icone: '↺', Page: RemplacantsIADE },
+  { id: 'comparaison', label: 'Comparaison', icone: '⇆', Page: ComparaisonCharges },
 ]
 
 // Même langage visuel que les onglets de « Congés, HS et rempla ».

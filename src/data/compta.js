@@ -9,6 +9,7 @@
 //   series.RETRO_FIXE[y][m]       reversement mensuel / associé (total ÷ nombre d'associés)
 //   series.RETRO_VARIABLE[y][m]   (complément + reliquat + régularisation) / associé
 //   series.RETRO_PAR_ASSOCIE[y]   { [initiales]: { fixe, complement, reliquat, regularisation, rcp, frais, recu, total } }
+//   series.SALAIRES_CDI[y][m]     salaires IADE CDI (tous les virements de la catégorie), positif
 //   series.REMPL_IADE[y][m]       remplaçants IADE (CDD), positif
 //   series.REMPL_MAR[y][m]        remplaçants MAR + frais de remplaçant, positif
 //   series.ENTREES[y][m]          tous les crédits
@@ -46,13 +47,14 @@ export function calculerSeries(transactions, soldes = [], doc = null) {
   }
   const nbAssocies = Object.keys(doc?.associes || {}).length || 8
 
-  const CA = {}, CHARGES = {}, RETRO_FIXE = {}, RETRO_VARIABLE = {}, RETRO_PAR_ASSOCIE = {}, REMPL_IADE = {}, REMPL_MAR = {}
+  const CA = {}, CHARGES = {}, RETRO_FIXE = {}, RETRO_VARIABLE = {}, RETRO_PAR_ASSOCIE = {}, SALAIRES_CDI = {}, REMPL_IADE = {}, REMPL_MAR = {}
   const ENTREES = {}, SORTIES = {}, SOLDES = {}, NON_CLASSE = {}, PAR_CATEGORIE = {}
   for (const y of annees) {
     CA[y] = serie(y, t => CAT_CA.includes(t.categorie))
     CHARGES[y] = serie(y, t => GROUPES_CHARGES.includes(t.groupe) && t.montant < 0, -1)
     RETRO_FIXE[y] = serie(y, t => t.categorie === 'Reversement mensuel', -1).map(v => Math.round(v / nbAssocies))
     RETRO_VARIABLE[y] = serie(y, t => ["Complément d'honoraires", 'Reliquat exercice précédent', 'Régularisation'].includes(t.categorie), -1).map(v => Math.round(v / nbAssocies))
+    SALAIRES_CDI[y] = serie(y, t => t.categorie === 'Salaire IADE CDI', -1)
     REMPL_IADE[y] = serie(y, t => t.categorie === 'Remplaçant IADE (CDD)', -1)
     REMPL_MAR[y] = serie(y, t => t.categorie === 'Remplaçant MAR' || t.categorie === 'Frais de remplaçant', -1)
     ENTREES[y] = serie(y, t => t.montant > 0)
@@ -118,7 +120,7 @@ export function calculerSeries(transactions, soldes = [], doc = null) {
     return Math.max(...lignes.map(t => Number(t.date.slice(5, 7)) - 1))
   }
 
-  return { ANNEES: annees, CA, CHARGES, RETRO_FIXE, RETRO_VARIABLE, RETRO_PAR_ASSOCIE, REMPL_IADE, REMPL_MAR, ENTREES, SORTIES, SOLDES, NON_CLASSE, PAR_CATEGORIE, SALARIES, DEPENSES, moisActuel, nbAssocies, groupeDe }
+  return { ANNEES: annees, CA, CHARGES, RETRO_FIXE, RETRO_VARIABLE, RETRO_PAR_ASSOCIE, SALAIRES_CDI, REMPL_IADE, REMPL_MAR, ENTREES, SORTIES, SOLDES, NON_CLASSE, PAR_CATEGORIE, SALARIES, DEPENSES, moisActuel, nbAssocies, groupeDe }
 }
 
 // Solde en fin de chaque mois de l'année y, à partir de l'ancre la plus récente

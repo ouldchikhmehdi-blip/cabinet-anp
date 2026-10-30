@@ -1,28 +1,36 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import PeriodeFilter from '../components/PeriodeFilter'
+import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
-import { MOIS_COURT, fmtEur, pct, diffLabel, getMasqueMontants } from '../data/mockData'
+import { usePeriode } from '../data/periode'
+import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
+
+const ACCENT = '#534AB7'
+
+function LegendAnnees({ years }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {ordreAffichage(years).map(({ y, rang }) => (
+        <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ display: 'inline-block', width: 10, height: 10, background: couleurAnnee(rang, ACCENT), borderRadius: 2 }} />
+          {y}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 // Page en lecture seule : la liste des salariés vient du dictionnaire de règles (iade_cdi),
-// le coût des virements classés « Salaire IADE CDI ».
+// le coût des virements classés « Salaire IADE CDI ». Même filtre de période que les
+// autres pages finance : les montants sont ceux des mois choisis, années comparées.
 export default function SalariesCDI() {
   const etat = useCompta()
   const S = etat.series
   const SALARIES = S.SALARIES
-
-  // Années comparées : les deux plus récentes, resynchronisées quand la liste change
-  // (état réinitialisé pendant le rendu, sans effet).
-  const anneesCle = S.ANNEES.join(',')
-  const [year1, setYear1] = useState(S.ANNEES[0])
-  const [year2, setYear2] = useState(S.ANNEES[1])
-  const [anneesVues, setAnneesVues] = useState(anneesCle)
-  if (anneesVues !== anneesCle) {
-    const [a0, a1] = anneesCle.split(',').map(Number)
-    setAnneesVues(anneesCle)
-    setYear1(a0)
-    setYear2(a1)
-  }
+  const P = usePeriode(S.ANNEES)
+  const { de, a, primary, ref, years } = P
 
   // Salarié sélectionné : le premier de la liste à chaque changement de liste.
   const idsCle = SALARIES.map(s => s.id).join('|')
@@ -35,21 +43,20 @@ export default function SalariesCDI() {
 
   const selected = SALARIES.find(s => s.id === selectedId) || SALARIES[0] || null
   const masque = getMasqueMontants()
+  const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const coutN = selected ? (selected.couts[year1] || 0) : 0
-  const coutN1 = selected ? (selected.couts[year2] || 0) : 0
-  const mensuelN = selected ? (selected.mensuel[year1] || Array(12).fill(0)) : Array(12).fill(0)
-  const moisActuel = S.moisActuel(year1)
-  const cumulAujourdhui = mensuelN.slice(0, moisActuel + 1).reduce((s, v) => s + v, 0)
-  const dataMensuel = MOIS_COURT.map((m, i) => ({ mois: m, montant: mensuelN[i] ?? 0 }))
+  const coutPeriode = (s, y) => sum((s.mensuel[y] || []).slice(de, a + 1))
+  const totalCdi = (y) => sum((S.SALAIRES_CDI[y] || []).slice(de, a + 1))
+  const tPrimary = totalCdi(primary)
+  const tRef = totalCdi(ref)
+  const sPrimary = selected ? coutPeriode(selected, primary) : 0
+  const sRef = selected ? coutPeriode(selected, ref) : 0
 
-  const selectStyle = {
-    fontSize: 12, padding: '4px 6px',
-    borderRadius: 'var(--radius-md)',
-    border: '0.5px solid var(--color-border)',
-    background: 'var(--color-bg)',
-    color: 'var(--color-text)',
-  }
+  const dataMensuel = MOIS_COURT.slice(de, a + 1).map((m, i) => {
+    const row = { mois: m }
+    years.forEach(y => { row[y] = selected ? (selected.mensuel[y] || [])[de + i] ?? 0 : 0 })
+    return row
+  })
 
   const cardStyle = {
     background: 'var(--color-surface)',
@@ -62,23 +69,25 @@ export default function SalariesCDI() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Salariés CDI</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <select style={selectStyle} value={year1} onChange={e => setYear1(Number(e.target.value))}>
-            {S.ANNEES.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500 }}>vs</span>
-          <select style={selectStyle} value={year2} onChange={e => setYear2(Number(e.target.value))}>
-            {S.ANNEES.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-      </div>
+      <h1 style={{ fontSize: 18, fontWeight: 500 }}>Salariés CDI</h1>
 
       <EtatCompta etat={etat} />
 
+      <PeriodeFilter
+        moisDe={P.moisDe} setMoisDe={P.setMoisDe}
+        moisA={P.moisA} setMoisA={P.setMoisA}
+        years={P.years} setYears={P.setYears}
+        shortcut={P.shortcut} setShortcut={P.setShortcut}
+        availableYears={S.ANNEES}
+      />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        <KpiCard label={`Total salaires CDI · ${primary}`} value={fmtEur(tPrimary)} sub={periode} subColor="neutral" />
+        <KpiCard label={`Total salaires CDI · ${ref}`} value={fmtEur(tRef)} sub={diffLabel(tPrimary, tRef, ref)} subColor={diffColor(tPrimary, tRef, true)} />
+      </div>
+
       <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500, letterSpacing: '0.04em' }}>
-        CDI — cliquez sur un salarié pour le détail
+        CDI — cliquez sur un salarié pour le détail · coût {periode} {primary}
       </span>
 
       {SALARIES.length === 0 ? (
@@ -86,7 +95,7 @@ export default function SalariesCDI() {
           Aucun salarié CDI — renseignez la liste des IADE en CDI dans « Règles virements ».
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
           {SALARIES.map(s => {
             const isSel = selected && selected.id === s.id
             return (
@@ -97,31 +106,26 @@ export default function SalariesCDI() {
                   background: isSel ? 'var(--color-primary-light)' : 'var(--color-surface)',
                   border: isSel ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-border)',
                   borderRadius: 'var(--radius-md)',
-                  padding: '12px',
+                  padding: '7px 9px',
                   cursor: 'pointer',
                   textAlign: 'left',
+                  display: 'flex', alignItems: 'center', gap: 8,
                   transition: 'all 0.15s',
                 }}
               >
                 <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
+                  width: 24, height: 24, flexShrink: 0, borderRadius: '50%',
                   background: isSel ? '#AFA9EC' : 'var(--color-primary-light)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: 500,
+                  fontSize: 10, fontWeight: 500,
                   color: isSel ? '#26215C' : 'var(--color-primary)',
-                  marginBottom: 8
                 }}>
                   {s.initiales}
                 </div>
-                <div style={{ fontSize: 11, background: '#E1F5EE', color: '#085041', padding: '1px 6px', borderRadius: 10, display: 'inline-block', marginBottom: 4 }}>
-                  {s.type || 'CDI'}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.nom}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{fmtEur(coutPeriode(s, primary))}</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)' }}>{s.nom}</div>
-                <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 8 }}>{s.poste}</div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text)' }}>
-                  {fmtEur(s.couts[year1] || 0)}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>coût employeur {year1}</div>
               </button>
             )
           })}
@@ -140,49 +144,28 @@ export default function SalariesCDI() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{selected.nom}</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{selected.poste}</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{selected.poste} · {selected.type || 'CDI'}</div>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-            <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 3 }}>
-                Coût total {year1}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtEur(coutN)}</div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>année complète</div>
-            </div>
-            <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 3 }}>
-                Coût total {year2}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtEur(coutN1)}</div>
-              <div style={{
-                fontSize: 10, marginTop: 2,
-                color: parseFloat(pct(coutN, coutN1)) > 0 ? 'var(--color-danger)' : 'var(--color-success)'
-              }}>
-                {diffLabel(coutN, coutN1, year2)}
-              </div>
-            </div>
-            <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '8px 10px' }}>
-              <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 3 }}>
-                Coût cumulé Jan → aujourd'hui
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 500 }}>{fmtEur(cumulAujourdhui)}</div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                Jan → {MOIS_COURT[moisActuel]} {year1} ({moisActuel + 1} mois)
-              </div>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 }}>
+            <KpiCard label={`Coût · ${primary}`} value={fmtEur(sPrimary)} sub={periode} subColor="neutral" />
+            <KpiCard label={`Coût · ${ref}`} value={fmtEur(sRef)} sub={diffLabel(sPrimary, sRef, ref)} subColor={diffColor(sPrimary, sRef, true)} />
           </div>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-            Coût mensuel · {year1}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+              Coût mensuel — {periode}
+            </span>
+            <LegendAnnees years={years} />
           </div>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={dataMensuel}>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart key={years.join('-')} data={dataMensuel}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
               <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
               <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
-              <Bar dataKey="montant" name="Coût" fill="#534AB7" radius={[3,3,0,0]} />
+              {ordreAffichage(years).map(({ y, rang }) => (
+                <Bar key={y} dataKey={y} fill={couleurAnnee(rang, ACCENT)} radius={[3,3,0,0]} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -191,7 +174,7 @@ export default function SalariesCDI() {
       <div style={{ ...cardStyle, background: '#EEEDFE', border: '0.5px solid #AFA9EC' }}>
         <div style={{ fontSize: 12, color: '#3C3489', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>ℹ</span>
-          <span>La liste vient du dictionnaire de règles (Règles virements, liste des IADE en CDI) ; le coût = virements de salaire classés « Salaire IADE CDI ».</span>
+          <span>La liste vient du dictionnaire de règles (Règles virements, liste des IADE en CDI) ; le coût = virements de salaire classés « Salaire IADE CDI » (salaire net viré, hors charges sociales).</span>
         </div>
       </div>
     </div>
