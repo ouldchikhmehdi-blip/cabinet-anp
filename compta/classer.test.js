@@ -143,6 +143,10 @@ describe('classer — charges et fonctionnement', () => {
     expect(cat('COMMISSIONS', 'FACTURE NUMERO 1', -120).categorie).toBe('Banque')
     expect(cat('INTERETS ET COMMISSIONS', '', -40).categorie).toBe('Banque')
   })
+  it('règle explicite avec associé imputé', () => {
+    const R2 = preparerRegles({ ...reglesReelles, associes: { AA: 'ALPHA' }, regles: [{ id: 'loyer-alpha', quand: { sens: 'debit', beneficiaire: '^SCI TEST' }, categorie: 'Remboursement de frais avancés', associe: 'AA' }] })
+    expect(classer(ligne('VIR SEPA INST EMIS', '/MOTIF LOYER /BEN SCI TEST', -500), R2)).toMatchObject({ categorie: 'Remboursement de frais avancés', associe: 'AA', regle: 'loyer-alpha' })
+  })
   it('prélèvement inconnu → À arbitrer', () => {
     expect(cat('PRLV SEPA', 'NOUVEAU FOURNISSEUR ECH/020125', -99).categorie).toBe('À arbitrer')
   })

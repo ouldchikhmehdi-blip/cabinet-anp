@@ -24,7 +24,7 @@
 | Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
 | Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
 | Congés IADE, **heures supplémentaires** et **affichage du planning IADE** (comptes restreints, dépôt / validation, lecture) | **`IADE.md`** | `src/pages/Iade*.jsx`, `src/pages/HeuresSupAValider.jsx`, `src/components/iade/`, `src/utils/iadeConges{,Api}.js`, `src/utils/iadeHeuresSup{,Api}.js`, `src/utils/iadePlanning{,Api}.js`, `src/utils/{planningColle,iadeAgendaApi}.js`, `api/agenda-iade.js`, `api/iade-notify.js`, `supabase/iade_conges.sql`, `supabase/iade_compteur_conges.sql`, `supabase/iade_heures_sup.sql`, `supabase/iade_agenda.sql`, `supabase/iade_planning.sql` |
-| **Comptabilité** : classement des relevés bancaires, règles par tiers, imputation aux associés | **`compta/README.md`** (+ `CLAUDE.md` §4) | `compta/regles.json`, `compta/classer.js`, `compta/classer.test.js` ; sorties hors dépôt dans `~/partage/compta/classe/` |
+| **Comptabilité** : import OFX, classement, règles, pages finance sur les vraies lignes | **`compta/README.md`** (+ `CLAUDE.md` §4) | `compta/moteur.js` (moteur partagé), `compta/regles.json`, `compta/classer.js`, `compta/importer.js`, `src/data/{compta,comptaApi,categories,periode}.js`, `src/pages/ReglesVirements.jsx`, `supabase/compta.sql` ; sorties hors dépôt dans `~/partage/compta/classe/` |
 | Schéma DB, RLS, triggers, sécurité en base | **`supabase/schema.sql`** (+ `securite_aal2.sql`, `connexion_google.sql`) | `supabase/*.sql` |
 
 Les blockquotes ci-dessus détaillent les mises en garde (données réelles, « fait foi ») ; ce tableau est le point d'entrée rapide.
@@ -150,13 +150,13 @@ cabinet-anp/
 
 ## 4. Règle critique sur les données — À NE JAMAIS ENFREINDRE
 
-- Données financières du dashboard **aujourd'hui fictives**, dans `src/data/` (`mockData.js`, etc.). Pas encore en base.
+- Données financières du dashboard : **en base depuis le 2026-10-30** (`compta_transactions`, derrière RLS + 2FA). `src/data/mockData.js` ne garde que des helpers d'affichage, plus aucune série.
 - Les **vraies données = relevés bancaires** (OFX/CSV), déposés dans `~/partage/compta/` (hors dépôt).
 - **Lecture locale autorisée depuis le 2026-10-30** (décision drmoc) : Claude Code peut lire ces relevés sur le mini PC pour bâtir et appliquer les règles de classement (`compta/`, cf. `compta/README.md`).
 - **Interdits maintenus** : aucun montant réel, aucun libellé réel, aucune ligne bancaire dans un **commit**, un **mock**, une **doc**, un **test** ou un message public. Les sorties du classement vont dans `~/partage/compta/classe/`, jamais dans le dépôt (`.gitignore`).
 - Données réelles dans l'app : uniquement via le backend sécurisé (Supabase Storage + PostgreSQL derrière RLS), jamais dans le bundle.
 - Besoin d'un exemple de structure → **données factices anonymisées** seulement (cf. `compta/classer.test.js`).
-- ⚠️ **Les mock data sont actuellement dans le bundle JS** et téléchargeables sans auth. Protection intérimaire en place : **Vercel Deployment Protection (mot de passe HTTP Basic)** sur tout le site, à désactiver une fois les données réelles en base derrière RLS.
+- Le bundle ne contient plus de donnée financière (ni mock, ni règles : le dictionnaire de règles, qui porte des noms de salariés, vit en base). La **Vercel Deployment Protection** (mot de passe HTTP Basic) peut donc être retirée après vérification (§ 9).
 
 ---
 
@@ -255,9 +255,12 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [x] **Envoi e-mail basculé Resend → Gmail** (SMTP/Nodemailer, code livré 2026-08-19)
 - [ ] Poser `GMAIL_USER` + `GMAIL_APP_PASSWORD` sur Vercel puis **Redeploy** (cf. `AUTH.md` § Étape 5)
 - [ ] **Déploiement Vercel** + variables d'env + protection mot de passe intérimaire
-- [ ] **Migration `src/data/*` (mock) → tables Supabase** + RLS avec exigence **AAL2** pour les données sensibles
+- [x] **Migration `src/data/*` (mock) → tables Supabase** + RLS AAL2 : fait pour la compta le 2026-10-30 (`supabase/compta.sql`) ; les consultations ont leur propre chemin (`CONSULTATIONS.md`)
 - [x] **Compta : règles de classement + script local** (`compta/regles.json`, `compta/classer.js`, tests à données fictives) — 2026-10-30. Relevé 2025 classé dans `~/partage/compta/classe/` ; reste à la comptable : Société Générale, petits prélèvements Clinique du Millénaire, SAS Millénaire Clinique, Clémentville, Infogem, SIE, chèques ; second virement permanent mensuel (`ZZ1…`) à confirmer.
-- [ ] **Compta, lot suivant** : brancher la page « Règles virements » sur `compta/regles.json`, remplacer `src/data/categories.js` par la taxonomie de `regles.json`, puis tables Supabase (`transactions_bancaires`, `regles_classement`) derrière RLS AAL2, import par le dashboard (route à loger dans un endpoint existant : 12/12 fonctions Vercel).
+- [x] **Compta, lot 2 (2026-10-30)** : page « Règles virements » réelle (import OFX, file d'attente, dictionnaire, reclassement), `categories.js` = taxonomie validée, pages finance sur `compta_transactions` (`src/data/compta.js`), `compta/importer.js`.
+- [ ] ⚠️ **Exécuter `supabase/compta.sql`** dans le SQL Editor, puis amorcer : `node compta/importer.js ~/partage/compta/E3144507.ofx --annee 2025 --regles-locales` (variables `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`). Le connecteur Supabase de Claude Code n'a pas eu le droit d'écrire.
+- [ ] Retirer la Vercel Deployment Protection une fois les pages finance vérifiées en prod.
+- [ ] Compta, à venir : explorateur de lignes (recherche / filtre par catégorie et mois), export comptable annuel, colonne « associé » sur les cartes.
 - [ ] Suppression de la protection intérimaire Vercel une fois les données en base
 - [ ] ⚠️ **Supprimer l'ancien projet Vercel `cabinet-anp`** (`prj_sya4JWd19z4wIC5zpH1gDSuOtWbV`) et
       l'alias `cabinet-anp-b32k.vercel.app`, pour ne garder qu'une adresse (cf. § 2 « Hébergement »).

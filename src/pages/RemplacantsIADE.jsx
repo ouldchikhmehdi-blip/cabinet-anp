@@ -1,9 +1,11 @@
-import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { REMPL_IADE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
+import EtatCompta from '../components/EtatCompta'
+import { useCompta } from '../data/compta'
+import { usePeriode } from '../data/periode'
+import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
 const ACCENT = '#EF9F27'
 
@@ -23,20 +25,15 @@ function LegendAnnees({ years, type }) {
 }
 
 export default function RemplacantsIADE() {
-  const def = periodeParDefaut(ANNEES)
-  const [moisDe, setMoisDe] = useState(def.moisDe)
-  const [moisA, setMoisA] = useState(def.moisA)
-  const [years, setYears] = useState(def.years)
-  const [shortcut, setShortcut] = useState(def.shortcut)
+  const etat = useCompta()
+  const S = etat.series
+  const P = usePeriode(S.ANNEES)
+  const { de, a, primary, ref, years } = P
 
-  const de = Math.min(moisDe, moisA)
-  const a = Math.max(moisDe, moisA)
   const masque = getMasqueMontants()
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
-  const ref = years.at(-2)
-  const serieDe = (y) => (REMPL_IADE[y] || []).slice(de, a + 1)
+  const serieDe = (y) => (S.REMPL_IADE[y] || []).slice(de, a + 1)
   const totalDe = (y) => sum(serieDe(y))
   const tPrimary = totalDe(primary)
   const tRef = totalDe(ref)
@@ -85,12 +82,14 @@ export default function RemplacantsIADE() {
         </div>
       </div>
 
+      <EtatCompta etat={etat} />
+
       <PeriodeFilter
-        moisDe={moisDe} setMoisDe={setMoisDe}
-        moisA={moisA} setMoisA={setMoisA}
-        years={years} setYears={setYears}
-        shortcut={shortcut} setShortcut={setShortcut}
-        availableYears={ANNEES}
+        moisDe={P.moisDe} setMoisDe={P.setMoisDe}
+        moisA={P.moisA} setMoisA={P.setMoisA}
+        years={P.years} setYears={P.setYears}
+        shortcut={P.shortcut} setShortcut={P.setShortcut}
+        availableYears={S.ANNEES}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>

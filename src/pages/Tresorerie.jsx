@@ -1,8 +1,10 @@
-import { useState } from 'react'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { SOLDES, ENTREES, SORTIES, MOIS_COURT, ANNEES, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
+import EtatCompta from '../components/EtatCompta'
+import { useCompta } from '../data/compta'
+import { usePeriode } from '../data/periode'
+import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
 const ACCENT = '#534AB7'
 
@@ -20,37 +22,37 @@ function LegendAnnees({ years }) {
 }
 
 export default function Tresorerie() {
-  const def = periodeParDefaut(ANNEES)
-  const [moisDe, setMoisDe] = useState(def.moisDe)
-  const [moisA, setMoisA] = useState(def.moisA)
-  const [years, setYears] = useState(def.years)
-  const [shortcut, setShortcut] = useState(def.shortcut)
-
-  const de = Math.min(moisDe, moisA)
-  const a = Math.max(moisDe, moisA)
+  const etat = useCompta()
+  const S = etat.series
+  const P = usePeriode(S.ANNEES)
+  const { years, de, a, primary, ref } = P
   const masque = getMasqueMontants()
   const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
 
-  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
-  const ref = years.at(-2)
-  const soldeDe = (y) => (SOLDES[y] || []).slice(de, a + 1)
-  const entDe = (y) => (ENTREES[y] || []).slice(de, a + 1)
-  const sorDe = (y) => (SORTIES[y] || []).slice(de, a + 1)
+  // Un solde vaut null quand il est inconnu (pas d'ancre de relevé) : les KPI
+  // l'ignorent et affichent « — » s'il n'en reste aucun ; le graphe saute le point.
+  const soldeDe = (y) => (S.SOLDES[y] || []).slice(de, a + 1)
+  const entDe = (y) => (S.ENTREES[y] || []).slice(de, a + 1)
+  const sorDe = (y) => (S.SORTIES[y] || []).slice(de, a + 1)
+  const connus = (arr) => arr.filter(v => v !== null && v !== undefined)
 
   const tEnt1 = sum(entDe(primary)), tEnt2 = sum(entDe(ref))
   const tSor1 = sum(sorDe(primary)), tSor2 = sum(sorDe(ref))
   const solPrimary = soldeDe(primary)
-  const minSol = solPrimary.length ? Math.min(...solPrimary) : 0
-  const minIdx = solPrimary.indexOf(minSol)
-  const moySol1 = solPrimary.length ? Math.round(sum(solPrimary) / solPrimary.length) : 0
-  const solRef = soldeDe(ref)
-  const moySol2 = solRef.length ? Math.round(sum(solRef) / solRef.length) : 0
-  const soldeActuel = SOLDES[primary]?.[11] || 0
+  const solConnus = connus(solPrimary)
+  const minSol = solConnus.length ? Math.min(...solConnus) : null
+  const minIdx = minSol === null ? -1 : solPrimary.indexOf(minSol)
+  const moySol1 = solConnus.length ? Math.round(sum(solConnus) / solConnus.length) : null
+  const solRefConnus = connus(soldeDe(ref))
+  const moySol2 = solRefConnus.length ? Math.round(sum(solRefConnus) / solRefConnus.length) : null
+  // Dernier solde connu de l'année principale (toute l'année, pas seulement la période)
+  const soldeActuel = connus(S.SOLDES[primary] || []).at(-1) ?? null
+  const fmtSolde = (v) => (v === null ? '—' : fmtEur(v))
 
   const dataSolde = labels.map((m, i) => {
     const row = { mois: m }
-    years.forEach(y => { row[y] = soldeDe(y)[i] ?? 0 })
+    years.forEach(y => { row[y] = soldeDe(y)[i] ?? null })
     return row
   })
   // Entrées vs sorties : année principale.
@@ -68,16 +70,18 @@ export default function Tresorerie() {
           padding: '4px 12px', borderRadius: 20, fontWeight: 500,
           display: 'flex', alignItems: 'center', gap: 6
         }}>
-          ✓ Solde actuel : {fmtEur(soldeActuel)}
+          ✓ Solde actuel : {fmtSolde(soldeActuel)}
         </span>
       </div>
 
+      <EtatCompta etat={etat} />
+
       <PeriodeFilter
-        moisDe={moisDe} setMoisDe={setMoisDe}
-        moisA={moisA} setMoisA={setMoisA}
-        years={years} setYears={setYears}
-        shortcut={shortcut} setShortcut={setShortcut}
-        availableYears={ANNEES}
+        moisDe={P.moisDe} setMoisDe={P.setMoisDe}
+        moisA={P.moisA} setMoisA={P.setMoisA}
+        years={P.years} setYears={P.setYears}
+        shortcut={P.shortcut} setShortcut={P.setShortcut}
+        availableYears={S.ANNEES}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -95,15 +99,15 @@ export default function Tresorerie() {
         />
         <KpiCard
           label="Solde minimum"
-          value={fmtEur(minSol)}
+          value={fmtSolde(minSol)}
           sub={`Point bas en ${labels[minIdx] || '-'} · ${primary}`}
           subColor="neutral"
         />
         <KpiCard
           label="Solde moyen mensuel"
-          value={fmtEur(moySol1)}
-          sub={diffLabel(moySol1, moySol2, ref)}
-          subColor={diffColor(moySol1, moySol2)}
+          value={fmtSolde(moySol1)}
+          sub={moySol1 === null || moySol2 === null ? 'Solde inconnu : importez un relevé' : diffLabel(moySol1, moySol2, ref)}
+          subColor={moySol1 === null || moySol2 === null ? 'neutral' : diffColor(moySol1, moySol2)}
         />
       </div>
 
@@ -129,6 +133,7 @@ export default function Tresorerie() {
                 strokeWidth={rang === 0 ? 2 : 1.5}
                 strokeDasharray={rang === 0 ? undefined : '5 4'}
                 dot={{ r: rang === 0 ? 3 : 2 }}
+                connectNulls
               />
             ))}
           </LineChart>

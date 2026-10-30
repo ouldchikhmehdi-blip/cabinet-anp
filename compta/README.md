@@ -1,9 +1,20 @@
 # Compta — classement des relevés bancaires de la SARM
 
-Script local qui lit un relevé OFX du compte BNP de la SARM, classe chaque ligne d'après
-`regles.json` et produit des CSV + un rapport dans `~/partage/compta/classe/` (hors dépôt).
-Rien ici ne touche au dashboard : la page « Règles virements » et les tables Supabase sont un
-lot ultérieur (cf. `CLAUDE.md` § 9).
+Deux chemins, un seul moteur (`moteur.js`, module pur sans dépendance) :
+
+- **Dashboard** (`sarm-dashboard.vercel.app`, page « Règles virements ») : import d'un relevé
+  OFX depuis le navigateur, classement sous RLS, file d'attente à arbitrer, dictionnaire de
+  règles modifiable, reclassement rétroactif. Les pages finance (Vue globale, Chiffre
+  d'affaires, Dépenses, Trésorerie, Virements associés, Remplaçants, Salariés CDI) lisent les
+  lignes classées de la table `compta_transactions` (`src/data/compta.js`).
+- **Script local** (`classer.js`) : même classement, sorties CSV + rapport dans
+  `~/partage/compta/classe/` (hors dépôt), sans réseau. Et `importer.js` pour pousser un relevé
+  en base depuis le mini PC.
+
+**Source de vérité des règles : la table `compta_regles` (un document JSON).** `regles.json`
+dans ce dossier est la graine (premier chargement) et l'export (bouton « Exporter regles.json »
+de la page) : après un arbitrage fait dans le dashboard, ré-exporter et committer pour que le
+script local et le dépôt suivent.
 
 ## Interdits (cf. `CLAUDE.md` § 4)
 
@@ -15,23 +26,27 @@ lot ultérieur (cf. `CLAUDE.md` § 9).
 
 ## Usage mensuel
 
-1. Déposer l'export OFX du mois dans `~/partage/compta/` (export BNP natif ; le CSV et le
-   XLSX d'ofxconverter sont à éviter, surtout le XLSX dont les dates sont au format américain).
-2. Lancer, depuis la racine du dépôt :
+**Depuis le dashboard (admin, 2FA)** : « Règles virements » → « Importer un relevé OFX » →
+lire la file d'attente → pour chaque ligne, « Cette ligne » (classement manuel, figé) ou
+« Règle sur ce tiers » (règle explicite, rejouée sur toutes les lignes) ou « Ajouter à la
+liste » (nom de salarié / remplaçant) → « Exporter regles.json » → remplacer `compta/regles.json`
+et committer.
 
-   ```sh
-   node compta/classer.js ~/partage/compta/<fichier>.ofx            # tout le fichier
-   node compta/classer.js ~/partage/compta/<fichier>.ofx --annee 2026
-   ```
+**Depuis le mini PC** (sans ouvrir le dashboard) :
 
-3. Lire `~/partage/compta/classe/rapport.md` :
-   - « Lignes classées mais à vérifier » : classées, mais avec un doute signalé (divergence
-     motif / bénéficiaire, bénéficiaire tronqué, second virement permanent…).
-   - « À arbitrer » : aucune règle sûre ne couvre la ligne. **Le script ne devine jamais** :
-     pas de catégorie « Autre » par défaut.
-4. Pour chaque ligne arbitrée, ajouter la règle (voir ci-dessous) et relancer. Le
-   `grand-livre.csv` cumule tous les imports et se dédoublonne par `FITID` : relancer le même
-   fichier ne crée pas de doublon.
+```sh
+# classement hors ligne, CSV + rapport
+node compta/classer.js ~/partage/compta/<fichier>.ofx [--annee 2026]
+# import en base (règles lues dans compta_regles ; --regles-locales pousse d'abord regles.json)
+SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node compta/importer.js ~/partage/compta/<fichier>.ofx [--annee 2026] [--regles-locales]
+```
+
+Dans les deux cas : lire `rapport.md` ou la file d'attente, arbitrer, ajouter la règle,
+relancer. Le script **ne devine jamais** : pas de catégorie « Autre » par défaut. Rejouer un
+même fichier est sans risque (dédoublonnage par `FITID`, lignes manuelles préservées).
+
+**Première mise en service** (une fois) : exécuter `supabase/compta.sql` dans le SQL Editor
+Supabase, puis amorcer règles + lignes avec `importer.js … --regles-locales`.
 
 Sorties :
 
@@ -84,9 +99,22 @@ Ordre d'application, la première règle qui matche gagne :
 - **Nouvel associé** : `associes` (initiales → regex du nom tel qu'il apparaît à la banque,
   variantes d'orthographe comprises).
 - **Nouvelle catégorie** : l'ajouter d'abord dans `taxonomie`, sinon le chargement refuse la règle.
-- Après toute modification : `npx vitest run compta` et `npm run lint`, puis relancer le
-  classement. Les tests n'utilisent que des noms fictifs ; en ajouter un si la règle est
+- Une règle explicite peut porter `"associe": "EH"` pour imputer la ligne à un associé.
+- Après toute modification du fichier : `npx vitest run compta src/data` et `npm run lint`,
+  puis relancer le classement ; si le dashboard est en service, recharger le fichier par
+  « Charger regles.json » (ou `importer.js --regles-locales`) pour que la base suive. Les tests n'utilisent que des noms fictifs ; en ajouter un si la règle est
   structurelle (nouvelle famille, nouveau champ), pas pour chaque nom.
+
+## Tables Supabase (`supabase/compta.sql`)
+
+| Table | Contenu | Lecture | Écriture |
+|---|---|---|---|
+| `compta_regles` | une ligne, `doc` jsonb = le dictionnaire | `acces_cabinet()` | `is_admin()` |
+| `compta_transactions` | une ligne par FITID : date, montant, type, libellé, tiers, groupe, catégorie, associé, règle, alerte, `manuel` | `acces_cabinet()` | `is_admin()` |
+| `compta_soldes` | solde du relevé (LEDGERBAL) par date, ancre de la courbe de trésorerie | `acces_cabinet()` | `is_admin()` |
+
+Aucune fonction serverless (plan Vercel 12/12) : tout passe par le client Supabase sous RLS.
+`manuel = true` fige une ligne classée à la main : le reclassement ne la touche plus.
 
 ## Décisions de classement (2026-10-30)
 

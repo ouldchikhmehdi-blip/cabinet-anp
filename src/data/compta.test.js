@@ -1,0 +1,84 @@
+// Séries des pages finance, sur des lignes INVENTÉES (jamais de ligne bancaire réelle).
+import { describe, it, expect } from 'vitest'
+import { calculerSeries, soldesFinDeMois } from './compta'
+
+const t = (date, montant, categorie, extra = {}) => ({
+  fitid: `${date}-${montant}-${categorie}`, date, montant, type: '', libelle: extra.libelle || '', tiers: extra.tiers || '',
+  groupe: extra.groupe || groupeDe(categorie), categorie, associe: extra.associe || '', regle: '', alerte: '', manuel: false,
+})
+const GROUPES = {
+  'Honoraires clinique': 'Recettes', 'Tiers payant consultations': 'Recettes', 'Reversement mensuel': 'Associés',
+  "Complément d'honoraires": 'Associés', 'Remboursement RCP': 'Associés', 'Remplaçant MAR': 'Remplaçants',
+  'Remplaçant IADE (CDD)': 'Remplaçants', 'Salaire IADE CDI': 'Salariés', 'URSSAF': 'Charges sociales et fiscales',
+  'Banque': 'Fonctionnement', 'À arbitrer': 'À arbitrer',
+}
+const groupeDe = c => GROUPES[c]
+
+const DOC = { associes: { AA: 'ALPHA', BB: 'BRAVO' }, iade_cdi: ['DURAND', 'MARTIN'], iade_cdd: [], mar_remplacants: [], regles: [], taxonomie: {} }
+
+const LIGNES = [
+  t('2025-01-05', 10000, 'Honoraires clinique'),
+  t('2025-01-06', 30, 'Tiers payant consultations'),
+  t('2025-01-10', -1600, 'Reversement mensuel'),
+  t('2025-01-12', -500, "Complément d'honoraires", { associe: 'AA' }),
+  t('2025-01-13', -100, 'Remboursement RCP', { associe: 'BB' }),
+  t('2025-02-01', -900, 'Remplaçant MAR'),
+  t('2025-02-02', -300, 'Remplaçant IADE (CDD)'),
+  t('2025-02-03', -2000, 'Salaire IADE CDI', { libelle: '/MOTIF SALAIRE DURAND /BEN DURAND JEAN', tiers: 'DURAND JEAN' }),
+  t('2025-02-04', -1500, 'URSSAF'),
+  t('2025-02-05', -5, 'Banque'),
+  t('2025-03-01', -42, 'À arbitrer'),
+]
+
+describe('calculerSeries', () => {
+  const S = calculerSeries(LIGNES, [], DOC)
+
+  it('au moins deux années, la plus récente en premier', () => {
+    expect(S.ANNEES).toEqual([2025, 2024])
+    expect(S.CA[2024]).toEqual(Array(12).fill(0))
+  })
+  it('CA = recettes d\'activité ; charges hors associés et hors à arbitrer', () => {
+    expect(S.CA[2025][0]).toBe(10030)
+    expect(S.CHARGES[2025][1]).toBe(900 + 300 + 2000 + 1500 + 5)
+    expect(S.CHARGES[2025][2]).toBe(0)
+    expect(S.NON_CLASSE[2025][2]).toBe(42)
+  })
+  it('rétrocessions ramenées par associé (2 associés dans le doc)', () => {
+    expect(S.RETRO_FIXE[2025][0]).toBe(800)
+    expect(S.RETRO_VARIABLE[2025][0]).toBe(250)
+    expect(S.RETRO_PAR_ASSOCIE[2025].AA).toMatchObject({ fixe: 800, complement: 500, total: 1300 })
+    expect(S.RETRO_PAR_ASSOCIE[2025].BB).toMatchObject({ fixe: 800, rcp: 100, total: 900 })
+  })
+  it('remplaçants, entrées, sorties', () => {
+    expect(S.REMPL_MAR[2025][1]).toBe(900)
+    expect(S.REMPL_IADE[2025][1]).toBe(300)
+    expect(S.ENTREES[2025][0]).toBe(10030)
+    expect(S.SORTIES[2025][0]).toBe(2200)
+  })
+  it('salariés CDI : une carte par nom du doc, coût depuis les virements', () => {
+    expect(S.SALARIES.map(s => s.nom)).toEqual(['Durand', 'Martin'])
+    expect(S.SALARIES[0].couts[2025]).toBe(2000)
+    expect(S.SALARIES[1].couts[2025]).toBe(0)
+  })
+  it('dépenses : une série par sous-catégorie non vide', () => {
+    expect(S.DEPENSES.map(d => d.id)).toEqual(['URSSAF', 'Banque'])
+    expect(S.DEPENSES[0].montants[2025][1]).toBe(1500)
+  })
+  it('moisActuel = dernier mois avec des lignes', () => {
+    expect(S.moisActuel(2025)).toBe(2)
+  })
+  it('soldes inconnus sans ancre', () => {
+    expect(S.SOLDES[2025]).toEqual(Array(12).fill(null))
+  })
+})
+
+describe('soldesFinDeMois', () => {
+  it('reconstitue les fins de mois avant et après l\'ancre', () => {
+    const lignes = [t('2025-01-10', 100, 'Honoraires clinique'), t('2025-02-10', -30, 'Banque'), t('2025-03-10', 50, 'Honoraires clinique')]
+    const s = soldesFinDeMois(2025, lignes, [{ date: '2025-02-20', solde: 1000 }])
+    expect(s[0]).toBe(1030)   // fin janvier : 1000 − (−30)
+    expect(s[1]).toBe(1000)
+    expect(s[2]).toBe(1050)
+    expect(s[11]).toBe(1050)
+  })
+})

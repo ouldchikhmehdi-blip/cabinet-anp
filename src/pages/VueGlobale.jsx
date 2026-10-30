@@ -1,8 +1,10 @@
-import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
-import { CA, CHARGES, MOIS_COURT, ANNEES, fmtK, fmtEur, sum, diffLabel, diffColor, RETRO_FIXE, RETRO_VARIABLE, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
+import EtatCompta from '../components/EtatCompta'
+import { useCompta } from '../data/compta'
+import { usePeriode } from '../data/periode'
+import { MOIS_COURT, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
 function LegendAnnees({ years, accent }) {
   return (
@@ -18,28 +20,25 @@ function LegendAnnees({ years, accent }) {
 }
 
 export default function VueGlobale() {
-  const def = periodeParDefaut(ANNEES)
-  const [moisDe, setMoisDe] = useState(def.moisDe)
-  const [moisA, setMoisA] = useState(def.moisA)
-  const [years, setYears] = useState(def.years)
-  const [shortcut, setShortcut] = useState(def.shortcut)
-
-  const de = Math.min(moisDe, moisA)
-  const a = Math.max(moisDe, moisA)
+  const etat = useCompta()
+  const S = etat.series
+  const P = usePeriode(S.ANNEES)
+  const { years, de, a, primary, ref } = P
   const masque = getMasqueMontants()
+  const moisActuel = S.moisActuel(primary)  // dernier mois ayant des lignes pour l'année principale
 
-  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
-  const ref = years.at(-2)
-  const caDe = (y) => (CA[y] || []).slice(de, a + 1)
-  const chDe = (y) => (CHARGES[y] || []).slice(de, a + 1)
+  const caDe = (y) => (S.CA[y] || []).slice(de, a + 1)
+  const chDe = (y) => (S.CHARGES[y] || []).slice(de, a + 1)
 
   const totalCA1 = sum(caDe(primary)), totalCA2 = sum(caDe(ref))
   const totalCH1 = sum(chDe(primary)), totalCH2 = sum(chDe(ref))
   const res1 = totalCA1 - totalCH1, res2 = totalCA2 - totalCH2
 
-  const f = RETRO_FIXE[primary] || []
-  const v = RETRO_VARIABLE[primary] || []
-  const cumulRetro = sum(f.slice(0, MOIS_ACTUEL + 1)) + sum(v.slice(0, MOIS_ACTUEL + 1))
+  const f = S.RETRO_FIXE[primary] || []
+  const v = S.RETRO_VARIABLE[primary] || []
+  const cumulRetro = sum(f.slice(0, moisActuel + 1)) + sum(v.slice(0, moisActuel + 1))
+  // Débits encore « À arbitrer » sur la période : à classer avant de lire les charges comme définitives
+  const nonClasse = sum((S.NON_CLASSE[primary] || []).slice(de, a + 1))
 
   const labels = MOIS_COURT.slice(de, a + 1)
   const dataCA = labels.map((m, i) => {
@@ -79,12 +78,14 @@ export default function VueGlobale() {
         }}>SARM · 8 associés</span>
       </div>
 
+      <EtatCompta etat={etat} />
+
       <PeriodeFilter
-        moisDe={moisDe} setMoisDe={setMoisDe}
-        moisA={moisA} setMoisA={setMoisA}
-        years={years} setYears={setYears}
-        shortcut={shortcut} setShortcut={setShortcut}
-        availableYears={ANNEES}
+        moisDe={P.moisDe} setMoisDe={P.setMoisDe}
+        moisA={P.moisA} setMoisA={P.setMoisA}
+        years={P.years} setYears={P.setYears}
+        shortcut={P.shortcut} setShortcut={P.setShortcut}
+        availableYears={S.ANNEES}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -109,10 +110,21 @@ export default function VueGlobale() {
         <KpiCard
           label="Virements versés / associé"
           value={fmtEur(cumulRetro)}
-          sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${primary} · cumul`}
+          sub={`Jan → ${MOIS_COURT[moisActuel]} ${primary} · cumul`}
           subColor="neutral"
         />
       </div>
+
+      {nonClasse > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <KpiCard
+            label={`Non classé ${primary}`}
+            value={fmtEur(nonClasse)}
+            sub="Débits à arbitrer"
+            subColor="neutral"
+          />
+        </div>
+      )}
 
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

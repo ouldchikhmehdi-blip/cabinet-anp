@@ -1,11 +1,25 @@
-import { useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
-import { RETRO_FIXE, RETRO_VARIABLE, MOIS_COURT, MOIS_LONG, ANNEES, fmtEur, sum, diffLabel, diffColor, MOIS_ACTUEL, getMasqueMontants, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
+import EtatCompta from '../components/EtatCompta'
+import { useCompta } from '../data/compta'
+import { usePeriode } from '../data/periode'
+import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
 const ACCENT = '#534AB7'
+
+// Colonnes du tableau « Par associé » : clé dans RETRO_PAR_ASSOCIE[y][ini] → libellé
+const COLONNES_ASSOCIE = [
+  ['fixe', 'Reversement fixe'],
+  ['complement', 'Complément'],
+  ['reliquat', 'Reliquat'],
+  ['regularisation', 'Régularisation'],
+  ['rcp', 'RCP'],
+  ['frais', 'Frais remboursés'],
+  ['recu', "Reçu de l'associé"],
+  ['total', 'Total'],
+]
 
 function LegendAnnees({ years }) {
   return (
@@ -21,29 +35,25 @@ function LegendAnnees({ years }) {
 }
 
 export default function Retrocessions() {
-  const def = periodeParDefaut(ANNEES)
-  const [moisDe, setMoisDe] = useState(def.moisDe)
-  const [moisA, setMoisA] = useState(def.moisA)
-  const [years, setYears] = useState(def.years)
-  const [shortcut, setShortcut] = useState(def.shortcut)
+  const etat = useCompta()
+  const S = etat.series
+  const P = usePeriode(S.ANNEES)
+  const { de, a, primary, ref, years } = P
 
-  const de = Math.min(moisDe, moisA)
-  const a = Math.max(moisDe, moisA)
   const masque = getMasqueMontants()
   const labels = MOIS_COURT.slice(de, a + 1)
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
+  const moisActuel = S.moisActuel(primary)
 
-  const primary = years.at(-1)  // années triées croissant → la plus récente est en dernier
-  const ref = years.at(-2)
-  const fixeDe = (y) => (RETRO_FIXE[y] || []).slice(de, a + 1)
-  const varDe = (y) => (RETRO_VARIABLE[y] || []).slice(de, a + 1)
+  const fixeDe = (y) => (S.RETRO_FIXE[y] || []).slice(de, a + 1)
+  const varDe = (y) => (S.RETRO_VARIABLE[y] || []).slice(de, a + 1)
   const totalSerie = (y) => fixeDe(y).map((v, i) => v + (varDe(y)[i] ?? 0))
 
   const tFixePrimary = sum(fixeDe(primary))
   const tVarPrimary = sum(varDe(primary))
   const tTotPrimary = sum(totalSerie(primary))
   const tTotRef = sum(totalSerie(ref))
-  const cumulAujourdhui = sum((RETRO_FIXE[primary] || []).slice(0, MOIS_ACTUEL + 1)) + sum((RETRO_VARIABLE[primary] || []).slice(0, MOIS_ACTUEL + 1))
+  const cumulAujourdhui = sum((S.RETRO_FIXE[primary] || []).slice(0, moisActuel + 1)) + sum((S.RETRO_VARIABLE[primary] || []).slice(0, moisActuel + 1))
 
   // Barres empilées fixe/variable : année principale.
   const dataBar = labels.map((m, i) => ({ mois: m, fixe: fixeDe(primary)[i] ?? 0, variable: varDe(primary)[i] ?? 0 }))
@@ -53,6 +63,11 @@ export default function Retrocessions() {
     years.forEach(y => { row[y] = sum(totalSerie(y).slice(0, i + 1)) })
     return row
   })
+
+  // Détail par associé sur l'année principale (année entière, hors filtre de mois).
+  const parAssocie = S.RETRO_PAR_ASSOCIE[primary] || {}
+  const initiales = Object.keys(parAssocie).sort()
+  const totalAssocies = Object.fromEntries(COLONNES_ASSOCIE.map(([k]) => [k, sum(initiales.map(ini => parAssocie[ini][k] || 0))]))
 
   const exportsRetro = [{
     label: 'Virements associés',
@@ -76,9 +91,23 @@ export default function Retrocessions() {
       return { nomFichier: `virements-associes_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'Virements associés' }
     }
   }]
+  // BoutonExport ne gère qu'une feuille par export : le détail par associé est un 2e export du menu.
+  if (initiales.length > 0) {
+    exportsRetro.push({
+      label: `Par associé · ${primary}`,
+      build: () => {
+        const ligne = (nom, src) => Object.fromEntries([['Associé', nom], ...COLONNES_ASSOCIE.map(([k, lib]) => [lib, Math.round(src[k] || 0)])])
+        const lignes = initiales.map(ini => ligne(ini, parAssocie[ini]))
+        lignes.push(ligne('TOTAL', totalAssocies))
+        return { nomFichier: `virements-par-associe_${primary}.xlsx`, lignes, feuille: `Par associé ${primary}` }
+      }
+    })
+  }
 
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
+  const thStyle = { fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', textAlign: 'right', padding: '6px 8px', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' }
+  const tdStyle = { fontSize: 12, textAlign: 'right', padding: '6px 8px', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
@@ -86,18 +115,20 @@ export default function Retrocessions() {
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Virements associés</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
-            8 associés · parts égales
+            {S.nbAssocies} associés · parts égales
           </span>
           <BoutonExport exports={exportsRetro} disabled={masque} />
         </div>
       </div>
 
+      <EtatCompta etat={etat} />
+
       <PeriodeFilter
-        moisDe={moisDe} setMoisDe={setMoisDe}
-        moisA={moisA} setMoisA={setMoisA}
-        years={years} setYears={setYears}
-        shortcut={shortcut} setShortcut={setShortcut}
-        availableYears={ANNEES}
+        moisDe={P.moisDe} setMoisDe={P.setMoisDe}
+        moisA={P.moisA} setMoisA={P.setMoisA}
+        years={P.years} setYears={P.setYears}
+        shortcut={P.shortcut} setShortcut={P.setShortcut}
+        availableYears={S.ANNEES}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -112,7 +143,7 @@ export default function Retrocessions() {
         <KpiCard
           label="Cumul versé / associé à ce jour"
           value={fmtEur(cumulAujourdhui)}
-          sub={`Jan → ${MOIS_COURT[MOIS_ACTUEL]} ${primary}`}
+          sub={`Jan → ${MOIS_COURT[moisActuel]} ${primary}`}
           subColor="neutral"
         />
       </div>
@@ -170,6 +201,42 @@ export default function Retrocessions() {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {initiales.length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+              Par associé · {primary}
+            </span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, textAlign: 'left' }}>Associé</th>
+                  {COLONNES_ASSOCIE.map(([k, lib]) => <th key={k} style={thStyle}>{lib}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {initiales.map(ini => (
+                  <tr key={ini}>
+                    <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 500 }}>{ini}</td>
+                    {COLONNES_ASSOCIE.map(([k]) => (
+                      <td key={k} style={{ ...tdStyle, fontWeight: k === 'total' ? 500 : 400 }}>{fmtEur(parAssocie[ini][k] || 0)}</td>
+                    ))}
+                  </tr>
+                ))}
+                <tr>
+                  <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 600, borderBottom: 'none' }}>TOTAL</td>
+                  {COLONNES_ASSOCIE.map(([k]) => (
+                    <td key={k} style={{ ...tdStyle, fontWeight: 600, borderBottom: 'none' }}>{fmtEur(totalAssocies[k])}</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
