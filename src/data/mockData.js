@@ -133,6 +133,7 @@ export const fmtK = v => _masque ? '••• k€' : Math.round(v / 1000) + ' k
 export const sum = arr => arr.reduce((a, b) => a + b, 0)
 export const pct = (a, b) => b === 0 ? '0' : (((a - b) / b) * 100).toFixed(1)
 export const diffLabel = (a, b, ref) => {
+  if (ref == null) return ''  // une seule année choisie : pas de comparaison
   const d = pct(a, b)
   return (d > 0 ? '↑ +' : '↓ ') + d + '% vs ' + ref
 }

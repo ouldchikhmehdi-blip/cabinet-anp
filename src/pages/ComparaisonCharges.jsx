@@ -254,7 +254,7 @@ export default function ComparaisonCharges() {
             <tr>
               <th style={{ ...th, textAlign: 'left' }}>{periode}</th>
               {years.map(y => <th key={y} style={th}>{y}</th>)}
-              <th style={th}>{primary} vs {ref}</th>
+              {ref !== undefined && <th style={th}>{primary} vs {ref}</th>}
             </tr>
           </thead>
           <tbody>
@@ -265,18 +265,22 @@ export default function ComparaisonCharges() {
                   {p.label}
                 </td>
                 {years.map(y => <td key={y} style={td}>{fmtEur(total(p, y))}</td>)}
-                <td style={{ ...td, color: diffColor(total(p, primary), total(p, ref), true) === 'down' ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                  {diffLabel(total(p, primary), total(p, ref), ref)}
-                </td>
+                {ref !== undefined && (
+                  <td style={{ ...td, color: diffColor(total(p, primary), total(p, ref), true) === 'down' ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                    {diffLabel(total(p, primary), total(p, ref), ref)}
+                  </td>
+                )}
               </tr>
             ))}
             {postes.length > 1 && (
               <tr>
                 <td style={{ ...td, textAlign: 'left', fontWeight: 500 }}>Total sélection</td>
                 {years.map(y => <td key={y} style={{ ...td, fontWeight: 500 }}>{fmtEur(totalSel(y))}</td>)}
-                <td style={{ ...td, fontWeight: 500, color: diffColor(totalSel(primary), totalSel(ref), true) === 'down' ? 'var(--color-danger)' : 'var(--color-success)' }}>
-                  {diffLabel(totalSel(primary), totalSel(ref), ref)}
-                </td>
+                {ref !== undefined && (
+                  <td style={{ ...td, fontWeight: 500, color: diffColor(totalSel(primary), totalSel(ref), true) === 'down' ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                    {diffLabel(totalSel(primary), totalSel(ref), ref)}
+                  </td>
+                )}
               </tr>
             )}
           </tbody>

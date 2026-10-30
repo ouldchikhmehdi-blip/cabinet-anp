@@ -74,12 +74,14 @@ export default function RemplacantsMAR() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
         <KpiCard label={`Coût total · ${primary}`} value={fmtEur(tPrimary)} sub={periode} subColor="neutral" />
-        <KpiCard
-          label={`Coût total · ${ref}`}
-          value={fmtEur(tRef)}
-          sub={diffLabel(tPrimary, tRef, ref)}
-          subColor={diffColor(tPrimary, tRef, true)}
-        />
+        {ref !== undefined && (
+          <KpiCard
+            label={`Coût total · ${ref}`}
+            value={fmtEur(tRef)}
+            sub={diffLabel(tPrimary, tRef, ref)}
+            subColor={diffColor(tPrimary, tRef, true)}
+          />
+        )}
       </div>
 
       <div style={cardStyle}>

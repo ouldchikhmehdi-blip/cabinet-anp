@@ -3,15 +3,17 @@ export default function PeriodeFilter({
   moisA, setMoisA,
   years, setYears,
   shortcut, setShortcut,
-  availableYears = [2024, 2023, 2022]
+  availableYears = [2024, 2023, 2022],
+  minYears = 1,
 }) {
   // Sélection de 2 à 4 années à comparer ; `years` est conservé trié CROISSANT
   // (la plus ancienne d'abord, la plus récente en dernier → ordre chronologique des
-  // colonnes/courbes). L'année principale des KPIs = la dernière (years.at(-1)). Min 2, max 4.
+  // colonnes/courbes). L'année principale des KPIs = la dernière (years.at(-1)). Max 4 ; une seule année
+  // = valeur seule, sans comparaison (minYears = 2 là où la page exige un écart).
   const toggleYear = (y) => {
     const on = years.includes(y)
     if (on) {
-      if (years.length > 2) setYears(years.filter(x => x !== y).sort((a, b) => a - b))
+      if (years.length > minYears) setYears(years.filter(x => x !== y).sort((a, b) => a - b))
     } else if (years.length < 4) {
       setYears([...years, y].sort((a, b) => a - b))
     }
@@ -121,18 +123,18 @@ export default function PeriodeFilter({
         <div style={{ width: '0.5px', height: 24, background: 'var(--color-border)' }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500, marginRight: 2 }}>Comparer</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500, marginRight: 2 }}>{years.length > 1 ? 'Comparer' : 'Année'}</span>
           {availableYears.map(y => {
             const on = years.includes(y)
             const auMax = !on && years.length >= 4
-            const auMin = on && years.length <= 2
+            const auMin = on && years.length <= minYears
             const style = on ? yearActive : (auMax ? yearDisabled : btnBase)
             return (
               <button
                 key={y}
                 onClick={() => toggleYear(y)}
                 disabled={auMax || auMin}
-                title={auMax ? 'Maximum 4 années' : auMin ? 'Minimum 2 années' : undefined}
+                title={auMax ? 'Maximum 4 années' : auMin ? (minYears > 1 ? `Minimum ${minYears} années` : 'Au moins une année') : undefined}
                 style={style}
               >
                 {y}

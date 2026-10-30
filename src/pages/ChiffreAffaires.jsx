@@ -107,13 +107,15 @@ export default function ChiffreAffaires() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         <KpiCard label={`CA · ${primary}`} value={fmtK(tPrimary)} sub={periode} subColor="neutral" />
-        <KpiCard label={`CA · ${ref}`} value={fmtK(tRef)} sub={periode} subColor="neutral" />
-        <KpiCard
-          label={`Écart ${primary} vs ${ref}`}
-          value={(tPrimary - tRef >= 0 ? '+' : '') + fmtEur(tPrimary - tRef)}
-          sub={diffLabel(tPrimary, tRef, ref)}
-          subColor={diffColor(tPrimary, tRef)}
-        />
+        {ref !== undefined && <KpiCard label={`CA · ${ref}`} value={fmtK(tRef)} sub={periode} subColor="neutral" />}
+        {ref !== undefined && (
+          <KpiCard
+            label={`Écart ${primary} vs ${ref}`}
+            value={(tPrimary - tRef >= 0 ? '+' : '') + fmtEur(tPrimary - tRef)}
+            sub={diffLabel(tPrimary, tRef, ref)}
+            subColor={diffColor(tPrimary, tRef)}
+          />
+        )}
       </div>
 
       <div style={cardStyle}>

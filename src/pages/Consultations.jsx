@@ -273,6 +273,7 @@ export default function Consultations() {
         years={years} setYears={setYears}
         shortcut={shortcut} setShortcut={setShortcut}
         availableYears={anneesDispos}
+        minYears={2}
       />
 
       {/* La période choisie déborde des mois importés : sans ce rappel, l'écart année/année se lit

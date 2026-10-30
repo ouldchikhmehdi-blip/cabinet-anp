@@ -200,12 +200,14 @@ export default function Depenses() {
       {/* Détail de la catégorie sélectionnée */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         <KpiCard label={`${selected.nom} · ${primary}`} value={fmtEur(tPrimary)} sub={periode} subColor="neutral" />
-        <KpiCard
-          label={`${selected.nom} · ${ref}`}
-          value={fmtEur(tRef)}
-          sub={diffLabel(tPrimary, tRef, ref)}
-          subColor={diffColor(tPrimary, tRef, true)}
-        />
+        {ref !== undefined && (
+          <KpiCard
+            label={`${selected.nom} · ${ref}`}
+            value={fmtEur(tRef)}
+            sub={diffLabel(tPrimary, tRef, ref)}
+            subColor={diffColor(tPrimary, tRef, true)}
+          />
+        )}
         <KpiCard label="Cumul à ce jour" value={fmtEur(cumulAujourdhui)} sub={`Jan → ${MOIS_COURT[moisActuel]} ${primary}`} subColor="neutral" />
         <KpiCard label="Moyenne mensuelle" value={fmtEur(moyenne)} sub={`sur ${serieDe(primary).length} mois`} subColor="neutral" />
       </div>

@@ -83,7 +83,7 @@ export default function SalariesCDI() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
         <KpiCard label={`Total salaires CDI · ${primary}`} value={fmtEur(tPrimary)} sub={periode} subColor="neutral" />
-        <KpiCard label={`Total salaires CDI · ${ref}`} value={fmtEur(tRef)} sub={diffLabel(tPrimary, tRef, ref)} subColor={diffColor(tPrimary, tRef, true)} />
+        {ref !== undefined && <KpiCard label={`Total salaires CDI · ${ref}`} value={fmtEur(tRef)} sub={diffLabel(tPrimary, tRef, ref)} subColor={diffColor(tPrimary, tRef, true)} />}
       </div>
 
       <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500, letterSpacing: '0.04em' }}>
@@ -149,7 +149,7 @@ export default function SalariesCDI() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 }}>
             <KpiCard label={`Coût · ${primary}`} value={fmtEur(sPrimary)} sub={periode} subColor="neutral" />
-            <KpiCard label={`Coût · ${ref}`} value={fmtEur(sRef)} sub={diffLabel(sPrimary, sRef, ref)} subColor={diffColor(sPrimary, sRef, true)} />
+            {ref !== undefined && <KpiCard label={`Coût · ${ref}`} value={fmtEur(sRef)} sub={diffLabel(sPrimary, sRef, ref)} subColor={diffColor(sPrimary, sRef, true)} />}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
