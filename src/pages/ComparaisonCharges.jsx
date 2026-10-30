@@ -5,7 +5,7 @@ import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
-import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
+import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
 // Les trois postes du personnel, mêmes couleurs que leurs sous-onglets.
 const POSTES = [
@@ -14,6 +14,7 @@ const POSTES = [
   { id: 'mar', label: 'Rempla MAR', serie: 'REMPL_MAR', couleur: '#D85A30' },
 ]
 
+const ACCENT_CUMUL = '#534AB7'
 const TOOLTIP = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
 
 // Infobulle de l'histogramme : chaque poste et la somme de la colonne
@@ -76,16 +77,16 @@ export default function ComparaisonCharges() {
     const i = Number(st?.activeTooltipIndex)
     if (Number.isInteger(i) && years[i] !== undefined) setAnneeChoisie(years[i])
   }
-  // Détail de l'année ouverte : coût de chaque mois, empilé par poste, et cumul
-  const lignesDetail = MOIS_COURT.slice(de, a + 1).map((m, i) => {
+  // Coût de chaque mois (postes cochés) et cumul depuis le début de la période, une série par année
+  const totalMois = (y, i) => sum(postes.map(p => mois(p, y)[i] ?? 0))
+  const dataCumul = MOIS_COURT.slice(de, a + 1).map((m, i) => {
     const row = { mois: m }
-    postes.forEach(p => { row[p.id] = mois(p, anneeDetail)[i] ?? 0 })
-    row.total = Math.round(sum(postes.map(p => row[p.id])) * 100) / 100
+    years.forEach(y => {
+      row[`m${y}`] = Math.round(totalMois(y, i) * 100) / 100
+      row[`c${y}`] = Math.round(sum(Array.from({ length: i + 1 }, (_, k) => totalMois(y, k))) * 100) / 100
+    })
     return row
   })
-  const dataDetail = lignesDetail.map((r, i) => ({
-    ...r, cumul: Math.round(sum(lignesDetail.slice(0, i + 1).map(x => x.total)) * 100) / 100,
-  }))
   const totalDetail = totalSel(anneeDetail)
 
   const tooltipStyle = TOOLTIP
@@ -193,42 +194,44 @@ export default function ComparaisonCharges() {
             )
           })}
         </div>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-          Coût par mois (barres) et cumul (courbe)
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+            Coût par mois (barres) et cumul (courbes) — {years.join(', ')}
+          </span>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {ordreAffichage(years).map(({ y, rang }) => (
+              <span key={y} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ display: 'inline-block', width: 10, height: 10, background: couleurAnnee(rang, ACCENT_CUMUL), borderRadius: 2 }} />
+                {y}
+              </span>
+            ))}
+          </div>
         </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={dataDetail}>
+        <ResponsiveContainer width="100%" height={240}>
+          <ComposedChart key={years.join('-')} data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis yAxisId="mois" tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
             <YAxis yAxisId="cumul" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v, id) => [fmtEur(v), nomPoste(id)]} />
-            {postes.map((p, i) => (
-              <Bar key={p.id} yAxisId="mois" dataKey={p.id} stackId="detail" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v, nom) => [fmtEur(v), nom]} />
+            {ordreAffichage(years).map(({ y, rang }) => (
+              <Bar key={`m${y}`} yAxisId="mois" dataKey={`m${y}`} name={`${y} · mois`} fill={couleurAnnee(rang, ACCENT_CUMUL)} fillOpacity={0.55} radius={[3,3,0,0]} />
             ))}
-            <Line yAxisId="cumul" type="monotone" dataKey="cumul" stroke="#2C2C2A" strokeWidth={2} dot={{ r: 2 }} />
+            {ordreAffichage(years).map(({ y, rang }) => (
+              <Line
+                key={`c${y}`}
+                yAxisId="cumul"
+                type="monotone"
+                dataKey={`c${y}`}
+                name={`${y} · cumul`}
+                stroke={couleurAnnee(rang, ACCENT_CUMUL)}
+                strokeWidth={rang === 0 ? 2.5 : 1.5}
+                strokeDasharray={rang === 0 ? undefined : '5 4'}
+                dot={{ r: rang === 0 ? 3 : 2 }}
+              />
+            ))}
           </ComposedChart>
         </ResponsiveContainer>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
-          <thead>
-            <tr>
-              <th style={{ ...th, textAlign: 'left' }}>Mois</th>
-              {postes.map(p => <th key={p.id} style={th}>{p.label}</th>)}
-              <th style={th}>Total du mois</th>
-              <th style={th}>Cumul</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dataDetail.map(r => (
-              <tr key={r.mois}>
-                <td style={{ ...td, textAlign: 'left' }}>{r.mois}</td>
-                {postes.map(p => <td key={p.id} style={td}>{fmtEur(r[p.id])}</td>)}
-                <td style={{ ...td, fontWeight: 500 }}>{fmtEur(r.total)}</td>
-                <td style={td}>{fmtEur(r.cumul)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
 
       <div style={cardStyle}>
