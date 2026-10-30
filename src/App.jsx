@@ -10,13 +10,10 @@ import ResetPassword from './auth/ResetPassword'
 import Sidebar from './components/Sidebar'
 import VueGlobale from './pages/VueGlobale'
 import ChiffreAffaires from './pages/ChiffreAffaires'
-import SalariesCDI from './pages/SalariesCDI'
-import RemplacantsIADE from './pages/RemplacantsIADE'
-import RemplacantsMAR from './pages/RemplacantsMAR'
 import Depenses from './pages/Depenses'
 import Consultations from './pages/Consultations'
 import Retrocessions from './pages/Retrocessions'
-import Tresorerie from './pages/Tresorerie'
+import ChargesSalariales from './pages/ChargesSalariales'
 import ReglesVirements from './pages/ReglesVirements'
 import AdminUsers from './pages/AdminUsers'
 import PlanningDesiderata from './pages/PlanningDesiderata'
@@ -289,13 +286,14 @@ export default function App() {
     switch(page) {
       case 'vue-globale':      return <VueGlobale />
       case 'chiffre-affaires': return <ChiffreAffaires />
-      case 'salaries-cdi':     return <SalariesCDI />
-      case 'remplacants-iade': return <RemplacantsIADE />
-      case 'remplacants-mar':  return <RemplacantsMAR />
+      case 'charges-salariales': return <ChargesSalariales />
+      // Anciennes entrées du menu, devenues sous-onglets de « Charges salariales »
+      case 'salaries-cdi':
+      case 'remplacants-iade':
+      case 'remplacants-mar':  return <ChargesSalariales key={page} initial={page} />
       case 'depenses':         return <Depenses />
       case 'consultations':    return <Consultations />
       case 'retrocessions':    return <Retrocessions />
-      case 'tresorerie':       return <Tresorerie />
       case 'regles-virements': return <ReglesVirements />
       case 'planning-desiderata': return <PlanningDesiderata />
       case 'mon-agenda':          return profile?.initiales ? <MonAgenda /> : <VueGlobale />

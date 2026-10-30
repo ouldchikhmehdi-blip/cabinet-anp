@@ -19,7 +19,7 @@
 | La question porte sur… | Doc qui fait foi | Fichiers de code clés |
 |---|---|---|
 | Vue d'ensemble, stack figée, sécurité globale, conventions, état d'avancement | **`CLAUDE.md`** (ce fichier) | `src/App.jsx`, `src/lib/`, `src/components/Sidebar.jsx` |
-| Dashboard financier (CA, dépenses, trésorerie, rétrocessions, règles de virements, remplaçants, salariés CDI) | **`CLAUDE.md`** §1 + §4 (règle données) | `src/pages/{VueGlobale,ChiffreAffaires,Depenses,Tresorerie,Retrocessions,ReglesVirements,RemplacantsMAR,RemplacantsIADE,SalariesCDI}.jsx`, `src/data/` (mock) |
+| Dashboard financier (CA, dépenses, rétrocessions, règles de virements, remplaçants, salariés CDI) | **`CLAUDE.md`** §1 + §4 (règle données) | `src/pages/{VueGlobale,ChiffreAffaires,Depenses,Retrocessions,ReglesVirements,ChargesSalariales,RemplacantsMAR,RemplacantsIADE,SalariesCDI}.jsx`, `src/data/` (mock) |
 | Authentification, 2FA (TOTP/AAL2), invitations, connexion Google, gestion des comptes | **`AUTH.md`** | `src/auth/`, `src/pages/AdminUsers.jsx`, `api/{invite,accept,promote,revoke}.js` |
 | Planning d'anesthésie (trames, desiderata, gardes, week-ends, vacances, réa, agenda…) | **`PLANNING.md`** | `src/pages/Planning*.jsx` + `MonAgenda.jsx`, `src/pages/planning/`, `supabase/planning_*.sql` |
 | Consultations (données **réelles** Doctolib) | **`CONSULTATIONS.md`** | `src/pages/Consultations.jsx`, `src/components/ImportConsultations.jsx`, `supabase/planning_consultations*.sql` |
@@ -46,11 +46,8 @@ Tableau de bord financier privé pour **SARM** (Service Anesthésie Réanimation
 - `Consultations.jsx` — Consultations
 - `Depenses.jsx` — Dépenses
 - `ReglesVirements.jsx` — Règles virements
-- `RemplacantsIADE.jsx` — Remplaçants IADE
-- `RemplacantsMAR.jsx` — Remplaçants MAR
 - `Retrocessions.jsx` — Rétrocessions
-- `SalariesCDI.jsx` — Salariés CDI
-- `Tresorerie.jsx` — Trésorerie
+- `ChargesSalariales.jsx` — Charges salariales : sous-onglets `SalariesCDI.jsx` (Salariés CDI), `RemplacantsMAR.jsx` (Rempla MAR), `RemplacantsIADE.jsx` (Rempla IADE)
 - `AdminUsers.jsx` — Gestion des accès (entrée **« Comptes »** dans la sidebar, **admins uniquement**)
 
 Fonctionnalités transverses : **filtres par période** et **comparaison année vs année**.

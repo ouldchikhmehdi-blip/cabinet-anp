@@ -5,7 +5,7 @@ Deux chemins, un seul moteur (`moteur.js`, module pur sans dépendance) :
 - **Dashboard** (`sarm-dashboard.vercel.app`, page « Règles virements ») : import d'un relevé
   OFX ou CSV natif BNP depuis le navigateur, classement sous RLS, file d'attente à arbitrer, dictionnaire de
   règles modifiable, reclassement rétroactif. Les pages finance (Vue globale, Chiffre
-  d'affaires, Dépenses, Trésorerie, Virements associés, Remplaçants, Salariés CDI) lisent les
+  d'affaires, Dépenses, Virements associés, Remplaçants, Salariés CDI) lisent les
   lignes classées de la table `compta_transactions` (`src/data/compta.js`).
 - **Script local** (`classer.js`) : même classement, sorties CSV + rapport dans
   `~/partage/compta/classe/` (hors dépôt), sans réseau. Et `importer.js` pour pousser un relevé
@@ -120,7 +120,7 @@ Ordre d'application, la première règle qui matche gagne :
 |---|---|---|---|
 | `compta_regles` | une ligne, `doc` jsonb = le dictionnaire | `acces_cabinet()` | `is_admin()` |
 | `compta_transactions` | une ligne par FITID : date, montant, type, libellé, tiers, groupe, catégorie, associé, règle, alerte, `manuel` | `acces_cabinet()` | `is_admin()` |
-| `compta_soldes` | solde d'en-tête du CSV BNP par date, ancre de la courbe de trésorerie (le LEDGERBAL de l'OFX n'est pas repris, cf. ci-dessous) | `acces_cabinet()` | `is_admin()` |
+| `compta_soldes` | solde d'en-tête du CSV BNP par date, ancre du calcul des soldes de fin de mois (le LEDGERBAL de l'OFX n'est pas repris, cf. ci-dessous) | `acces_cabinet()` | `is_admin()` |
 
 Aucune fonction serverless (plan Vercel 12/12) : tout passe par le client Supabase sous RLS.
 `manuel = true` fige une ligne classée à la main : le reclassement ne la touche plus.

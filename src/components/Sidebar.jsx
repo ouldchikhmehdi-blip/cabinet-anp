@@ -4,13 +4,10 @@ import { peutQuitter } from '../utils/gardeNavigation'
 const navItems = [
   { id: 'vue-globale', label: 'Vue globale', icon: '⊞' },
   { id: 'chiffre-affaires', label: "Chiffre d'affaires", icon: '↗' },
-  { id: 'salaries-cdi', label: 'Salariés CDI', icon: '👤' },
-  { id: 'remplacants-iade', label: 'Remplaçants IADE', icon: '↺', sub: true },
-  { id: 'remplacants-mar', label: 'Remplaçants MAR', icon: '⚕', sub: true },
+  { id: 'charges-salariales', label: 'Charges salariales', icon: '👤' },
   { id: 'depenses', label: 'Dépenses', icon: '🧾' },
   { id: 'consultations', label: 'Consultations', icon: '🩺' },
   { id: 'retrocessions', label: 'Virements associés', icon: '⇄' },
-  { id: 'tresorerie', label: 'Trésorerie', icon: '🏦' },
   { id: 'regles-virements', label: 'Règles virements', icon: '🏷' },
   // Tout associé peut être désigné par un IADE comme celui qui a demandé des
   // heures sup : l'entrée est donc ouverte à tous les comptes non-IADE.
