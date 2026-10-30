@@ -5,6 +5,7 @@ import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
 import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
+import ContenuCategorie from '../components/ContenuCategorie'
 import { usePeriode } from '../data/periode'
 import { couleurGroupe } from '../data/categories'
 import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -211,6 +212,16 @@ export default function Depenses() {
         <KpiCard label="Cumul à ce jour" value={fmtEur(cumulAujourdhui)} sub={`Jan → ${MOIS_COURT[moisActuel]} ${primary}`} subColor="neutral" />
         <KpiCard label="Moyenne mensuelle" value={fmtEur(moyenne)} sub={`sur ${serieDe(primary).length} mois`} subColor="neutral" />
       </div>
+
+      <ContenuCategorie
+        key={selected.id}
+        categorie={selected.nom}
+        doc={etat.doc}
+        transactions={etat.transactions}
+        annee={primary} de={de} a={a} periode={periode}
+        cardStyle={cardStyle}
+        sens="debit"
+      />
 
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

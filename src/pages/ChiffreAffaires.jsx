@@ -3,6 +3,7 @@ import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
 import EtatCompta from '../components/EtatCompta'
+import ContenuCategorie from '../components/ContenuCategorie'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -36,6 +37,12 @@ export default function ChiffreAffaires() {
   const totalDe = (y) => sum(serieDe(y))
   const tPrimary = totalDe(primary)
   const tRef = totalDe(ref)
+
+  // Remboursements reçus : dans le groupe Recettes mais hors CA (avances qui reviennent, indemnités)
+  const REMB = 'Remboursement reçu'
+  const rembDe = (y) => sum(((S.PAR_CATEGORIE[y] || {})[REMB] || []).slice(de, a + 1))
+  const rPrimary = rembDe(primary)
+  const rRef = rembDe(ref)
 
   const labels = MOIS_COURT.slice(de, a + 1)
   const dataMensuel = labels.map((m, i) => {
@@ -153,6 +160,26 @@ export default function ChiffreAffaires() {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>Remboursements reçus — hors CA</span>
+        <span style={{ flex: 1, borderTop: '0.5px solid var(--color-border)' }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <KpiCard label={`Remboursements reçus · ${primary}`} value={fmtEur(rPrimary)} sub={periode} subColor="neutral" />
+        {ref !== undefined && (
+          <KpiCard label={`Remboursements reçus · ${ref}`} value={fmtEur(rRef)} sub={diffLabel(rPrimary, rRef, ref)} subColor="neutral" />
+        )}
+        <KpiCard label={`CA + remboursements · ${primary}`} value={fmtEur(tPrimary + rPrimary)} sub="toutes les recettes de la période" subColor="neutral" />
+      </div>
+      <ContenuCategorie
+        categorie={REMB}
+        doc={etat.doc}
+        transactions={etat.transactions}
+        annee={primary} de={de} a={a} periode={periode}
+        cardStyle={cardStyle}
+        sens="credit"
+      />
     </div>
   )
 }

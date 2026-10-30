@@ -186,3 +186,44 @@ export function useCompta() {
   }, [])
   return etat
 }
+
+// ---- Règles d'une catégorie, en clair (page Dépenses : « ce que contient ce poste ») ----
+
+// Motif de règle (regex) → texte lisible : « ^EN ?SANTE » → « EN SANTE »
+const enClair = (re) => String(re).replace(/\\(.)/g, '$1').replace(/[\^$]/g, '').replace(/\s*\?\s*/g, ' ').replace(/\s+/g, ' ').trim()
+
+const TYPES = { PRLV: 'Prélèvement', 'REMBT PRLV': 'Remboursement de prélèvement', COMMISSIONS: 'Commissions bancaires', 'INTERETS ET COMMISSIONS': 'Intérêts et commissions', 'REMISE CHEQUES': 'Remise de chèques' }
+
+/**
+ * Les règles qui alimentent `categorie`, dans l'ordre du dictionnaire :
+ * [{ id, titre, detail }]. Les règles explicites de doc.regles d'abord, puis les familles
+ * à liste du moteur qui y mènent (ex. paiements carte chez un commerçant connu).
+ */
+export function reglesDeCategorie(doc, categorie) {
+  if (!doc) return []
+  const out = (doc.regles || []).filter(r => r.categorie === categorie).map(r => {
+    const q = r.quand || {}
+    const type = q.type ? (TYPES[enClair(q.type)] || enClair(q.type)) : ''
+    const parties = []
+    if (q.tiers) parties.push(`${type || 'Opération'} de « ${enClair(q.tiers)} »`)
+    else if (q.beneficiaire) parties.push(`Virement à « ${enClair(q.beneficiaire)} »`)
+    else if (q.memo) parties.push(`Libellé « ${enClair(q.memo)} »`)
+    else if (type) parties.push(type)
+    if (q.fitid) parties.push('une ligne précise du relevé')
+    if (q.sens && !q.tiers && !q.beneficiaire) parties.push(q.sens === 'debit' ? 'au débit' : 'au crédit')
+    if (q.montant_min != null) parties.push(`à partir de ${q.montant_min} €`)
+    if (q.montant_max != null) parties.push(`jusqu'à ${q.montant_max} €`)
+    return { id: r.id, titre: enClair(q.tiers || q.beneficiaire || q.memo || q.type || r.id), detail: parties.join(', ') }
+  })
+  if (categorie === 'Remboursement reçu') {
+    out.push(
+      { id: 'remboursement-associe', titre: 'Virement reçu d\'un associé', detail: 'émetteur ou motif au nom d\'un associé, ou émetteur SELARL' },
+      { id: 'remboursement-remplacant', titre: 'Virement reçu d\'un remplaçant MAR', detail: 'émetteur dans la liste des MAR remplaçants' },
+      { id: 'remboursement-motif', titre: 'Motif « REMB… »', detail: 'autre virement reçu dont le motif parle de remboursement' },
+    )
+  }
+  if (categorie === 'Vie du groupe et réceptions' && doc.commercants_carte) {
+    out.push({ id: 'carte-connue', titre: 'Paiements carte', detail: `chez ${String(doc.commercants_carte).split('|').map(enClair).join(', ')}` })
+  }
+  return out
+}

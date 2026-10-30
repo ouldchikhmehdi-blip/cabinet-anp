@@ -1,6 +1,6 @@
 // Séries des pages finance, sur des lignes INVENTÉES (jamais de ligne bancaire réelle).
 import { describe, it, expect } from 'vitest'
-import { calculerSeries, soldesFinDeMois } from './compta'
+import { reglesDeCategorie, calculerSeries, soldesFinDeMois } from './compta'
 
 const t = (date, montant, categorie, extra = {}) => ({
   fitid: `${date}-${montant}-${categorie}`, date, montant, type: '', libelle: extra.libelle || '', tiers: extra.tiers || '',
@@ -81,5 +81,31 @@ describe('soldesFinDeMois', () => {
     expect(s[1]).toBe(1000)
     expect(s[2]).toBe(1050)
     expect(s[11]).toBe(1050)
+  })
+})
+
+describe('reglesDeCategorie', () => {
+  const doc = {
+    commercants_carte: 'CAFE EXEMPLE|AU BUREAU',
+    regles: [
+      { id: 'mutuelle-a', quand: { type: '^PRLV', tiers: '^MUTUELLE A' }, categorie: 'Mutuelle' },
+      { id: 'autre', quand: { type: '^PRLV', tiers: '^AUTRE' }, categorie: 'Banque' },
+      { id: 'mutuelle-b', quand: { sens: 'debit', beneficiaire: '^MUT ?B' }, categorie: 'Mutuelle' },
+      { id: 'grosse', quand: { sens: 'credit', tiers: '^C\\.P\\.A\\.M', montant_min: 500.01 }, categorie: 'CPAM' },
+    ],
+  }
+  it('liste les règles de la catégorie, dans l\'ordre, en clair', () => {
+    expect(reglesDeCategorie(doc, 'Mutuelle')).toEqual([
+      { id: 'mutuelle-a', titre: 'MUTUELLE A', detail: 'Prélèvement de « MUTUELLE A »' },
+      { id: 'mutuelle-b', titre: 'MUT B', detail: 'Virement à « MUT B »' },
+    ])
+    expect(reglesDeCategorie(doc, 'CPAM')[0].detail).toBe('Opération de « C.P.A.M », à partir de 500.01 €')
+  })
+  it('ajoute la famille carte pour la vie du groupe ; rien sans doc', () => {
+    expect(reglesDeCategorie(doc, 'Vie du groupe et réceptions')).toEqual([
+      { id: 'carte-connue', titre: 'Paiements carte', detail: 'chez CAFE EXEMPLE, AU BUREAU' },
+    ])
+    expect(reglesDeCategorie(null, 'Mutuelle')).toEqual([])
+    expect(reglesDeCategorie(doc, 'Remboursement reçu').map(r => r.id)).toEqual(['remboursement-associe', 'remboursement-remplacant', 'remboursement-motif'])
   })
 })
