@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, LineChart, Line, ComposedChart, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
@@ -14,6 +14,30 @@ const POSTES = [
   { id: 'mar', label: 'Rempla MAR', serie: 'REMPL_MAR', couleur: '#D85A30' },
 ]
 
+const TOOLTIP = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
+
+// Infobulle de l'histogramme : chaque poste et la somme de la colonne
+function InfoTotal({ active, payload, label, periode }) {
+  if (!active || !payload?.length) return null
+  const somme = payload.reduce((n, e) => n + (Number(e.value) || 0), 0)
+  return (
+    <div style={{ ...TOOLTIP, padding: '8px 10px' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{label} · {periode}</div>
+      {[...payload].reverse().map(e => (
+        <div key={e.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+          <span style={{ color: e.color }}>{POSTES.find(p => p.id === e.dataKey)?.label ?? e.dataKey}</span><span>{fmtEur(e.value)}</span>
+        </div>
+      ))}
+      {payload.length > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, borderTop: '0.5px solid #d3d1c7', marginTop: 4, paddingTop: 4, fontWeight: 600 }}>
+          <span>Total</span><span>{fmtEur(somme)}</span>
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: '#888780', marginTop: 4 }}>Cliquez pour le détail</div>
+    </div>
+  )
+}
+
 // Comparaison dans le temps des trois postes, sur les mois et années choisis.
 // Chaque poste se coche ou se décoche ; il en reste toujours au moins un.
 export default function ComparaisonCharges() {
@@ -22,6 +46,8 @@ export default function ComparaisonCharges() {
   const P = usePeriode(S.ANNEES)
   const { de, a, primary, ref, years } = P
   const [actifs, setActifs] = useState(POSTES.map(p => p.id))
+  // Année ouverte en détail (clic sur l'histogramme) ; par défaut l'année principale
+  const [anneeChoisie, setAnneeChoisie] = useState(null)
 
   const masque = getMasqueMontants()
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
@@ -45,9 +71,27 @@ export default function ComparaisonCharges() {
     return row
   }))
 
-  const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
+  const anneeDetail = years.includes(anneeChoisie) ? anneeChoisie : primary
+  const choisirColonne = (st) => {
+    const i = Number(st?.activeTooltipIndex)
+    if (Number.isInteger(i) && years[i] !== undefined) setAnneeChoisie(years[i])
+  }
+  // Détail de l'année ouverte : coût de chaque mois, empilé par poste, et cumul
+  const lignesDetail = MOIS_COURT.slice(de, a + 1).map((m, i) => {
+    const row = { mois: m }
+    postes.forEach(p => { row[p.id] = mois(p, anneeDetail)[i] ?? 0 })
+    row.total = Math.round(sum(postes.map(p => row[p.id])) * 100) / 100
+    return row
+  })
+  const dataDetail = lignesDetail.map((r, i) => ({
+    ...r, cumul: Math.round(sum(lignesDetail.slice(0, i + 1).map(x => x.total)) * 100) / 100,
+  }))
+  const totalDetail = totalSel(anneeDetail)
+
+  const tooltipStyle = TOOLTIP
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
-  const nomPoste = (id) => POSTES.find(p => p.id === id)?.label ?? id
+  const nomPoste = (id) => POSTES.find(p => p.id === id)?.label ?? (id === 'cumul' ? 'Cumul' : id)
+
   const th = { fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', textAlign: 'right', padding: '6px 8px', borderBottom: '0.5px solid var(--color-border)' }
   const td = { fontSize: 12, textAlign: 'right', padding: '6px 8px', borderBottom: '0.5px solid var(--color-border)' }
 
@@ -113,19 +157,78 @@ export default function ComparaisonCharges() {
 
       <div style={cardStyle}>
         <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
-          Total par année — {periode}
+          Total par année — {periode} · cliquez sur une année pour le détail
         </div>
         <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={dataAnnees}>
+          <BarChart data={dataAnnees} onClick={choisirColonne} style={{ cursor: 'pointer' }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="annee" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v, id) => [fmtEur(v), nomPoste(id)]} />
+            <Tooltip content={<InfoTotal periode={periode} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
             {postes.map((p, i) => (
-              <Bar key={p.id} dataKey={p.id} stackId="postes" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0} />
+              <Bar key={p.id} dataKey={p.id} stackId="postes" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0}>
+                {dataAnnees.map(d => <Cell key={d.annee} fillOpacity={Number(d.annee) === anneeDetail ? 1 : 0.4} />)}
+              </Bar>
             ))}
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div style={{ ...cardStyle, border: '1px solid var(--color-primary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Détail {anneeDetail} — {periode}</span>
+          <span style={{ fontSize: 20, fontWeight: 600 }}>{fmtEur(totalDetail)}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          {postes.map(p => {
+            const v = total(p, anneeDetail)
+            return (
+              <div key={p.id} style={{ flex: '1 1 150px', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: '8px 10px', borderLeft: `3px solid ${p.couleur}` }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{p.label}</div>
+                <div style={{ fontSize: 15, fontWeight: 500 }}>{fmtEur(v)}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                  {totalDetail ? Math.round(v / totalDetail * 100) : 0} % du total
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+          Coût par mois (barres) et cumul (courbe)
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <ComposedChart data={dataDetail}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+            <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
+            <YAxis yAxisId="mois" tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis yAxisId="cumul" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v, id) => [fmtEur(v), nomPoste(id)]} />
+            {postes.map((p, i) => (
+              <Bar key={p.id} yAxisId="mois" dataKey={p.id} stackId="detail" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0} />
+            ))}
+            <Line yAxisId="cumul" type="monotone" dataKey="cumul" stroke="#2C2C2A" strokeWidth={2} dot={{ r: 2 }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'left' }}>Mois</th>
+              {postes.map(p => <th key={p.id} style={th}>{p.label}</th>)}
+              <th style={th}>Total du mois</th>
+              <th style={th}>Cumul</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dataDetail.map(r => (
+              <tr key={r.mois}>
+                <td style={{ ...td, textAlign: 'left' }}>{r.mois}</td>
+                {postes.map(p => <td key={p.id} style={td}>{fmtEur(r[p.id])}</td>)}
+                <td style={{ ...td, fontWeight: 500 }}>{fmtEur(r.total)}</td>
+                <td style={td}>{fmtEur(r.cumul)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <div style={cardStyle}>
