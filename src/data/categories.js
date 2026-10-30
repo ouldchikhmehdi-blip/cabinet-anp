@@ -1,4 +1,5 @@
-// Taxonomie des lignes bancaires, validée le 2026-10-30. Miroir d'affichage de
+// Taxonomie des lignes bancaires, validée le 2026-10-30 (complétée le même jour :
+// « Autres cotisations patronales » pour l'ADSPL, groupe « Investissements »). Miroir d'affichage de
 // `taxonomie` dans le document de règles (compta/regles.json → table compta_regles) :
 // le moteur refuse une règle dont la catégorie n'est pas dans le document, et le
 // dashboard n'affiche que celles d'ici. Toute évolution se fait aux deux endroits.
@@ -7,8 +8,9 @@ export const TAXONOMIE = [
   { groupe: 'Associés', sous: ['Reversement mensuel', "Complément d'honoraires", 'Reliquat exercice précédent', 'Régularisation', 'Remboursement RCP', 'Remboursement de frais avancés', 'Prévoyance associés'] },
   { groupe: 'Remplaçants', sous: ['Remplaçant MAR', 'Remplaçant IADE (CDD)', 'Frais de remplaçant'] },
   { groupe: 'Salariés', sous: ['Salaire IADE CDI'] },
-  { groupe: 'Charges sociales et fiscales', sous: ['URSSAF', 'Retraite complémentaire', 'Prévoyance et mutuelle salariés', 'Épargne salariale', 'Médecine du travail', 'Impôts et taxes'] },
+  { groupe: 'Charges sociales et fiscales', sous: ['URSSAF', 'Retraite complémentaire', 'Prévoyance et mutuelle salariés', 'Épargne salariale', 'Médecine du travail', 'Autres cotisations patronales', 'Impôts et taxes'] },
   { groupe: 'Fonctionnement', sous: ['Expert-comptable', 'AGA', 'Banque', 'Logiciels et abonnements', 'Parking et locaux', 'Impression et fournitures', 'Vie du groupe et réceptions'] },
+  { groupe: 'Investissements', sous: ['Acquisition immobilière'] },
   { groupe: 'À arbitrer', sous: ['À arbitrer'] },
 ]
 
@@ -33,6 +35,7 @@ const COULEURS = {
   'Salariés':                     { background: '#E6F1FB', color: '#0C447C' },
   'Charges sociales et fiscales': { background: '#FAECE7', color: '#712B13' },
   'Fonctionnement':               { background: '#F1EFE8', color: '#444441' },
+  'Investissements':              { background: '#E8EEF8', color: '#24406B' },
   'À arbitrer':                   { background: '#FBE9E9', color: '#A32D2D' },
 }
 

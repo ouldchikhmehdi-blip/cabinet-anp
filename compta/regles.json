@@ -31,6 +31,7 @@
       "Prévoyance et mutuelle salariés",
       "Épargne salariale",
       "Médecine du travail",
+      "Autres cotisations patronales",
       "Impôts et taxes"
     ],
     "Fonctionnement": [
@@ -42,6 +43,9 @@
       "Impression et fournitures",
       "Vie du groupe et réceptions"
     ],
+    "Investissements": [
+      "Acquisition immobilière"
+    ],
     "À arbitrer": [
       "À arbitrer"
     ]
@@ -49,7 +53,7 @@
   "associes": {
     "EH": "HATTERER",
     "MP": "PARNEIX",
-    "RC": "CHOUKI",
+    "RC": "CHOUK?H?I",
     "FXD": "DON+ET+E?",
     "BA": "ABBAL",
     "FF": "FEDIDE?",
@@ -75,7 +79,11 @@
     "COLIN",
     "BOULILA",
     "AICHOUR",
-    "GAUDY"
+    "GAUDY",
+    "BENBAKHTI",
+    "PLANCHE",
+    "BOUERY",
+    "FANJAUD"
   ],
   "mar_remplacants": [
     "DELBERT",
@@ -95,11 +103,12 @@
     "LOYER",
     "LEROUX",
     "CHAIX",
-    "LANCELOT"
+    "LANCELOT",
+    "HAMMANI"
   ],
-  "caisses_tiers_payant": "CPAM|C\\.P\\.A\\.M|\\bMSA\\b|MUTUALITE SOCIALE|CGSS|CCSS|CNMSS|CAMIEG|MGEN|MUTUELLE|\\bMGP\\b|\\bCPR\\b|CRPCEN|\\bENIM\\b|SENAT|ASSEMBLEE NATIONALE|\\bMINES\\b|CPRPF|INTERIALE|RELYENS|YVELIN|CAISSE DE PREVOYANCE|CAISSE GENERALE|VILLE DE MONTPELLIER|SECURITE SOCIALE",
+  "caisses_tiers_payant": "CPAM|C\\.P\\.A\\.M|\\bMSA\\b|MUTUALITE SOCIALE|CGSS|CCSS|C\\.?N\\.?M\\.?S\\.?S|CAMIEG|MGEN|MUTUELLE|\\bMGP\\b|\\bCPR\\b|C\\.?R\\.?P\\.?C\\.?E\\.?N|\\bENIM\\b|SENAT|ASSEMBLEE NATIONALE|\\bMINES\\b|CPRPF|INTERIALE|RELYENS|YVELIN|CAISSE DE PREVOYANCE|CAISSE GENERALE|VILLE DE MONTPELLIER|SECURITE SOCIALE|CAVIMAC|CCAS DE LA RATP",
   "tiers_payant_montant_max": 500,
-  "commercants_carte": "PETIT JARDIN|AU BUREAU|BRASSEURS|GROUPE LAGRANGE|AKS2",
+  "commercants_carte": "PETIT JARDIN|AU BUREAU|BRASSEURS|GROUPE LAGRANGE|AKS2|L ATELIER|CLICKEAT",
   "regles": [
     {
       "id": "honoraires-clinique",
@@ -204,7 +213,7 @@
       "id": "ensante",
       "quand": {
         "sens": "debit",
-        "beneficiaire": "^ENSANTE"
+        "beneficiaire": "^EN ?SANTE"
       },
       "categorie": "Médecine du travail"
     },
@@ -244,7 +253,7 @@
       "id": "imprimerie",
       "quand": {
         "sens": "debit",
-        "beneficiaire": "^SAS IMPRIMERIE"
+        "beneficiaire": "IMPRIMERIE NO"
       },
       "categorie": "Impression et fournitures"
     },
@@ -269,6 +278,95 @@
         "type": "^INTERETS ET COMMISSIONS"
       },
       "categorie": "Banque"
+    },
+    {
+      "id": "remboursement-frais-bnp",
+      "quand": {
+        "type": "^REMBT PRLV",
+        "tiers": "^BNP PARIBAS"
+      },
+      "categorie": "Banque"
+    },
+    {
+      "id": "ligne-chouki-2025-11-10",
+      "quand": {
+        "fitid": "bnp-0a1c852624f733-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "RC"
+    },
+    {
+      "id": "reliquat-2025-04-11-ff",
+      "quand": {
+        "fitid": "5201b32df-aa13-4899-83c2-2916f676d4c0"
+      },
+      "categorie": "Reliquat exercice précédent",
+      "associe": "FF"
+    },
+    {
+      "id": "reliquat-2025-04-11-rc",
+      "quand": {
+        "fitid": "5a982aa7e-ce44-4c96-a6c0-74124611e5f1"
+      },
+      "categorie": "Reliquat exercice précédent",
+      "associe": "RC"
+    },
+    {
+      "id": "reliquat-2025-04-11-yc",
+      "quand": {
+        "fitid": "5f611ff4f-e6c6-4570-81b9-babdadfae7e3"
+      },
+      "categorie": "Reliquat exercice précédent",
+      "associe": "YC"
+    },
+    {
+      "id": "adspl",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^ADSPL"
+      },
+      "categorie": "Autres cotisations patronales"
+    },
+    {
+      "id": "notaire-lexnot",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "LEXNOT"
+      },
+      "categorie": "Acquisition immobilière"
+    },
+    {
+      "id": "jeff-de-bruges",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^JEFF DE BRUGES"
+      },
+      "categorie": "Vie du groupe et réceptions"
+    },
+    {
+      "id": "ag2r-prevoyance-recu",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^AG2R"
+      },
+      "categorie": "Remboursement reçu",
+      "alerte": "versement AG2R Prévoyance (indemnités journalières probables) : à rapprocher"
+    },
+    {
+      "id": "siaci-recu",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^SIACI"
+      },
+      "categorie": "Remboursement reçu"
+    },
+    {
+      "id": "aatlantide-recu",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^AATLANTIDE"
+      },
+      "categorie": "Remboursement reçu"
     },
     {
       "id": "societe-generale",
@@ -303,8 +401,7 @@
         "sens": "credit",
         "tiers": "CLEMENTVILLE"
       },
-      "categorie": "À arbitrer",
-      "alerte": "virement reçu de la clinique Clémentville, nature à préciser"
+      "categorie": "Honoraires clinique"
     },
     {
       "id": "infogem",

@@ -17,7 +17,7 @@
 //   series.NON_CLASSE[y][m]       débits « À arbitrer », positif
 //   series.PAR_CATEGORIE[y][cat]  [12] signé (crédits +, débits −)
 //   series.SALARIES               [{ id, initiales, nom, poste, type, couts: {y}, mensuel: {y: [12]} }]
-//   series.DEPENSES               [{ id, nom, groupe, couleur, montants: {y: [12]} }]
+//   series.DEPENSES               [{ id, nom, groupe, couleur, montants: {y: [12]} }] (charges + investissements)
 //   series.moisActuel(y)          dernier mois (0-11) ayant des lignes pour l'année y
 // ============================================================
 import { useEffect, useReducer } from 'react'
@@ -101,7 +101,8 @@ export function calculerSeries(transactions, soldes = [], doc = null) {
   // Dépenses : une série par sous-catégorie de charges sociales/fiscales et de fonctionnement
   const DEPENSES = []
   let k = 0
-  for (const g of TAXONOMIE.filter(g => ['Charges sociales et fiscales', 'Fonctionnement'].includes(g.groupe))) {
+  // Investissements : visibles dans Dépenses, mais hors CHARGES (ce n'est pas une charge courante)
+  for (const g of TAXONOMIE.filter(g => ['Charges sociales et fiscales', 'Fonctionnement', 'Investissements'].includes(g.groupe))) {
     for (const c of g.sous) {
       const montants = {}
       for (const y of annees) montants[y] = serie(y, t => t.categorie === c && t.montant < 0, -1)

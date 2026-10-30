@@ -3,7 +3,7 @@
 Deux chemins, un seul moteur (`moteur.js`, module pur sans dépendance) :
 
 - **Dashboard** (`sarm-dashboard.vercel.app`, page « Règles virements ») : import d'un relevé
-  OFX depuis le navigateur, classement sous RLS, file d'attente à arbitrer, dictionnaire de
+  OFX ou CSV natif BNP depuis le navigateur, classement sous RLS, file d'attente à arbitrer, dictionnaire de
   règles modifiable, reclassement rétroactif. Les pages finance (Vue globale, Chiffre
   d'affaires, Dépenses, Trésorerie, Virements associés, Remplaçants, Salariés CDI) lisent les
   lignes classées de la table `compta_transactions` (`src/data/compta.js`).
@@ -26,7 +26,7 @@ script local et le dépôt suivent.
 
 ## Usage mensuel
 
-**Depuis le dashboard (admin, 2FA)** : « Règles virements » → « Importer un relevé OFX » →
+**Depuis le dashboard (admin, 2FA)** : « Règles virements » → « Importer un relevé (OFX ou CSV BNP) » →
 lire la file d'attente → pour chaque ligne, « Cette ligne » (classement manuel, figé) ou
 « Règle sur ce tiers » (règle explicite, rejouée sur toutes les lignes) ou « Ajouter à la
 liste » (nom de salarié / remplaçant) → « Exporter regles.json » → remplacer `compta/regles.json`
@@ -61,8 +61,11 @@ CSV : séparateur `;`, virgule décimale, UTF-8 avec BOM (s'ouvre directement da
 
 ## Comment le script lit une ligne
 
-Chaque ligne OFX donne `type` (le `NAME` BNP : `VIR SEPA RECU`, `PRLV SEPA`, `FACTURE CARTE`…)
-et `memo`. Le memo est découpé en `tiers`, `motif`, `beneficiaire` :
+Chaque ligne donne `type` (le `NAME` de l'OFX = le libellé court du CSV : `VIR SEPA RECU`,
+`PRLV SEPA`, `FACTURE CARTE`…) et `memo` (le `MEMO` de l'OFX, tronqué vers 70 caractères ;
+dans le CSV, le libellé long privé du libellé court, complet). Identifiant : `FITID` de
+l'OFX ; pour le CSV, `bnp-<empreinte(date|montant|libellé)>-<rang>`, stable d'un export à
+l'autre. Le memo est découpé en `tiers`, `motif`, `beneficiaire` :
 
 - virement reçu `/FRM <tiers> /EID …` → tiers ;
 - virement émis `/MOTIF <motif> /BEN <bénéficiaire> /REFDO …` → motif + bénéficiaire ;
@@ -100,6 +103,12 @@ Ordre d'application, la première règle qui matche gagne :
   variantes d'orthographe comprises).
 - **Nouvelle catégorie** : l'ajouter d'abord dans `taxonomie`, sinon le chargement refuse la règle.
 - Une règle explicite peut porter `"associe": "EH"` pour imputer la ligne à un associé.
+- **Règle sur une seule ligne** : `"quand": { "fitid": "…" }` (identifiant visible dans le
+  grand livre). Sert aux arbitrages ponctuels qu'on ne veut pas généraliser (ex. un virement
+  au motif vague) ; survit aux réimports et marche dans le script comme dans la base.
+- Les motifs saisis à la main à la banque ont des coquilles (SALAIRZ, QALAIRE, REMOLA,
+  REM0LA, COMOLEMENT…) : le moteur les tolère ; en ajouter une seule fois dans `moteur.js`
+  avec un test, pas une règle par coquille.
 - Après toute modification du fichier : `npx vitest run compta src/data` et `npm run lint`,
   puis relancer le classement ; si le dashboard est en service, recharger le fichier par
   « Charger regles.json » (ou `importer.js --regles-locales`) pour que la base suive. Les tests n'utilisent que des noms fictifs ; en ajouter un si la règle est
@@ -111,10 +120,21 @@ Ordre d'application, la première règle qui matche gagne :
 |---|---|---|---|
 | `compta_regles` | une ligne, `doc` jsonb = le dictionnaire | `acces_cabinet()` | `is_admin()` |
 | `compta_transactions` | une ligne par FITID : date, montant, type, libellé, tiers, groupe, catégorie, associé, règle, alerte, `manuel` | `acces_cabinet()` | `is_admin()` |
-| `compta_soldes` | solde du relevé (LEDGERBAL) par date, ancre de la courbe de trésorerie | `acces_cabinet()` | `is_admin()` |
+| `compta_soldes` | solde d'en-tête du CSV BNP par date, ancre de la courbe de trésorerie (le LEDGERBAL de l'OFX n'est pas repris, cf. ci-dessous) | `acces_cabinet()` | `is_admin()` |
 
 Aucune fonction serverless (plan Vercel 12/12) : tout passe par le client Supabase sous RLS.
 `manuel = true` fige une ligne classée à la main : le reclassement ne la touche plus.
+
+## Solde : celui de l'OFX est faux, celui du CSV fait foi (vérifié le 2026-10-30)
+
+Le LEDGERBAL de l'OFX BNP (au 06/11/2025) et le solde d'en-tête du CSV (au 16/10/2026)
+diffèrent d'un écart à six chiffres alors que les mouvements entre les deux sont complets. Témoin
+externe : un seul prélèvement d'intérêts débiteurs en 22 mois (juillet 2025, pour le
+2e trimestre). Ancré sur le CSV, le compte est à découvert 3 jours en mai 2025, ce qui
+explique ce prélèvement ; ancré sur l'OFX, il ne l'est jamais. Le moteur ignore donc le
+solde OFX (`parserReleve` → `solde: null`). Une ligne `compta_soldes` du 2025-11-06 a été
+insérée avant ce constat ; elle est inerte (l'ancre la plus récente prime) et peut être
+supprimée : `delete from compta_soldes where date = '2025-11-06';`
 
 ## Décisions de classement (2026-10-30)
 
@@ -126,5 +146,12 @@ Aucune fonction serverless (plan Vercel 12/12) : tout passe par le client Supaba
 - CPAM de l'Hérault : ≤ 500 € = tiers payant ; au-delà = « Versements CPAM hors tiers
   payant » (permanence des soins, forfaits, aides).
 - Laissés à la comptable (règle « à arbitrer » volontaire) : Société Générale, Clinique du
-  Millénaire (petits prélèvements), SAS Millénaire Clinique, Clinique Clémentville, Infogem,
-  SIE, remises de chèques.
+  Millénaire (petits prélèvements), SAS Millénaire Clinique, Infogem, SIE, remises de
+  chèques, chèques émis.
+- Complété le même jour avec le CSV 2025-2026 : Clémentville = honoraires clinique ;
+  ADSPL = « Autres cotisations patronales » (cotisation conventionnelle des professions
+  libérales) ; notaire Lexnot (promesse de vente WEKO) = groupe « Investissements » ›
+  « Acquisition immobilière », hors charges courantes ; AG2R Prévoyance, Siaci, Aatlantide
+  reçus = « Remboursement reçu » ; Benbakhti, Planche, Bouery, Fanjaud = IADE CDD ;
+  Hammani = MAR ; « REGULARISATION 2025 » = Régularisation ; les trois reliquats tronqués du
+  11/04/2025 = Fedide, Chouki, Coisel (déduits par symétrie, validé par drmoc).

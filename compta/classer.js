@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Classement d'un relevé bancaire OFX de la SARM selon compta/regles.json.
+// Classement d'un relevé bancaire de la SARM (OFX ou CSV natif BNP) selon compta/regles.json.
 //
-//   node compta/classer.js <fichier.ofx> [--annee 2025] [--sortie ~/partage/compta/classe]
+//   node compta/classer.js <fichier.ofx|.csv> [--annee 2025] [--sortie ~/partage/compta/classe]
 //
 // Produit dans le dossier de sortie (hors dépôt git) :
 //   - releve-<nom>-classe.csv : toutes les lignes avec groupe / catégorie / associé / règle / alerte
 //   - a-arbitrer.csv          : les lignes qu'aucune règle sûre ne couvre
 //   - rapport.md              : totaux, alertes, lignes à arbitrer, contrôle d'intégrité
-//   - grand-livre.csv         : cumul de tous les imports, dédoublonné par FITID
+//   - grand-livre.csv         : cumul de tous les imports, dédoublonné (FITID, ou date + montant
+//                               + libellé quand un CSV recouvre un OFX) ; rapport-grand-livre.md
 //
 // Principe : une ligne qu'aucune règle ne couvre va dans « À arbitrer », jamais dans une
 // catégorie par défaut. Pour un virement à un associé, le bénéficiaire fait foi sur le motif ;
@@ -17,9 +18,15 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
-import { A_ARBITRER, parserOfx, analyserLibelle, preparerRegles, classer, classerTout, lireSolde } from './moteur.js'
+import { A_ARBITRER, parserOfx, parserReleve, fusionner, analyserLibelle, preparerRegles, classer, classerTout, lireSolde } from './moteur.js'
 
 export { A_ARBITRER, parserOfx, analyserLibelle, preparerRegles, classer, classerTout, lireSolde }
+
+// Les OFX BNP sont en Latin-1, les CSV en UTF-8 : on décode en UTF-8 si c'est valide, sinon Latin-1.
+export function lireTexte(chemin) {
+  const brut = readFileSync(chemin)
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(brut) } catch { return new TextDecoder('latin1').decode(brut) }
+}
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 export const CHEMIN_REGLES = join(ICI, 'regles.json')
@@ -148,9 +155,15 @@ export function rapport(lignes, R, meta = {}) {
   return L.join('\n') + '\n'
 }
 
+// Grand livre : une ligne déjà connue (même FITID, ou même opération vue dans un autre
+// format) garde son FITID d'origine ; elle prend le classement de l'import le plus récent,
+// et son libellé le plus complet.
 export function fusionnerGrandLivre(existant, nouvelles) {
+  const { nouvelles: ajout, identiques, enrichies } = fusionner(existant, nouvelles)
   const parId = new Map(existant.map(l => [l.fitid, l]))
-  for (const l of nouvelles) parId.set(l.fitid, l)
+  for (const l of identiques) if (parId.has(l.fitid)) parId.set(l.fitid, l)
+  for (const { existante, nouvelle } of enrichies) parId.set(existante.fitid, { ...nouvelle, fitid: existante.fitid })
+  for (const l of ajout) parId.set(l.fitid, l)
   return [...parId.values()].sort((a, b) => a.date.localeCompare(b.date) || a.fitid.localeCompare(b.fitid))
 }
 
@@ -163,18 +176,15 @@ function main(argv) {
   const fichier = args.find(a => !a.startsWith('--'))
   const opt = n => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined }
   if (!fichier) {
-    console.error('Usage : node compta/classer.js <fichier.ofx> [--annee 2025] [--sortie DOSSIER]')
+    console.error('Usage : node compta/classer.js <fichier.ofx|.csv> [--annee 2025] [--sortie DOSSIER]')
     process.exit(1)
   }
   const annee = opt('annee')
   const sortie = opt('sortie') || join(homedir(), 'partage', 'compta', 'classe')
   const R = chargerRegles()
 
-  let lignes = parserOfx(readFileSync(fichier, 'latin1'))
-  if (!lignes.length) {
-    // Certains exports sont en UTF-8 ; on retente si rien n'a été lu
-    lignes = parserOfx(readFileSync(fichier, 'utf8'))
-  }
+  let { format, lignes } = parserReleve(lireTexte(fichier))
+  if (!lignes.length) { console.error(`Aucune ligne lue dans ${fichier} (format détecté : ${format})`); process.exit(1) }
   if (annee) lignes = lignes.filter(l => l.date.startsWith(annee))
   const classees = classerTout(lignes, R)
 
@@ -188,6 +198,7 @@ function main(argv) {
   const existant = existsSync(cheminGL) ? depuisCsv(readFileSync(cheminGL, 'utf8')) : []
   const gl = fusionnerGrandLivre(existant, classees)
   writeFileSync(cheminGL, versCsv(gl))
+  writeFileSync(join(sortie, 'rapport-grand-livre.md'), rapport(gl, R, { fichier: 'grand livre (tous imports)' }))
 
   const nbArb = classees.filter(l => l.categorie === A_ARBITRER).length
   console.log(`${classees.length} lignes classées (${nbArb} à arbitrer) → ${sortie}`)

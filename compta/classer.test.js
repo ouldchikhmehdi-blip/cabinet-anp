@@ -5,6 +5,7 @@ import {
   parserOfx, analyserLibelle, preparerRegles, classer, classerTout,
   versCsv, depuisCsv, fusionnerGrandLivre, rapport,
 } from './classer.js'
+import { parserCsvBnp, parserReleve, fusionner, empreinte, planifierImport } from './moteur.js'
 import reglesReelles from './regles.json' with { type: 'json' }
 
 // Jeu de règles de test : même structure que regles.json, noms fictifs.
@@ -147,6 +148,12 @@ describe('classer — charges et fonctionnement', () => {
     const R2 = preparerRegles({ ...reglesReelles, associes: { AA: 'ALPHA' }, regles: [{ id: 'loyer-alpha', quand: { sens: 'debit', beneficiaire: '^SCI TEST' }, categorie: 'Remboursement de frais avancés', associe: 'AA' }] })
     expect(classer(ligne('VIR SEPA INST EMIS', '/MOTIF LOYER /BEN SCI TEST', -500), R2)).toMatchObject({ categorie: 'Remboursement de frais avancés', associe: 'AA', regle: 'loyer-alpha' })
   })
+  it('règle posée sur une seule ligne (fitid) : ne touche que cette ligne', () => {
+    const R2 = preparerRegles({ ...reglesReelles, associes: { AA: 'ALPHA' }, regles: [{ id: 'une-ligne', quand: { fitid: 'id-cible' }, categorie: "Complément d'honoraires", associe: 'AA' }] })
+    const l = { type: 'VIREMENT SEPA EMIS', memo: '/MOTIF SELARL X /BEN SELARL DU DOCTEU', montant: -2500, date: '2025-11-10' }
+    expect(classer({ ...l, fitid: 'id-cible' }, R2)).toMatchObject({ categorie: "Complément d'honoraires", associe: 'AA', regle: 'une-ligne' })
+    expect(classer({ ...l, fitid: 'autre' }, R2).categorie).toBe('À arbitrer')
+  })
   it('prélèvement inconnu → À arbitrer', () => {
     expect(cat('PRLV SEPA', 'NOUVEAU FOURNISSEUR ECH/020125', -99).categorie).toBe('À arbitrer')
   })
@@ -156,6 +163,98 @@ describe('classer — charges et fonctionnement', () => {
   it('carte : commerçant connu → Vie du groupe, inconnu → À arbitrer', () => {
     expect(cat('FACTURE CARTE', 'DU 090125 RESTO TEST MONTPELLIER CARTE 4974XXXX', -200).categorie).toBe('Vie du groupe et réceptions')
     expect(cat('FACTURE CARTE', 'DU 090125 MAGASIN X CARTE 4974XXXX', -50).categorie).toBe('À arbitrer')
+  })
+})
+
+describe('CSV natif BNP', () => {
+  const CSV = '\uFEFFSARM TEST;SARM TEST;****0000;16/10/2026;;12 345,67\n' +
+    '15/01/2026;VIREMENT;VIR SEPA RECU;VIR SEPA RECU /FRM CAISSE TEST /EID 1 /RNF 2;15/01/2026;31,50\n' +
+    '15/01/2026;VIREMENT INSTANTANE EMIS;VIR SEPA INST EMIS;VIR SEPA INST EMIS /MOTIF SALAIRE DURAND /BEN DURAND JEAN /REFDO X;15/01/2026;-1 234,56\n' +
+    '15/01/2026;VIREMENT;VIR SEPA RECU;VIR SEPA RECU /FRM CAISSE TEST /EID 1 /RNF 2;15/01/2026;31,50\n'
+
+  it('lit le solde d\'en-tête, la date, le montant français, le type et le memo', () => {
+    const { lignes, solde } = parserCsvBnp(CSV)
+    expect(solde).toEqual({ date: '2026-10-16', solde: 12345.67 })
+    expect(lignes).toHaveLength(3)
+    expect(lignes[1]).toMatchObject({ date: '2026-01-15', montant: -1234.56, type: 'VIR SEPA INST EMIS', memo: '/MOTIF SALAIRE DURAND /BEN DURAND JEAN /REFDO X' })
+  })
+  it('identifiant stable d\'un export à l\'autre, distinct pour deux lignes identiques', () => {
+    const a = parserCsvBnp(CSV).lignes, b = parserCsvBnp(CSV).lignes
+    expect(a.map(l => l.fitid)).toEqual(b.map(l => l.fitid))
+    expect(a[0].fitid).not.toBe(a[2].fitid)
+    expect(a[0].fitid).toMatch(/^bnp-[0-9a-f]{14}-0$/)
+    expect(empreinte('x')).toBe(empreinte('x'))
+  })
+  it('parserReleve reconnaît le format au contenu', () => {
+    expect(parserReleve(CSV).format).toBe('csv-bnp')
+    expect(parserReleve(stmt('VIR SEPA RECU', '/FRM X /EID 1', 10)).format).toBe('ofx')
+    // le solde LEDGERBAL de l'OFX BNP n'est pas fiable : jamais repris comme ancre
+    expect(parserReleve('<OFX><LEDGERBAL><BALAMT>100.00\n<DTASOF>20251106</LEDGERBAL>' + stmt('VIR SEPA RECU', '/FRM X /EID 1', 10)).solde).toBeNull()
+  })
+})
+
+describe('fusion OFX tronqué / CSV complet', () => {
+  const ofx = [{ fitid: 'ofx-1', date: '2025-10-01', montant: -5000, type: 'VIREMENT SEPA EMIS', memo: '/MOTIF RELIQUAT 2024 /BEN SELARL DU DOCTEU' }]
+  const csv = [
+    { fitid: 'bnp-a-0', date: '2025-10-01', montant: -5000, type: 'VIREMENT SEPA EMIS', memo: '/MOTIF RELIQUAT 2024 /BEN SELARL DU DOCTEUR ALPHA /REFDO Z' },
+    { fitid: 'bnp-b-0', date: '2025-10-02', montant: -5000, type: 'VIREMENT SEPA EMIS', memo: '/MOTIF RELIQUAT 2024 /BEN SELARL DU DOCTEUR BRAVO' },
+  ]
+  it('même date + montant + libellé préfixe = même opération, enrichie du libellé complet', () => {
+    const r = fusionner(ofx, csv)
+    expect(r.nouvelles.map(l => l.fitid)).toEqual(['bnp-b-0'])
+    expect(r.enrichies).toHaveLength(1)
+    expect(r.enrichies[0].existante.fitid).toBe('ofx-1')
+  })
+  it('une ligne connue n\'absorbe qu\'une seule ligne importée', () => {
+    const r = fusionner(ofx, [csv[0], { ...csv[0], fitid: 'bnp-a-1' }])
+    expect(r.enrichies).toHaveLength(1)
+    expect(r.nouvelles).toHaveLength(1)
+  })
+  it('grand livre : garde le FITID d\'origine et le libellé complet, sans doublon', () => {
+    const gl = fusionnerGrandLivre(classerTout(ofx, REGLES), classerTout(csv, REGLES))
+    expect(gl).toHaveLength(2)
+    expect(gl[0]).toMatchObject({ fitid: 'ofx-1', associe: 'AA', categorie: 'Reliquat exercice précédent' })
+    expect(gl[0].memo).toContain('ALPHA')
+  })
+})
+
+describe('planifierImport (import en base)', () => {
+  const base = [
+    { fitid: 'ofx-1', date: '2025-10-01', montant: -5000, memo: '/MOTIF RELIQUAT 2024 /BEN SELARL DU DOCTEU', manuel: false },
+    { fitid: 'ofx-2', date: '2025-10-01', montant: -900, memo: '/MOTIF REMPLA DR EXEMPLE /BEN EXEMPLE', manuel: true },
+    { fitid: 'ofx-3', date: '2025-10-02', montant: 31.5, memo: '/FRM CAISSE TEST', manuel: false },
+  ]
+  const imp = classerTout([
+    { fitid: 'bnp-a-0', date: '2025-10-01', montant: -5000, type: 'VIREMENT SEPA EMIS', memo: '/MOTIF RELIQUAT 2024 /BEN SELARL DU DOCTEUR ALPHA' },
+    { fitid: 'bnp-b-0', date: '2025-10-01', montant: -900, type: 'VIR SEPA INST EMIS', memo: '/MOTIF REMPLA DR EXEMPLE /BEN EXEMPLE PAUL /REFDO X' },
+    { fitid: 'ofx-3', date: '2025-10-02', montant: 31.5, type: 'VIR SEPA RECU', memo: '/FRM CAISSE TEST' },
+    { fitid: 'bnp-c-0', date: '2025-10-03', montant: 60, type: 'VIR SEPA RECU', memo: '/FRM CAISSE TEST' },
+  ], REGLES)
+  const p = planifierImport(imp, base)
+  it('nouvelle ligne écrite, enrichie écrite sous l\'ancien FITID, même FITID reclassé', () => {
+    expect(p.ecrire.map(l => l.fitid).sort()).toEqual(['bnp-c-0', 'ofx-1', 'ofx-3'])
+    expect(p.ecrire.find(l => l.fitid === 'ofx-1')).toMatchObject({ associe: 'AA', memo: expect.stringContaining('ALPHA') })
+  })
+  it('ligne manuelle : catégorie intacte, seul le libellé est complété', () => {
+    expect(p.libelles).toEqual([{ fitid: 'ofx-2', memo: '/MOTIF REMPLA DR EXEMPLE /BEN EXEMPLE PAUL /REFDO X', tiers: 'EXEMPLE PAUL' }])
+    expect(p.stats).toMatchObject({ lues: 4, nouvelles: 1, enrichies: 2, manuellesPreservees: 1 })
+  })
+  it('réimporter le même relevé n\'ajoute rien', () => {
+    const p2 = planifierImport(imp, [...base, { fitid: 'bnp-c-0', date: '2025-10-03', montant: 60, memo: '/FRM CAISSE TEST', manuel: false }])
+    expect(p2.stats.nouvelles).toBe(0)
+  })
+})
+
+describe('coquilles des motifs saisis à la banque', () => {
+  it('salaire, rempla, complément, régularisation, heures sup', () => {
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF SALAIRZ DURAND /BEN DURAND JEAN', -3000).categorie).toBe('Salaire IADE CDI')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF QALAIRE DURAND /BEN DURAND JEAN', -3000).categorie).toBe('Salaire IADE CDI')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF HEURE SUP DECEMBRE DURAND /BEN DURAND JEAN', -30).categorie).toBe('Salaire IADE CDI')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF REMOLA SDF DR EXEMPLE /BEN EXEMPLE PAUL', -900).categorie).toBe('Remplaçant MAR')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF REM0LA DR EXEMPLE /BEN EXEMPLE PAUL', -900).categorie).toBe('Remplaçant MAR')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF REMPLA PETIT /BEN PETIT LUC', -800).categorie).toBe('Remplaçant IADE (CDD)')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF COMOLEMENT DR ALPHA /BEN SELARL DU DR ALPHA', -5000).categorie).toBe('Complément d\'honoraires')
+    expect(cat('VIR SEPA INST EMIS', '/MOTIF REGULARISATION 2025 ALPHA /BEN SELARL DU DR ALPHA', -5000)).toMatchObject({ categorie: 'Régularisation', associe: 'AA' })
   })
 })
 

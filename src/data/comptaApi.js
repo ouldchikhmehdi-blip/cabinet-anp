@@ -7,7 +7,7 @@
 // que le script local (compta/moteur.js) et écrit sous RLS.
 // ============================================================
 import { supabase } from '../lib/supabase'
-import { parserOfx, classerTout, preparerRegles, lireSolde, A_ARBITRER } from '../../compta/moteur.js'
+import { parserReleve, classerTout, preparerRegles, planifierImport, A_ARBITRER } from '../../compta/moteur.js'
 
 const CHAMPS = 'fitid, date, montant, type, libelle, tiers, groupe, categorie, associe, regle, alerte, manuel, fichier, importe_le, maj_le'
 const PAGE = 1000
@@ -97,35 +97,34 @@ export function versBase(l, fichier = '') {
 }
 
 /**
- * Importe un relevé OFX : lit, classe avec `doc`, écrit. Les lignes déjà classées à la
- * main (manuel = true) ne sont pas touchées. Enregistre le solde du relevé s'il y en a un.
- * Renvoie { total, nouvelles, aArbitrer, solde }.
+ * Importe un relevé (OFX ou CSV natif BNP, reconnu au contenu) : lit, classe avec `doc`,
+ * fusionne avec `connues` (les lignes déjà en base, cf. etatCompta().transactions) et
+ * n'écrit que ce qui manque ou s'enrichit (cf. planifierImport). Les lignes classées à la
+ * main ne changent pas de catégorie. Enregistre le solde du relevé s'il y en a un.
+ * Renvoie { format, total, nouvelles, enrichies, manuellesPreservees, aArbitrer, solde }.
  */
-export async function importerOfx(texte, nomFichier, doc, { annee } = {}) {
+export async function importerReleve(texte, nomFichier, doc, connues, { annee } = {}) {
   const R = preparerRegles(doc)
-  let lignes = parserOfx(texte)
+  let { format, lignes, solde } = parserReleve(texte)
   if (annee) lignes = lignes.filter(l => l.date.startsWith(String(annee)))
-  if (lignes.length === 0) throw new Error('Aucune ligne lue : est-ce bien un export OFX ?')
+  if (lignes.length === 0) throw new Error('Aucune ligne lue : est-ce bien un export OFX ou un CSV de la BNP ?')
   const classees = classerTout(lignes, R)
 
-  const { data: existantes, error } = await supabase
-    .from('compta_transactions')
-    .select('fitid, manuel')
-    .in('fitid', classees.map(l => l.fitid))
-  if (error) throw error
-  const manuelles = new Set((existantes ?? []).filter(e => e.manuel).map(e => e.fitid))
-  const connues = new Set((existantes ?? []).map(e => e.fitid))
-
-  const aEcrire = classees.filter(l => !manuelles.has(l.fitid)).map(l => versBase(l, nomFichier))
-  await upsertTransactions(aEcrire)
-
-  const solde = lireSolde(texte)
+  const plan = planifierImport(classees, connues.map(t => ({ fitid: t.fitid, date: t.date, montant: t.montant, memo: t.libelle, manuel: t.manuel })))
+  await upsertTransactions(plan.ecrire.map(l => versBase(l, nomFichier)))
+  for (const { fitid, memo, tiers } of plan.libelles) {
+    const { error } = await supabase.from('compta_transactions').update({ libelle: memo, tiers }).eq('fitid', fitid)
+    if (error) throw error
+  }
   if (solde) await upsertSolde({ ...solde, fichier: nomFichier })
 
   return {
+    format,
     total: classees.length,
-    nouvelles: classees.filter(l => !connues.has(l.fitid)).length,
-    aArbitrer: classees.filter(l => l.categorie === A_ARBITRER).length,
+    nouvelles: plan.stats.nouvelles,
+    enrichies: plan.stats.enrichies,
+    manuellesPreservees: plan.stats.manuellesPreservees,
+    aArbitrer: plan.ecrire.filter(l => l.categorie === A_ARBITRER).length,
     solde,
   }
 }

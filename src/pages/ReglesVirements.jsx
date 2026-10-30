@@ -4,7 +4,7 @@ import { TAXONOMIE, CATEGORIES_ASSOCIE, CATEGORIES_CHOISISSABLES, groupeDe, catC
 import SelecteurCategorie from '../components/SelecteurCategorie'
 import EtatCompta from '../components/EtatCompta'
 import { useCompta, majComptaLocale, rechargerCompta } from '../data/compta'
-import { sauverDocRegles, classerManuellement, reclasserTout, importerOfx } from '../data/comptaApi'
+import { sauverDocRegles, classerManuellement, reclasserTout, importerReleve } from '../data/comptaApi'
 import { verifierRegles, A_ARBITRER } from '../../compta/moteur.js'
 
 // ---- Petites aides ----
@@ -120,14 +120,17 @@ export default function ReglesVirements() {
     }
   }
 
-  const importerReleve = async (fichier) => {
+  const importerFichier = async (fichier) => {
     if (!fichier || !doc) return
     setOccupe(true)
     try {
-      const texte = await fichier.text()
-      const r = await importerOfx(texte, fichier.name, doc)
+      // OFX BNP en Latin-1, CSV en UTF-8 : UTF-8 si valide, sinon Latin-1
+      const brut = await fichier.arrayBuffer()
+      let texte
+      try { texte = new TextDecoder('utf-8', { fatal: true }).decode(brut) } catch { texte = new TextDecoder('latin1').decode(brut) }
+      const r = await importerReleve(texte, fichier.name, doc, transactions)
       await rechargerCompta()
-      setMessage(`${fichier.name} : ${r.total} lignes lues, ${r.nouvelles} nouvelles, ${r.aArbitrer} à arbitrer${r.solde ? `, solde au ${dateFr(r.solde.date)} enregistré` : ''}`)
+      setMessage(`${fichier.name} (${r.format === 'ofx' ? 'OFX' : 'CSV BNP'}) : ${r.total} lignes lues, ${r.nouvelles} nouvelles, ${r.enrichies} déjà connues au libellé complété${r.manuellesPreservees ? `, ${r.manuellesPreservees} classées à la main laissées telles quelles` : ''}, ${r.aArbitrer} à arbitrer${r.solde ? ` · solde au ${dateFr(r.solde.date)} enregistré` : ''}`)
     } catch (e) {
       setMessage(`Import refusé : ${e.message || e}`)
     } finally {
@@ -162,8 +165,8 @@ export default function ReglesVirements() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Règles virements</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input ref={fichierRef} type="file" accept=".ofx,.OFX" style={{ display: 'none' }} onChange={e => importerReleve(e.target.files?.[0])} />
-          <button disabled={occupe || !doc} onClick={() => fichierRef.current?.click()} style={boutonStyle(!occupe && !!doc)}>Importer un relevé OFX</button>
+          <input ref={fichierRef} type="file" accept=".ofx,.OFX,.csv,.CSV" style={{ display: 'none' }} onChange={e => importerFichier(e.target.files?.[0])} />
+          <button disabled={occupe || !doc} onClick={() => fichierRef.current?.click()} style={boutonStyle(!occupe && !!doc)}>Importer un relevé (OFX ou CSV BNP)</button>
           <input ref={reglesRef} type="file" accept=".json" style={{ display: 'none' }} onChange={e => importerDictionnaire(e.target.files?.[0])} />
           <button disabled={occupe} onClick={() => reglesRef.current?.click()} style={boutonStyle(!occupe, 'var(--color-border)', 'var(--color-surface)', 'var(--color-text-secondary)')}>Charger regles.json</button>
           <button disabled={!doc} onClick={exporterDictionnaire} style={boutonStyle(!!doc, 'var(--color-border)', 'var(--color-surface)', 'var(--color-text-secondary)')}>Exporter regles.json</button>
