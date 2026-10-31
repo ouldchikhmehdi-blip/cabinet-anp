@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
@@ -8,35 +8,45 @@ import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { POSTES, dansPostes } from '../data/postesSalariaux'
-import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants } from '../data/mockData'
+import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, ordreAffichage } from '../data/mockData'
 
 const TOOLTIP = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
+// Clé d'une barre : poste + année (jamais « ref » ni « key », réservés par React)
+const cle = (pid, y) => `${pid}_${y}`
+// Plus l'année est ancienne, plus sa barre est claire ; la plus récente est pleine
+const opaciteAnnee = (rang) => (rang === 0 ? 1 : rang === 1 ? 0.45 : 0.25)
 
-// Infobulle : chaque poste du mois et le total qui est parti
-function InfoMois({ active, payload, label }) {
+// Infobulle : pour chaque année cochée, chaque poste du mois et le total parti
+function InfoMois({ active, payload, label, years }) {
   if (!active || !payload?.length) return null
-  const postes = payload.filter(e => POSTES.some(p => p.id === e.dataKey))
-  const ref = payload.find(e => e.dataKey === 'totalRef')
+  const ligne = payload[0].payload
   return (
-    <div style={{ ...TOOLTIP, padding: '8px 10px' }}>
+    <div style={{ ...TOOLTIP, padding: '8px 10px', minWidth: 220 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      {[...postes].reverse().map(e => (
-        <div key={e.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-          <span style={{ color: e.color }}>{POSTES.find(p => p.id === e.dataKey).label}</span><span>{fmtEur(e.value)}</span>
-        </div>
-      ))}
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, borderTop: '0.5px solid #d3d1c7', marginTop: 4, paddingTop: 4, fontWeight: 600 }}>
-        <span>Total</span><span>{fmtEur(sum(postes.map(e => Number(e.value) || 0)))}</span>
-      </div>
-      {ref && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, color: '#888780' }}><span>{ref.name}</span><span>{fmtEur(ref.value)}</span></div>}
-      <div style={{ fontSize: 10, color: '#888780', marginTop: 4 }}>Cliquez pour le détail du mois</div>
+      {[...years].sort((x, y) => y - x).map(y => {
+        const postes = POSTES.filter(p => ligne[cle(p.id, y)] !== undefined)
+        return (
+          <div key={y} style={{ marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontWeight: 600, borderTop: '0.5px solid #d3d1c7', paddingTop: 3 }}>
+              <span>{y}</span><span>{fmtEur(sum(postes.map(p => ligne[cle(p.id, y)])))}</span>
+            </div>
+            {postes.map(p => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+                <span style={{ color: p.couleur }}>{p.label}</span><span>{fmtEur(ligne[cle(p.id, y)])}</span>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+      <div style={{ fontSize: 10, color: '#888780' }}>Cliquez pour le détail du mois</div>
     </div>
   )
 }
 
 // Suivi mensuel de tout ce qui part pour le personnel : salaires CDI, rempla IADE, rempla MAR,
-// cotisations et charges. Un clic sur un mois ouvre le détail : chaque poste, ses catégories,
-// et les lignes du relevé.
+// cotisations et charges. Chaque année cochée a sa barre dans chaque mois (la plus récente pleine,
+// les autres plus claires). Un clic sur un mois ouvre le détail, année par année : chaque poste,
+// ses catégories, et les lignes du relevé.
 export default function SuiviMensuelCharges() {
   const etat = useCompta()
   const S = etat.series
@@ -50,17 +60,17 @@ export default function SuiviMensuelCharges() {
   const periode = MOIS_COURT[de] + ' → ' + MOIS_COURT[a]
   const postes = POSTES.filter(p => actifs.includes(p.id))
   const basculer = (id) => setActifs(l => l.includes(id) ? (l.length > 1 ? l.filter(x => x !== id) : l) : [...l, id])
+  const annees = ordreAffichage(years) // chronologique, avec le rang de récence
 
   const val = (p, y, m) => (S[p.serie][y] || [])[m] ?? 0
   const totalMois = (y, m) => sum(postes.map(p => val(p, y, m)))
   const moisPeriode = Array.from({ length: a - de + 1 }, (_, i) => de + i)
-  const tPrimary = sum(moisPeriode.map(m => totalMois(primary, m)))
-  const tRef = ref !== undefined ? sum(moisPeriode.map(m => totalMois(ref, m))) : 0
+  const totalPeriode = (y) => sum(moisPeriode.map(m => totalMois(y, m)))
+  const tPrimary = totalPeriode(primary)
 
   const data = moisPeriode.map(m => {
     const row = { mois: MOIS_COURT[m], m }
-    postes.forEach(p => { row[p.id] = val(p, primary, m) })
-    if (ref !== undefined) row.totalRef = Math.round(totalMois(ref, m) * 100) / 100
+    years.forEach(y => postes.forEach(p => { row[cle(p.id, y)] = val(p, y, m) }))
     return row
   })
 
@@ -72,19 +82,24 @@ export default function SuiviMensuelCharges() {
     if (Number.isInteger(i) && moisPeriode[i] !== undefined) { setMoisChoisi(moisPeriode[i]); setOuvert(null) }
   }
 
-  const prefixe = `${primary}-${String(moisDetail + 1).padStart(2, '0')}-`
-  const lignesMois = etat.transactions.filter(t => t.date.startsWith(prefixe) && dansPostes(postes, t))
+  // Détail du mois : par poste puis par catégorie, une colonne par année cochée
+  const mm = String(moisDetail + 1).padStart(2, '0')
+  const lignesMois = etat.transactions.filter(t => years.some(y => t.date.startsWith(`${y}-${mm}-`)) && dansPostes(postes, t))
+  const montantDe = (ls, y) => sum(ls.filter(t => t.date.startsWith(`${y}-`)).map(t => -t.montant))
   const detail = postes.map(p => {
     const ls = lignesMois.filter(t => p.categories.includes(t.categorie))
     const cats = p.categories
       .map(c => ({ c, lignes: ls.filter(t => t.categorie === c).sort((x, y) => x.date.localeCompare(y.date)) }))
       .filter(x => x.lignes.length > 0)
-      .map(x => ({ ...x, total: sum(x.lignes.map(t => -t.montant)) }))
-    return { ...p, cats, total: sum(cats.map(x => x.total)) }
-  })
-  const totalDetail = sum(detail.map(p => p.total))
+    return { ...p, lignes: ls, cats }
+  }).filter(p => p.lignes.length > 0)
+  const totalDetail = (y) => montantDe(lignesMois, y)
+  const ecart = (ls) => montantDe(ls, primary) - montantDe(ls, ref)
 
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
+  const colAnnee = { minWidth: 92, textAlign: 'right' }
+  const couleurEcart = (d) => (d > 0 ? 'var(--color-danger)' : d < 0 ? 'var(--color-success)' : 'var(--color-text-tertiary)')
+  const fmtEcart = (d) => (d > 0 ? '+' : '') + fmtEur(d)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
@@ -132,70 +147,105 @@ export default function SuiviMensuelCharges() {
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        <KpiCard label={`Total parti · ${primary}`} value={fmtEur(tPrimary)} sub={periode} subColor="neutral" />
-        {ref !== undefined && (
-          <KpiCard label={`Total parti · ${ref}`} value={fmtEur(tRef)} sub={diffLabel(tPrimary, tRef, ref)} subColor={diffColor(tPrimary, tRef, true)} />
-        )}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(years.length, 4) + 1}, 1fr)`, gap: 8 }}>
+        {[...years].sort((x, y) => y - x).map(y => (
+          <KpiCard
+            key={y}
+            label={`Total parti · ${y}`}
+            value={fmtEur(totalPeriode(y))}
+            sub={y === primary ? periode : diffLabel(tPrimary, totalPeriode(y), y)}
+            subColor={y === primary ? 'neutral' : diffColor(tPrimary, totalPeriode(y), true)}
+          />
+        ))}
         <KpiCard label={`Moyenne mensuelle · ${primary}`} value={fmtEur(moisPeriode.length ? tPrimary / moisPeriode.length : 0)} sub={`sur ${moisPeriode.length} mois`} subColor="neutral" />
       </div>
 
       <div style={cardStyle}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
-          Ce qui part chaque mois · {primary}{ref !== undefined ? ` (trait : total ${ref})` : ''} — cliquez sur un mois pour le détail
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+            Ce qui part chaque mois — {periode} · cliquez sur un mois pour le détail
+          </span>
+          {years.length > 1 && (
+            <span style={{ display: 'flex', gap: 12, fontSize: 11 }}>
+              {annees.map(({ y, rang }) => (
+                <span key={y} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: '#534AB7', opacity: opaciteAnnee(rang) }} />
+                  {y}
+                </span>
+              ))}
+              <span style={{ color: 'var(--color-text-tertiary)' }}>(une barre par année, de gauche à droite)</span>
+            </span>
+          )}
         </div>
-        <ResponsiveContainer width="100%" height={240}>
-          <ComposedChart data={data} onClick={choisir} style={{ cursor: 'pointer' }}>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={data} onClick={choisir} style={{ cursor: 'pointer' }} barGap={2}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
-            <Tooltip content={<InfoMois />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-            {postes.map((p, i) => (
-              <Bar key={p.id} dataKey={p.id} stackId="postes" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0}>
-                {data.map(d => <Cell key={d.m} fillOpacity={d.m === moisDetail ? 1 : 0.5} />)}
+            <Tooltip content={<InfoMois years={years} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+            {annees.flatMap(({ y, rang }) => postes.map((p, i) => (
+              <Bar key={cle(p.id, y)} dataKey={cle(p.id, y)} stackId={`annee-${y}`} fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0}>
+                {data.map(d => <Cell key={d.m} fillOpacity={opaciteAnnee(rang) * (d.m === moisDetail ? 1 : 0.7)} />)}
               </Bar>
-            ))}
-            {ref !== undefined && <Line dataKey="totalRef" name={`Total ${ref}`} stroke="#888780" strokeDasharray="5 4" strokeWidth={1.5} dot={{ r: 2 }} />}
-          </ComposedChart>
+            )))}
+          </BarChart>
         </ResponsiveContainer>
       </div>
 
       <div style={{ ...cardStyle, border: '1px solid var(--color-primary)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Détail {MOIS_LONG[moisDetail].toLowerCase()} {primary}</span>
-          <span style={{ fontSize: 20, fontWeight: 600 }}>{fmtEur(totalDetail)}</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Détail {MOIS_LONG[moisDetail].toLowerCase()}</span>
+          {annees.map(({ y }) => (
+            <span key={y} style={{ ...colAnnee, fontSize: 11, color: 'var(--color-text-secondary)' }}>{y}</span>
+          ))}
+          {ref !== undefined && <span style={{ ...colAnnee, fontSize: 11, color: 'var(--color-text-secondary)' }}>{primary} vs {ref}</span>}
         </div>
-        {totalDetail === 0 && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--color-border)' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Total parti</span>
+          {annees.map(({ y }) => <span key={y} style={{ ...colAnnee, fontSize: 15, fontWeight: 600 }}>{fmtEur(totalDetail(y))}</span>)}
+          {ref !== undefined && <span style={{ ...colAnnee, fontSize: 13, fontWeight: 600, color: couleurEcart(ecart(lignesMois)) }}>{fmtEcart(ecart(lignesMois))}</span>}
+        </div>
+        {detail.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>Aucune sortie de ces postes ce mois-ci.</div>
         )}
-        {detail.filter(p => p.total > 0).map(p => (
+        {detail.map(p => (
           <div key={p.id} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `3px solid ${p.couleur}`, padding: '4px 8px', background: 'var(--color-bg)', borderRadius: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 500 }}>{p.label}</span>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{fmtEur(p.total)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderLeft: `3px solid ${p.couleur}`, padding: '4px 8px', background: 'var(--color-bg)', borderRadius: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{p.label}</span>
+              {annees.map(({ y }) => <span key={y} style={{ ...colAnnee, fontSize: 13, fontWeight: 600 }}>{fmtEur(montantDe(p.lignes, y))}</span>)}
+              {ref !== undefined && <span style={{ ...colAnnee, fontSize: 12, fontWeight: 500, color: couleurEcart(ecart(p.lignes)) }}>{fmtEcart(ecart(p.lignes))}</span>}
             </div>
-            {p.cats.map(({ c, lignes, total }) => {
-              const cle = `${p.id}|${c}`
-              const open = ouvert === cle
+            {p.cats.map(({ c, lignes }) => {
+              const k = `${p.id}|${c}`
+              const open = ouvert === k
               return (
                 <div key={c} style={{ paddingLeft: 14 }}>
                   <button
                     type="button"
-                    onClick={() => setOuvert(open ? null : cle)}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '5px 2px', background: 'none', border: 'none', borderBottom: '0.5px solid var(--color-border)', cursor: 'pointer', textAlign: 'left', color: 'var(--color-text)' }}
+                    onClick={() => setOuvert(open ? null : k)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px 5px 2px', background: 'none', border: 'none', borderBottom: '0.5px solid var(--color-border)', cursor: 'pointer', textAlign: 'left', color: 'var(--color-text)' }}
                   >
                     <span style={{ fontSize: 10, width: 10, color: 'var(--color-text-tertiary)' }}>{open ? '▾' : '▸'}</span>
                     <span style={{ flex: 1, fontSize: 12 }}>{c}</span>
-                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{lignes.length} ligne{lignes.length > 1 ? 's' : ''}</span>
-                    <span style={{ fontSize: 12, fontWeight: 500, minWidth: 90, textAlign: 'right' }}>{fmtEur(total)}</span>
+                    {annees.map(({ y }) => <span key={y} style={{ ...colAnnee, fontSize: 12 }}>{fmtEur(montantDe(lignes, y))}</span>)}
+                    {ref !== undefined && <span style={{ ...colAnnee, fontSize: 11, color: couleurEcart(ecart(lignes)) }}>{fmtEcart(ecart(lignes))}</span>}
                   </button>
-                  {open && lignes.map(t => (
-                    <div key={t.fitid} style={{ display: 'flex', gap: 10, fontSize: 11, padding: '3px 0 3px 20px', color: 'var(--color-text-secondary)' }}>
-                      <span style={{ width: 72, flexShrink: 0 }}>{t.date.split('-').reverse().join('/')}</span>
-                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.libelle}>{t.tiers || t.libelle}</span>
-                      <span style={{ minWidth: 90, textAlign: 'right', color: 'var(--color-text)' }}>{fmtEur(-t.montant)}</span>
-                    </div>
-                  ))}
+                  {open && [...years].sort((x, y) => y - x).map(y => {
+                    const ly = lignes.filter(t => t.date.startsWith(`${y}-`))
+                    if (ly.length === 0) return null
+                    return (
+                      <div key={y} style={{ padding: '4px 0 4px 20px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)' }}>{y} · {ly.length} ligne{ly.length > 1 ? 's' : ''}</div>
+                        {ly.map(t => (
+                          <div key={t.fitid} style={{ display: 'flex', gap: 10, fontSize: 11, padding: '2px 0', color: 'var(--color-text-secondary)' }}>
+                            <span style={{ width: 72, flexShrink: 0 }}>{t.date.split('-').reverse().join('/')}</span>
+                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.libelle}>{t.tiers || t.libelle}</span>
+                            <span style={{ minWidth: 90, textAlign: 'right', color: 'var(--color-text)' }}>{fmtEur(-t.montant)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}
