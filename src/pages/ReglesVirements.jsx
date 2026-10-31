@@ -130,7 +130,7 @@ export default function ReglesVirements() {
       try { texte = new TextDecoder('utf-8', { fatal: true }).decode(brut) } catch { texte = new TextDecoder('latin1').decode(brut) }
       const r = await importerReleve(texte, fichier.name, doc, transactions)
       await rechargerCompta()
-      setMessage(`${fichier.name} (${r.format === 'ofx' ? 'OFX' : 'CSV BNP'}) : ${r.total} lignes lues, ${r.nouvelles} nouvelles, ${r.enrichies} déjà connues au libellé complété${r.manuellesPreservees ? `, ${r.manuellesPreservees} classées à la main laissées telles quelles` : ''}, ${r.aArbitrer} à arbitrer${r.solde ? ` · solde au ${dateFr(r.solde.date)} enregistré` : ''}`)
+      setMessage(`${fichier.name} (${r.format === 'ofx' ? 'OFX' : 'CSV BNP'}) : ${r.total} lignes lues, ${r.nouvelles} nouvelles ajoutées, ${r.doublons} déjà en base (doublons ignorés${r.enrichies ? `, dont ${r.enrichies} au libellé complété` : ''})${r.manuellesPreservees ? `, ${r.manuellesPreservees} classées à la main laissées telles quelles` : ''}, ${r.aArbitrer} nouvelle${r.aArbitrer > 1 ? 's' : ''} à arbitrer${r.solde ? ` · solde au ${dateFr(r.solde.date)} enregistré` : ''}`)
     } catch (e) {
       setMessage(`Import refusé : ${e.message || e}`)
     } finally {

@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
-import { parserReleve, classerTout, preparerRegles, planifierImport, A_ARBITRER } from './moteur.js'
+import { parserReleve, classerTout, preparerRegles, planifierImport } from './moteur.js'
 
 const args = process.argv.slice(2)
 const fichier = args.find(a => !a.startsWith('--'))
@@ -85,4 +85,4 @@ if (solde) {
   if (error) throw error
 }
 const st = plan.stats
-console.log(`${format} : ${st.lues} lignes lues, ${st.nouvelles} nouvelles, ${st.enrichies} complétées, ${st.manuellesPreservees} manuelles préservées, ${plan.ecrire.filter(l => l.categorie === A_ARBITRER).length} à arbitrer${solde ? `, solde au ${solde.date} enregistré` : ''}`)
+console.log(`${format} : ${st.lues} lignes lues, ${st.nouvelles} nouvelles, ${st.doublons} déjà en base (doublons ignorés, dont ${st.enrichies} complétées), ${st.manuellesPreservees} manuelles préservées, ${st.aArbitrer} nouvelles à arbitrer${solde ? `, solde au ${solde.date} enregistré` : ''}`)

@@ -238,11 +238,13 @@ describe('planifierImport (import en base)', () => {
   })
   it('ligne manuelle : catégorie intacte, seul le libellé est complété', () => {
     expect(p.libelles).toEqual([{ fitid: 'ofx-2', memo: '/MOTIF REMPLA DR EXEMPLE /BEN EXEMPLE PAUL /REFDO X', tiers: 'EXEMPLE PAUL' }])
-    expect(p.stats).toMatchObject({ lues: 4, nouvelles: 1, enrichies: 2, manuellesPreservees: 1 })
+    expect(p.stats).toMatchObject({ lues: 4, nouvelles: 1, enrichies: 2, manuellesPreservees: 1, doublons: 3 })
   })
   it('réimporter le même relevé n\'ajoute rien', () => {
     const p2 = planifierImport(imp, [...base, { fitid: 'bnp-c-0', date: '2025-10-03', montant: 60, memo: '/FRM CAISSE TEST', manuel: false }])
     expect(p2.stats.nouvelles).toBe(0)
+    expect(p2.stats.doublons).toBe(4)
+    expect(p2.stats.aArbitrer).toBe(0)
   })
 })
 

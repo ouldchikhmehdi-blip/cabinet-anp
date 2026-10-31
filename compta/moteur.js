@@ -149,6 +149,8 @@ export function fusionner(connues, aImporter) {
  *                                        reclassée) ; si manuelle, seul le libellé change ;
  *  - même opération, libellé pas plus long mais FITID différent → ignorée (déjà là).
  * → { ecrire: lignes classées à upserter, libelles: [{ fitid, memo, tiers }], stats }
+ *   stats.doublons = lignes du relevé déjà en base (même FITID ou même opération) : elles ne
+ *   créent jamais de nouvelle ligne ; stats.aArbitrer = « À arbitrer » parmi les nouvelles.
  */
 export function planifierImport(classees, connues) {
   const { nouvelles, identiques, enrichies } = fusionner(connues, classees)
@@ -169,7 +171,11 @@ export function planifierImport(classees, connues) {
   return {
     ecrire,
     libelles,
-    stats: { lues: classees.length, nouvelles: nouvelles.length, enrichies: enrichies.length, manuellesPreservees, dejaPresentes },
+    stats: {
+      lues: classees.length, nouvelles: nouvelles.length, enrichies: enrichies.length, manuellesPreservees, dejaPresentes,
+      doublons: identiques.length + enrichies.length,
+      aArbitrer: nouvelles.filter(l => l.categorie === A_ARBITRER).length,
+    },
   }
 }
 

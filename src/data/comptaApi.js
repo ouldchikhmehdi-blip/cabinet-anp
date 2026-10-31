@@ -7,7 +7,7 @@
 // que le script local (compta/moteur.js) et écrit sous RLS.
 // ============================================================
 import { supabase } from '../lib/supabase'
-import { parserReleve, classerTout, preparerRegles, planifierImport, A_ARBITRER } from '../../compta/moteur.js'
+import { parserReleve, classerTout, preparerRegles, planifierImport } from '../../compta/moteur.js'
 
 const CHAMPS = 'fitid, date, montant, type, libelle, tiers, groupe, categorie, associe, regle, alerte, manuel, fichier, importe_le, maj_le'
 const PAGE = 1000
@@ -101,7 +101,8 @@ export function versBase(l, fichier = '') {
  * fusionne avec `connues` (les lignes déjà en base, cf. etatCompta().transactions) et
  * n'écrit que ce qui manque ou s'enrichit (cf. planifierImport). Les lignes classées à la
  * main ne changent pas de catégorie. Enregistre le solde du relevé s'il y en a un.
- * Renvoie { format, total, nouvelles, enrichies, manuellesPreservees, aArbitrer, solde }.
+ * Renvoie { format, total, nouvelles, doublons, enrichies, manuellesPreservees, aArbitrer, solde } ;
+ * `doublons` = lignes déjà en base, jamais réintégrées ; `aArbitrer` compte les seules nouvelles.
  */
 export async function importerReleve(texte, nomFichier, doc, connues, { annee } = {}) {
   const R = preparerRegles(doc)
@@ -122,9 +123,10 @@ export async function importerReleve(texte, nomFichier, doc, connues, { annee } 
     format,
     total: classees.length,
     nouvelles: plan.stats.nouvelles,
+    doublons: plan.stats.doublons,
     enrichies: plan.stats.enrichies,
     manuellesPreservees: plan.stats.manuellesPreservees,
-    aArbitrer: plan.ecrire.filter(l => l.categorie === A_ARBITRER).length,
+    aArbitrer: plan.stats.aArbitrer,
     solde,
   }
 }
