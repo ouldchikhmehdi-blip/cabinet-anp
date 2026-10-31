@@ -5,7 +5,8 @@
 //
 //   SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node compta/facturation.js --annee 2026 [--mois 2026.09]
 //       [--dossier "~/partage/Facturés réglés"] [--actes ~/partage] [--sortie ~/partage/facturation] [--sans-base]
-//   (ou : node --env-file=.env compta/facturation.js … si le .env porte les deux variables)
+//   (ou : node --env-file=.env compta/facturation.js … si le .env porte les deux variables ;
+//    ou encore --sql <fichier.sql> pour obtenir les mêmes écritures à coller dans le SQL Editor)
 //
 // Ces fichiers portent des NOMS DE PATIENTS : ils ne quittent jamais le mini PC. Seuls des
 // agrégats (mois × associé × établissement ; mois × chirurgien) partent en base. Les lignes mises
@@ -30,9 +31,10 @@ const dossier = tilde(opt('dossier', '~/partage/Facturés réglés'))
 const dossierActes = tilde(opt('actes', '~/partage'))
 const sortie = tilde(opt('sortie', '~/partage/facturation'))
 const sansBase = args.includes('--sans-base')
+const sqlFichier = opt('sql') ? tilde(opt('sql')) : null
 
-if (!annee || (!sansBase && (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY))) {
-  console.error('Usage : SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node compta/facturation.js --annee AAAA [--mois AAAA.MM] [--dossier …] [--actes …] [--sortie …] [--sans-base]')
+if (!annee || (!sansBase && !sqlFichier && (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY))) {
+  console.error('Usage : SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node compta/facturation.js --annee AAAA [--mois AAAA.MM] [--dossier …] [--actes …] [--sortie …] [--sans-base | --sql <fichier.sql>]')
   process.exit(1)
 }
 
@@ -107,9 +109,24 @@ console.log(lignesRapport.slice(0, 6 + r.controle.length).join('\n'))
 console.log(`\n${r.misDeCote.length} lignes mises de côté, ${horsTable.length} chirurgiens à classer → ${sortie}/${annee}-mis-de-cote.xlsx et ${annee}-rapport.md`)
 
 // ---- 4. Base : un mois rejoué est effacé puis réécrit ----
+const moisTouches = [...new Set(r.mensuel.map(x => x.mois))]
+// --sql <fichier> : mêmes écritures, en SQL à coller dans le SQL Editor (quand la clé service role manque)
+if (sqlFichier) {
+  const q = (v) => (typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`)
+  const lignes = [`-- Facturation ${annee}, généré le ${new Date().toISOString().slice(0, 10)} par compta/facturation.js`]
+  for (const [table, rows] of [['facturation_mensuelle', r.mensuel], ['facturation_chirurgiens', r.chirurgiens]]) {
+    lignes.push(`delete from public.${table} where annee = ${annee} and mois in (${moisTouches.join(', ')});`)
+    const cols = Object.keys(rows[0])
+    for (let i = 0; i < rows.length; i += 200) {
+      lignes.push(`insert into public.${table} (${cols.join(', ')}) values\n` + rows.slice(i, i + 200).map(x => `(${cols.map(c => q(x[c])).join(', ')})`).join(',\n') + ';')
+    }
+  }
+  writeFileSync(sqlFichier, lignes.join('\n') + '\n')
+  console.log(`SQL écrit dans ${sqlFichier} (${r.mensuel.length} + ${r.chirurgiens.length} lignes)`)
+  process.exit(0)
+}
 if (sansBase) { console.log('--sans-base : rien n\'est écrit en base'); process.exit(0) }
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
-const moisTouches = [...new Set(r.mensuel.map(x => x.mois))]
 for (const table of ['facturation_mensuelle', 'facturation_chirurgiens']) {
   const { error } = await sb.from(table).delete().eq('annee', annee).in('mois', moisTouches)
   if (error) throw error
