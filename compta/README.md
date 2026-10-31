@@ -205,7 +205,9 @@ node --env-file=.env compta/facturation.js --annee 2026 [--mois 2026.09]
 ```
 
 Options : `--dossier` (défaut `~/partage/Facturés réglés`), `--actes` (défaut `~/partage`), `--sortie`
-(défaut `~/partage/facturation`).
+(défaut `~/partage/facturation`). Sans clé service role valable dans `.env`, `--sql <fichier.sql>`
+écrit les mêmes suppressions et insertions dans un fichier local à coller dans le SQL Editor (ou à
+passer par le connecteur Supabase, insertions seulement : il refuse les `delete`).
 
 - **Contrôles bloquants** : chaque colonne de montant recolle à la ligne « Total » du fichier
   (0,05 €) ; attribué + buckets = facturé du mois ; un seul FAC et un seul RED par mois × associé ×
