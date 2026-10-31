@@ -16,7 +16,7 @@ const TOOLTIP = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', border
 function InfoMois({ active, payload, label }) {
   if (!active || !payload?.length) return null
   const postes = payload.filter(e => POSTES.some(p => p.id === e.dataKey))
-  const ref = payload.find(e => e.dataKey === 'ref')
+  const ref = payload.find(e => e.dataKey === 'totalRef')
   return (
     <div style={{ ...TOOLTIP, padding: '8px 10px' }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
@@ -60,7 +60,7 @@ export default function SuiviMensuelCharges() {
   const data = moisPeriode.map(m => {
     const row = { mois: MOIS_COURT[m], m }
     postes.forEach(p => { row[p.id] = val(p, primary, m) })
-    if (ref !== undefined) row.ref = Math.round(totalMois(ref, m) * 100) / 100
+    if (ref !== undefined) row.totalRef = Math.round(totalMois(ref, m) * 100) / 100
     return row
   })
 
@@ -155,7 +155,7 @@ export default function SuiviMensuelCharges() {
                 {data.map(d => <Cell key={d.m} fillOpacity={d.m === moisDetail ? 1 : 0.5} />)}
               </Bar>
             ))}
-            {ref !== undefined && <Line dataKey="ref" name={`Total ${ref}`} stroke="#888780" strokeDasharray="5 4" strokeWidth={1.5} dot={{ r: 2 }} />}
+            {ref !== undefined && <Line dataKey="totalRef" name={`Total ${ref}`} stroke="#888780" strokeDasharray="5 4" strokeWidth={1.5} dot={{ r: 2 }} />}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

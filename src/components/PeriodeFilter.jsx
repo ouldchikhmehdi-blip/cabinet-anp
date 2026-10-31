@@ -141,7 +141,7 @@ export default function PeriodeFilter({
               </button>
             )
           })}
-          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>2 à 4 ans</span>
+          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{minYears > 1 ? `${minYears} à 4 ans` : '1 à 4 ans'}</span>
         </div>
       </div>
     </div>

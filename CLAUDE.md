@@ -153,7 +153,7 @@ cabinet-anp/
 - **Interdits maintenus** : aucun montant réel, aucun libellé réel, aucune ligne bancaire dans un **commit**, un **mock**, une **doc**, un **test** ou un message public. Les sorties du classement vont dans `~/partage/compta/classe/`, jamais dans le dépôt (`.gitignore`).
 - Données réelles dans l'app : uniquement via le backend sécurisé (Supabase Storage + PostgreSQL derrière RLS), jamais dans le bundle.
 - Besoin d'un exemple de structure → **données factices anonymisées** seulement (cf. `compta/classer.test.js`).
-- Le bundle ne contient plus de donnée financière (ni mock, ni règles : le dictionnaire de règles, qui porte des noms de salariés, vit en base). La **Vercel Deployment Protection** (mot de passe HTTP Basic) peut donc être retirée après vérification (§ 9).
+- Le bundle ne contient plus de donnée financière (ni mock, ni règles : le dictionnaire de règles, qui porte des noms de salariés, vit en base). La **Vercel Deployment Protection** (mot de passe) n'est donc plus indispensable, mais drmoc a choisi de la **garder** (2026-10-31) en plus de la connexion 2FA.
 
 ---
 
@@ -256,9 +256,8 @@ Après ajout/modif des variables sur Vercel → **Redeploy** (le build relit les
 - [x] **Compta : règles de classement + script local** (`compta/regles.json`, `compta/classer.js`, tests à données fictives) — 2026-10-30. Relevé 2025 classé dans `~/partage/compta/classe/` ; reste à la comptable : Société Générale, petits prélèvements Clinique du Millénaire, SAS Millénaire Clinique, Clémentville, Infogem, SIE, chèques ; second virement permanent mensuel (`ZZ1…`) à confirmer.
 - [x] **Compta, lot 2 (2026-10-30)** : page « Règles virements » réelle (import OFX, file d'attente, dictionnaire, reclassement), `categories.js` = taxonomie validée, pages finance sur `compta_transactions` (`src/data/compta.js`), `compta/importer.js`.
 - [ ] ⚠️ **Exécuter `supabase/compta.sql`** dans le SQL Editor, puis amorcer : `node compta/importer.js ~/partage/compta/E3144507.ofx --annee 2025 --regles-locales` (variables `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`). Le connecteur Supabase de Claude Code n'a pas eu le droit d'écrire.
-- [ ] Retirer la Vercel Deployment Protection une fois les pages finance vérifiées en prod.
+- [x] Pages finance vérifiées en prod sur les vraies données (2026-10-31) ; Vercel Deployment Protection **gardée** par choix.
 - [ ] Compta, à venir : explorateur de lignes (recherche / filtre par catégorie et mois), export comptable annuel, colonne « associé » sur les cartes.
-- [ ] Suppression de la protection intérimaire Vercel une fois les données en base
 - [ ] ⚠️ **Supprimer l'ancien projet Vercel `cabinet-anp`** (`prj_sya4JWd19z4wIC5zpH1gDSuOtWbV`) et
       l'alias `cabinet-anp-b32k.vercel.app`, pour ne garder qu'une adresse (cf. § 2 « Hébergement »).
       Tant qu'il existe, chaque `git push` déclenche deux déploiements et double les e-mails d'échec.
