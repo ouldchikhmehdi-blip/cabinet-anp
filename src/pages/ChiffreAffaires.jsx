@@ -5,6 +5,8 @@ import BoutonExport from '../components/BoutonExport'
 import { entreeReleve } from '../utils/exportReleve'
 import EtatCompta from '../components/EtatCompta'
 import ContenuCategorie from '../components/ContenuCategorie'
+import DetailRecettes from '../components/DetailRecettes'
+import { SOURCES, detailRecettes } from '../data/recettes'
 import { useCompta, CAT_CA } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -74,6 +76,37 @@ export default function ChiffreAffaires() {
       return { nomFichier: `chiffre-affaires_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'CA' }
     }
   }]
+  exportsCA.push({
+    label: `Détail mensuel par source · ${primary}`,
+    build: () => {
+      const d = detailRecettes(etat.transactions, primary)
+      const lignes = []
+      for (let m = de; m <= a; m++) {
+        const ligne = { Mois: MOIS_LONG[m] }
+        SOURCES.forEach(src => { ligne[src.nom] = d.parSource[src.id][m] })
+        ligne['Total CA'] = d.total[m]
+        lignes.push(ligne)
+      }
+      const total = { Mois: 'TOTAL' }
+      SOURCES.forEach(src => { total[src.nom] = sum(d.parSource[src.id].slice(de, a + 1)) })
+      total['Total CA'] = sum(d.total.slice(de, a + 1))
+      lignes.push(total)
+      return { nomFichier: `ca-par-source_${primary}_${MOIS_COURT[de]}-${MOIS_COURT[a]}.xlsx`, lignes, feuille: 'CA par source' }
+    }
+  }, {
+    label: `Tiers payant par caisse · ${primary}`,
+    build: () => {
+      const d = detailRecettes(etat.transactions, primary)
+      const lignes = []
+      for (const f of d.familles) for (const c of f.caisses) {
+        const ligne = { Famille: f.nom, Caisse: c.nom }
+        for (let m = de; m <= a; m++) ligne[MOIS_COURT[m]] = c.mois[m]
+        ligne.Total = sum(c.mois.slice(de, a + 1))
+        lignes.push(ligne)
+      }
+      return { nomFichier: `tiers-payant-par-caisse_${primary}_${MOIS_COURT[de]}-${MOIS_COURT[a]}.xlsx`, lignes, feuille: 'Tiers payant' }
+    }
+  })
   exportsCA.push(
     entreeReleve({ label: 'Lignes du relevé : CA (une feuille par année)', page: 'chiffre-affaires', transactions: etat.transactions, years, de, a, filtre: t => CAT_CA.includes(t.categorie) }),
     entreeReleve({ label: 'Lignes du relevé : remboursements reçus (hors CA)', page: 'remboursements-recus', transactions: etat.transactions, years, de, a, filtre: t => t.categorie === 'Remboursement reçu' }),
@@ -111,7 +144,8 @@ export default function ChiffreAffaires() {
       <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: -6 }}>
         CA = <strong>versements de la clinique</strong> (honoraires reçus du compte médecins du Millénaire et de Clémentville)
         + <strong>tiers payant</strong> (CPAM, MSA, mutuelles et autres caisses) + versements CPAM hors tiers payant
-        (permanence des soins, forfaits). Les remboursements reçus sont à part, en bas de page.
+        (permanence des soins, forfaits). Le détail mensuel par source, le tiers payant par caisse et la liste des
+        virements (clic sur un montant) sont sous les courbes ; les remboursements reçus sont à part, en bas de page.
       </div>
 
       <EtatCompta etat={etat} />
@@ -172,6 +206,13 @@ export default function ChiffreAffaires() {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      <DetailRecettes
+        transactions={etat.transactions}
+        annee={primary} anneeRef={ref} de={de} a={a} periode={periode}
+        masque={masque} cardStyle={cardStyle} tooltipStyle={tooltipStyle}
+        moisMax={S.moisActuel(primary) ?? 11}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
         <span style={{ fontSize: 13, fontWeight: 500 }}>Remboursements reçus — hors CA</span>
