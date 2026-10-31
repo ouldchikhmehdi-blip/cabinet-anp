@@ -22,13 +22,16 @@ export const BUCKETS = {
   sejourInconnu: '__sejour_inconnu',   // séjour absent des exports d'actes (ex. acte de l'année précédente)
   aArbitrer: '__a_arbitrer',           // plusieurs chirurgiens sur le séjour
 }
+// Total d'une spécialité sans praticien identifié : `__spec_<id spécialité>` (ex. YYYY400 dont seul
+// le type d'opérateur, gastro ou viscéral, est connu)
+export const bucketSpecialite = (spec) => `__spec_${spec}`
 export const estBucket = (cle) => typeof cle === 'string' && cle.startsWith('__')
 
 export const CODES_CONSULTATION = /^(CS|MCS|MPC|APC|CSCPA|MCSCPA|APCCPA|MPCCPA|MPCMCS)$/i
 // Réanimation / USC (décision drmoc, 2026-10-31) : YYYY015 et YYYY020 = actes de réanimation et de
-// soins intensifs ; JVJ… = épuration extrarénale (dialyse) cotée en réanimation. Comptés à part, pas
+// soins intensifs ; YYYY108 = surveillance postopératoire de chirurgie cardiaque avec CEC ; JVJ… = épuration extrarénale (dialyse) cotée en réanimation. Comptés à part, pas
 // sur le chirurgien du séjour.
-export const CODES_REANIMATION = /^(YYYY015|YYYY020|JVJ[A-Z]\d{3})$/i
+export const CODES_REANIMATION = /^(YYYY015|YYYY020|YYYY108|JVJ[A-Z]\d{3})$/i
 
 const sansAccents = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
 const propre = (s) => sansAccents(s).replace(/\s+/g, ' ').trim()
@@ -174,8 +177,12 @@ export function indexerSejours(actes) {
 export function lireActes(rows) {
   const h = (rows[0] || []).map(c => String(c ?? '').trim())
   const iS = h.indexOf('sejo.sejo_num_sej'), iN = h.indexOf('med0.mede_nom_usu'), iP = h.indexOf('med0.mede_prenom')
+  const iPN = h.indexOf('pati.pati_nom_usu'), iPP = h.indexOf('pati.pati_prenom')
   if (iS < 0 || iN < 0) return []
-  return rows.slice(1).filter(r => r && r[iS] != null).map(r => ({ sejour: r[iS], nom: r[iN], prenom: iP >= 0 ? r[iP] : '' }))
+  return rows.slice(1).filter(r => r && r[iS] != null).map(r => ({
+    sejour: r[iS], nom: r[iN], prenom: iP >= 0 ? r[iP] : '',
+    patientNom: iPN >= 0 ? r[iPN] : '', patientPrenom: iPP >= 0 ? r[iPP] : '',
+  }))
 }
 
 // ---- Rattachement par la consultation d'anesthésie (CPA) quand le séjour n'est pas dans les exports ----
@@ -323,6 +330,70 @@ export function completerParCpa(index, lignesFac, cpas, annuaire) {
   return { index: nouvel, viaCpa }
 }
 
+// ---- YYYY400 : supplément pour opacification peropératoire des voies biliopancréatiques ----
+//
+// Il suit soit une endoscopie biliopancréatique (CPRE : gastro-entérologue), soit une chirurgie
+// biliaire (cholécystectomie… : chirurgien viscéral) — décision drmoc du 2026-10-31. Quand le séjour
+// ne donne pas un gastro ou un viscéral, l'acte du même jour dans le même séjour donne la spécialité,
+// et les autres séjours et CPA du même patient donnent la personne s'il n'y en a qu'une de cette
+// spécialité. Sinon : total de la spécialité, sans praticien (`__spec_…`, mis de côté).
+export const CODE_OPACIFICATION_BILIAIRE = /^YYYY400$/i
+const ACTE_BILIAIRE_ENDOSCOPIQUE = /^H[MN][A-Z][EJ]\d{3}$/i // CPRE, sphinctérotomie, prothèse…
+const ACTE_BILIAIRE_CHIRURGICAL = /^H[LMN][A-Z][AC]\d{3}$/i // cholécystectomie, chirurgie hépatobiliaire ou pancréatique
+const SPECIALITES_BILIAIRES = { endoscopique: 'endoscopie', chirurgical: 'viscerale' }
+
+/**
+ * Patient (nom, prénom) → chirurgiens qui l'ont pris en charge ailleurs : séjours des exports d'actes
+ * et chirurgien prévu des CPA, anesthésistes et noms illisibles exclus.
+ */
+export function historiquePatients(actes, cpas, annuaire) {
+  const parNom = new Map()
+  const noter = (nom, prenom, cle) => {
+    const n = motsNom(nom).join(' ')
+    if (!n || !cle || cle.startsWith('?')) return
+    if (!parNom.has(n)) parNom.set(n, [])
+    parNom.get(n).push({ prenom, cle })
+  }
+  for (const a of actes) {
+    const nom = propre(a.nom)
+    if (nom && !estAnesthesiste(nom)) noter(a.patientNom, a.patientPrenom, normaliserChirurgien(nom, a.prenom))
+  }
+  for (const c of cpas) {
+    if (nommeAnesthesiste(c.chirurgien)) continue
+    const cle = resoudreChirurgien(c.chirurgien, annuaire)
+    for (const n of new Set([c.nom, c.nomMarital].filter(Boolean))) noter(n, c.prenom, cle)
+  }
+  return {
+    chirurgiensDe(nom, prenom) {
+      return new Set((parNom.get(motsNom(nom).join(' ')) || []).filter(x => prenomsCompatibles(prenom, x.prenom)).map(x => x.cle))
+    },
+  }
+}
+
+/** Type de l'acte biliaire facturé le même jour dans le même séjour : 'endoscopique', 'chirurgical' ou null (aucun ou les deux). */
+export function typeActeBiliaire(ligne, lignesDuSejour) {
+  const codes = lignesDuSejour.filter(x => x !== ligne && x.dateActe === ligne.dateActe).map(x => x.code)
+  const endo = codes.some(c => ACTE_BILIAIRE_ENDOSCOPIQUE.test(c)), chir = codes.some(c => ACTE_BILIAIRE_CHIRURGICAL.test(c))
+  return endo === chir ? null : (endo ? 'endoscopique' : 'chirurgical')
+}
+
+/**
+ * Rattachement d'une ligne YYYY400 dont le séjour ne donne ni un gastro ni un viscéral. `specDe(cle)`
+ * = spécialité d'un chirurgien (null s'il n'est pas classé). Renvoie { cle, motif } ou null (rien à changer).
+ */
+export function rattacherOpacificationBiliaire(ligne, base, { lignesDuSejour, historique, specDe }) {
+  if (!CODE_OPACIFICATION_BILIAIRE.test(ligne.code)) return null
+  const specBase = estBucket(base.cle) ? undefined : specDe(base.cle)
+  // Déjà sur un gastro ou un viscéral, ou sur un chirurgien pas encore classé : on garde
+  if (specBase === null || Object.values(SPECIALITES_BILIAIRES).includes(specBase)) return null
+  const type = typeActeBiliaire(ligne, lignesDuSejour)
+  if (!type) return null
+  const spec = SPECIALITES_BILIAIRES[type]
+  const cands = [...(historique?.chirurgiensDe(ligne.nom, ligne.prenom) || [])].filter(c => specDe(c) === spec)
+  if (cands.length === 1) return { cle: cands[0], motif: `YYYY400 (acte ${type}) : seul ${spec === 'endoscopie' ? 'gastro' : 'viscéral'} du patient dans les autres séjours ou CPA` }
+  return { cle: bucketSpecialite(spec), motif: `YYYY400 (acte ${type}) : ${cands.length ? 'plusieurs praticiens possibles' : 'praticien non identifié'}, compté dans la spécialité` }
+}
+
 /** À qui va une ligne facturée : { cle, motif }. `cle` = chirurgien normalisé ou bucket. */
 export function attribuer(ligne, index) {
   if (CODES_REANIMATION.test(ligne.code)) return { cle: BUCKETS.reanimation, motif: 'réanimation / USC' }
@@ -340,8 +411,14 @@ export function attribuer(ligne, index) {
  * Agrège des justificatifs lus (chacun complété de { associe, etablissement, fichier } d'après
  * son nom) : lignes des deux tables + lignes mises de côté + contrôle par mois.
  */
-export function agreger(justificatifs, index, { viaCpa = new Set() } = {}) {
-  const mensuel = new Map(), chirurgiens = new Map(), misDeCote = [], controle = new Map()
+export function agreger(justificatifs, index, { viaCpa = new Set(), historique = null, specDe = null } = {}) {
+  const mensuel = new Map(), chirurgiens = new Map(), misDeCote = [], controle = new Map(), rattachements = []
+  // Lignes FAC par séjour (tous mois confondus) : l'acte du même jour sert au rattachement des YYYY400
+  const parSejour = new Map()
+  for (const j of justificatifs) if (j.type === 'FAC') for (const l of j.lignes) {
+    if (!parSejour.has(l.sejour)) parSejour.set(l.sejour, [])
+    parSejour.get(l.sejour).push(l)
+  }
   const cleM = (j) => `${j.annee}-${j.mois}-${j.associe}-${j.etablissement}`
   for (const j of justificatifs) {
     const k = cleM(j)
@@ -361,15 +438,25 @@ export function agreger(justificatifs, index, { viaCpa = new Set() } = {}) {
       if (!controle.has(cm)) controle.set(cm, { facture: 0, attribue: 0, parCpa: 0, buckets: {} })
       const c = controle.get(cm)
       c.facture = arrondi(c.facture + j.total.total)
+      // Actes à 0 € écartés : codés sans tarif (ventilation, catécholamines…) ou facturés puis annulés
+      // dans le même fichier (même séjour, code et date d'acte, somme nulle). Le total du mois ne bouge pas.
+      const net = new Map()
+      const cleActe = (l) => `${l.sejour}|${l.code}|${l.dateActe?.getTime?.() ?? l.dateActe}`
+      for (const l of j.lignes) net.set(cleActe(l), arrondi((net.get(cleActe(l)) || 0) + l.total))
       for (const l of j.lignes) {
-        const { cle, motif } = attribuer(l, index)
+        if (!net.get(cleActe(l))) continue
+        let { cle, motif } = attribuer(l, index)
+        if (specDe) {
+          const r = rattacherOpacificationBiliaire(l, { cle, motif }, { lignesDuSejour: parSejour.get(l.sejour) || [], historique, specDe })
+          if (r) { ({ cle, motif } = r); rattachements.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, chirurgien: cle, motif, ...l }) }
+        }
         const kc = `${j.annee}-${j.mois}-${cle}`
         if (!chirurgiens.has(kc)) chirurgiens.set(kc, { annee: j.annee, mois: j.mois, chirurgien: cle, montant: 0, nb_lignes: 0, sejours: new Set() })
         const ch = chirurgiens.get(kc)
         ch.montant = arrondi(ch.montant + l.total); ch.nb_lignes += 1; ch.sejours.add(l.sejour)
         if (estBucket(cle)) {
           c.buckets[cle] = arrondi((c.buckets[cle] || 0) + l.total)
-          if (cle !== BUCKETS.consultations && cle !== BUCKETS.reanimation) misDeCote.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, bucket: cle, motif, ...l })
+          if (cle !== BUCKETS.consultations && cle !== BUCKETS.reanimation && !cle.startsWith('__spec_')) misDeCote.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, bucket: cle, motif, ...l })
         } else {
           c.attribue = arrondi(c.attribue + l.total)
           if (viaCpa.has(l.sejour)) c.parCpa = arrondi(c.parCpa + l.total)
@@ -392,6 +479,7 @@ export function agreger(justificatifs, index, { viaCpa = new Set() } = {}) {
     mensuel: [...mensuel.values()].sort((a, b) => tri(a, b) || a.associe.localeCompare(b.associe) || a.etablissement.localeCompare(b.etablissement)),
     chirurgiens: [...chirurgiens.values()].map(({ sejours, ...c }) => ({ ...c, nb_sejours: sejours.size })).sort((a, b) => tri(a, b) || b.montant - a.montant),
     misDeCote,
+    rattachements,
     controle: [...controle.entries()].map(([cle, c]) => ({ mois: cle, ...c })).sort((a, b) => a.mois.localeCompare(b.mois)),
   }
 }

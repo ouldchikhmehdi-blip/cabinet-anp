@@ -23,7 +23,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createClient } from '@supabase/supabase-js'
 import XLSX from 'xlsx'
-import { nomFichier, lireJustificatif, lireActes, indexerSejours, agreger, estBucket, lireCpa, construireAnnuaire, completerParCpa } from './facturationMoteur.js'
+import { nomFichier, lireJustificatif, lireActes, indexerSejours, agreger, estBucket, lireCpa, construireAnnuaire, completerParCpa, historiquePatients } from './facturationMoteur.js'
 import { praticienDe, nomFamille } from '../src/data/facturationChirurgiens.js'
 
 const args = process.argv.slice(2)
@@ -85,7 +85,11 @@ const lignesFac = justificatifs.filter(j => j.type === 'FAC').flatMap(j => j.lig
 const { index, viaCpa } = completerParCpa(indexActes, lignesFac, cpas, annuaire)
 console.log(`${viaCpa.size} séjours rattachés par la CPA`)
 
-const r = agreger(justificatifs, index, { viaCpa })
+// YYYY400 : spécialité par l'acte du même jour, praticien par les autres séjours et CPA du patient.
+// Un bucket de spécialité (Léon, Warthmann) n'est ni gardé comme « gastro » ni proposé comme candidat.
+const historique = historiquePatients(actes, cpas, annuaire)
+const specDe = (cle) => { const p = praticienDe(cle); return p && !p.bucket ? p.spec : null }
+const r = agreger(justificatifs, index, { viaCpa, historique, specDe })
 
 // ---- 3. Rapport (agrégats seulement) + classeur des lignes mises de côté (local, hors dépôt) ----
 mkdirSync(sortie, { recursive: true })
@@ -93,13 +97,13 @@ const eur = (v) => Math.round(v).toLocaleString('fr-FR') + ' €'
 const pct = (a, b) => b ? Math.round(a / b * 100) + ' %' : '–'
 const lignesRapport = [`# Facturation ${annee} — rapport du ${new Date().toISOString().slice(0, 10)}`, '',
   `${justificatifs.length} fichiers lus (${justificatifs.filter(j => j.type === 'FAC').length} FAC, ${justificatifs.filter(j => j.type === 'RED').length} RED), ${indexActes.size} séjours dans les exports d'actes, ${cpas.length} CPA, ${viaCpa.size} séjours rattachés par la CPA.`, '',
-  '| Mois | Facturé | Réglé | Redevance TTC | Attribué | dont par la CPA | Consultations | Réanimation / USC | Séjour inconnu | À arbitrer |', '|---|---|---|---|---|---|---|---|---|---|']
+  '| Mois | Facturé | Réglé | Redevance TTC | Attribué | dont par la CPA | Consultations | Réanimation / USC | Séjour inconnu | À arbitrer | Spécialité sans praticien |', '|---|---|---|---|---|---|---|---|---|---|---|']
 for (const c of r.controle) {
   const [y, m] = c.mois.split('-').map(Number)
   const men = r.mensuel.filter(x => x.annee === y && x.mois === m)
   const regle = men.reduce((s, x) => s + x.regle_total, 0), redev = men.reduce((s, x) => s + x.redevance_ttc, 0)
   const b = c.buckets
-  lignesRapport.push(`| ${y}-${String(m).padStart(2, '0')} | ${eur(c.facture)} | ${eur(regle)} | ${eur(redev)} | ${eur(c.attribue)} (${pct(c.attribue, c.facture)}) | ${eur(c.parCpa)} | ${eur(b.__consultations || 0)} | ${eur(b.__reanimation || 0)} | ${eur(b.__sejour_inconnu || 0)} | ${eur(b.__a_arbitrer || 0)} |`)
+  lignesRapport.push(`| ${y}-${String(m).padStart(2, '0')} | ${eur(c.facture)} | ${eur(regle)} | ${eur(redev)} | ${eur(c.attribue)} (${pct(c.attribue, c.facture)}) | ${eur(c.parCpa)} | ${eur(b.__consultations || 0)} | ${eur(b.__reanimation || 0)} | ${eur(b.__sejour_inconnu || 0)} | ${eur(b.__a_arbitrer || 0)} | ${eur(Object.entries(b).filter(([k]) => k.startsWith('__spec_')).reduce((s, [, v]) => s + v, 0))} |`)
 }
 const cumul = {}
 for (const c of r.chirurgiens) if (!estBucket(c.chirurgien)) cumul[c.chirurgien] = (cumul[c.chirurgien] || 0) + c.montant
@@ -117,6 +121,8 @@ for (const [nom, bucket] of ongletsMisDeCote) {
   const lignes = r.misDeCote.filter(l => l.bucket === bucket).map(colonnes)
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignes.length ? lignes : [{ Info: 'aucune ligne' }]), nom)
 }
+const rattaches = r.rattachements.map(l => ({ ...colonnes(l), 'Rattaché à': l.chirurgien }))
+XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rattaches.length ? rattaches : [{ Info: 'aucune ligne' }]), 'YYYY400 rattachés')
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(horsTable.length ? horsTable.map(([k, v]) => ({ Chirurgien: k, 'Nom de famille': nomFamille(k), 'Facturé (année)': v })) : [{ Info: 'aucun' }]), 'Chirurgiens à classer')
 XLSX.writeFile(wb, join(sortie, `${annee}-mis-de-cote.xlsx`))
 console.log(lignesRapport.slice(0, 6 + r.controle.length).join('\n'))

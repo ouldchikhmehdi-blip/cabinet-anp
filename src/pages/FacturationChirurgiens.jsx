@@ -158,8 +158,8 @@ export default function FacturationChirurgiens() {
 
       <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: -6 }}>
         Chaque ligne facturée est rattachée au <strong>chirurgien ou gastro-entérologue de son séjour</strong> (numéro de séjour
-        recoupé avec les exports d'actes). Les consultations, les séjours sans chirurgien (réa, visites) et les séjours non
-        retrouvés sont montrés à part, en fin de liste, pas devinés.
+        recoupé avec les exports d'actes). Les consultations, la réanimation / USC et les séjours non retrouvés sont
+        montrés à part, en fin de liste, pas devinés.
       </div>
 
       <EtatFacturation etat={etat} />

@@ -228,11 +228,24 @@ dashboard masque les chirurgiens à 0 € sur toutes les années.
 - **Réglé** = Base Conv + Base DH (brut, comparable au facturé) ; la redevance TTC est stockée à part.
   Tous les établissements comptent (MIL, CLE, STR…), l'établissement est conservé en base.
 - **Buckets** (clés `__…` de `facturation_chirurgiens`) : `__reanimation` (Réanimation / USC :
-  codes YYYY015 et YYYY020 = réanimation et soins intensifs, JVJ… = dialyse, quel que soit le séjour ;
+  codes YYYY015 et YYYY020 = réanimation et soins intensifs, YYYY108 = surveillance après chirurgie cardiaque avec CEC, JVJ… = dialyse, quel que soit le séjour ;
   décision drmoc du 2026-10-31), `__consultations` (code CS, MCS, APC, CSCPA… ou séjour `X…`),
   `__sejour_inconnu` (séjour absent des exports, typiquement un acte de l'année précédente facturé en
   janvier), `__a_arbitrer` (plusieurs chirurgiens, nom illisible, ou séjour où seul un anesthésiste
   est noté). Rien n'est deviné. L'ancien `__sans_chirurgien` est remis à 0 € en base et masqué.
+- **YYYY400** (opacification peropératoire des voies biliopancréatiques, décision drmoc du
+  2026-10-31) : toujours un gastro (CPRE) ou un viscéral (chirurgie biliaire). Si le séjour ne donne
+  ni l'un ni l'autre (séjour non retrouvé, à arbitrer, autre spécialité), l'acte biliaire du même jour
+  dans le séjour donne la spécialité (`H[MN]xE/J` endoscopique → gastro ; `H[LMN]xA/C` chirurgical →
+  viscéral), puis les autres séjours (exports d'actes) et CPA du même patient donnent le praticien
+  s'il est seul de cette spécialité. Sinon : `__spec_endoscopie` / `__spec_viscerale`, compté dans
+  le total de la spécialité sans praticien. Chaque rattachement est listé dans la feuille
+  « YYYY400 rattachés » du classeur mis de côté. YYYY108 (surveillance postopératoire de chirurgie
+  cardiaque avec CEC) compte en Réanimation / USC.
+- **Actes à 0 € écartés** de l'attribution (ni chirurgien, ni bucket, ni mis de côté) : codes sans
+  tarif (ventilation GLLD…, catécholamines EQLF…) et actes facturés puis annulés dans le même fichier
+  (même séjour, code et date d'acte, somme nulle). Le total du mois ne change pas ; `nb_lignes_fac`
+  garde le nombre de lignes du fichier. Décision drmoc du 2026-10-31.
 - **Sorties locales, hors dépôt** (elles portent des noms de patients) : `~/partage/facturation/<année>-rapport.md`
   (agrégats par mois, chirurgiens à classer, cumul par chirurgien) et `<année>-mis-de-cote.xlsx`
   (une feuille par bucket + « Chirurgiens à classer »). drmoc arbitre, puis on complète

@@ -69,9 +69,9 @@ export const CHIRURGIENS = {
 // et couleurs) ; `autres` n'existe que pour la facturation. `bucketNom` : libellé du bucket
 // « non attribué » de la spécialité (somme des entrées `bucket` de CHIRURGIENS).
 export const SPECIALITES = [
-  { id: 'endoscopie', nom: 'Gastro / Coloscopies', couleur: '#534AB7', bucketNom: 'Chir. bariatrique (Léon, Warthmann)' },
+  { id: 'endoscopie', nom: 'Gastro / Coloscopies', couleur: '#534AB7', bucketNom: 'Chir. bariatrique (Léon, Warthmann) et YYYY400 sans gastro identifié' },
   { id: 'neurochirurgie', nom: 'Neurochirurgie', couleur: '#EF9F27' },
-  { id: 'viscerale', nom: 'Chirurgie viscérale', couleur: '#D85A30' },
+  { id: 'viscerale', nom: 'Chirurgie viscérale', couleur: '#D85A30', bucketNom: 'YYYY400 sans chirurgien identifié' },
   { id: 'pneumologie', nom: 'Pneumologie', couleur: '#1D9E75' },
   { id: 'autres', nom: 'Autres chirurgiens (à classer)', couleur: '#7A8B99', aClasser: true },
 ]
@@ -79,7 +79,7 @@ export const SPECIALITES = [
 // Buckets du script : affichés comme des pseudo-spécialités sans praticien, après les vraies.
 export const BUCKETS = [
   { id: '__consultations', nom: 'Consultations', couleur: '#8C8C86', note: 'consultations et avis facturés, sans séjour opératoire' },
-  { id: '__reanimation', nom: 'Réanimation / USC', couleur: '#0E7490', note: 'actes de réanimation et de soins intensifs (YYYY015, YYYY020) et dialyses (JVJ…), quel que soit le séjour' },
+  { id: '__reanimation', nom: 'Réanimation / USC', couleur: '#0E7490', note: 'actes de réanimation et de soins intensifs (YYYY015, YYYY020), surveillance après chirurgie cardiaque avec CEC (YYYY108) et dialyses (JVJ…), quel que soit le séjour' },
   { id: '__sejour_inconnu', nom: 'Séjour non retrouvé', couleur: '#B4B2A9', note: 'séjour absent des exports d\'actes (souvent un acte de l\'année précédente)' },
   { id: '__a_arbitrer', nom: 'À arbitrer', couleur: '#C2476B', note: 'plusieurs chirurgiens possibles, nom de chirurgien illisible, ou séjour où seul un anesthésiste est noté' },
 ]
@@ -124,6 +124,13 @@ export function specialitesFacturation(parChirurgien, annees) {
   const buckets = BUCKETS.map(b => ({ ...b, valeurs: {} }))
   for (const y of annees) {
     for (const [cle, serie] of Object.entries(parChirurgien[y] || {})) {
+      // `__spec_<id>` : total d'une spécialité sans praticien identifié (YYYY400 du script)
+      const specSans = cle.match(/^__spec_(.+)$/)
+      if (specSans && parId[specSans[1]]) {
+        const v = (parId[specSans[1]].valeurs[y] ||= vide())
+        for (let m = 0; m < 12; m++) v[m] += serie[m] || 0
+        continue
+      }
       if (cle.startsWith('__')) {
         const b = buckets.find(x => x.id === cle)
         if (b) b.valeurs[y] = serie.slice()

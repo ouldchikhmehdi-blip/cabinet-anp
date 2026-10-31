@@ -5,6 +5,7 @@ import {
   nomFichier, lireJustificatif, indexerSejours, lireActes, attribuer, agreger,
   normaliserChirurgien, versDate, BUCKETS,
   lireCpa, construireAnnuaire, resoudreChirurgien, completerParCpa,
+  historiquePatients, typeActeBiliaire, rattacherOpacificationBiliaire,
 } from './facturationMoteur.js'
 
 // Feuille FAC fictive, même disposition que les exports de la clinique (en-tête en ligne 9)
@@ -100,18 +101,18 @@ describe('indexerSejours / attribuer', () => {
   })
   it('lireActes lit les colonnes par nom', () => {
     const actes = lireActes([['sejo.sejo_num_sej', 'pati.pati_nom_usu', 'med0.mede_nom_usu', 'med0.mede_prenom'], ['H1', 'DUPONT', 'NOGUES', 'Laurent'], [null]])
-    expect(actes).toEqual([{ sejour: 'H1', nom: 'NOGUES', prenom: 'Laurent' }])
+    expect(actes).toEqual([{ sejour: 'H1', nom: 'NOGUES', prenom: 'Laurent', patientNom: 'DUPONT', patientPrenom: '' }])
   })
 })
 
 describe('agreger', () => {
   const index = indexerSejours([{ sejour: 'H1', nom: 'NOGUES', prenom: 'Laurent' }, { sejour: 'H3', nom: 'ABBAL', prenom: 'B' }])
-  const jf = { ...lireJustificatif(fac([lf('H1', 'HHFE002', 40, 60, 0), lf('H1', 'HHFE002', 0, 20, 0), lf('X2', 'CSCPA', 10, 0, 30), lf('H3', 'YYYY015', 0, 96, 0), lf('H9', 'LDFA002', 0, 50, 0)], [50, 226, 0, 30, 306])), associe: 'TEST010', etablissement: 'MIL', fichier: 'f.xlsx' }
+  const jf = { ...lireJustificatif(fac([lf('H1', 'HHFE002', 40, 60, 0), lf('H1', 'HHFE002', 0, 20, 0), lf('X2', 'CSCPA', 10, 0, 30), lf('H3', 'YYYY015', 0, 96, 0), lf('H9', 'LDFA002', 0, 50, 0), lf('H1', 'GLLD015', 0, 0, 0), lf('H8', 'EQLF003', 0, 0, 0), lf('H7', 'LDFA002', 0, 30, 0), lf('H7', 'LDFA002', 0, -30, 0)], [50, 226, 0, 30, 306])), associe: 'TEST010', etablissement: 'MIL', fichier: 'f.xlsx' }
   const jr = { ...lireJustificatif(red([lr('H1', 60, 0, 6), lr('H2', 0, 100, 12)], [60, 100, null, 15, 3, 18])), associe: 'TEST010', etablissement: 'MIL', fichier: 'r.xlsx' }
   const r = agreger([jf, jr], index)
   it('fusionne FAC et RED du même mois × associé × établissement', () => {
     expect(r.mensuel).toHaveLength(1)
-    expect(r.mensuel[0]).toMatchObject({ annee: 2026, mois: 3, associe: 'TEST010', etablissement: 'MIL', facture_total: 306, facture_dh: 50, regle_total: 160, regle_conv: 60, regle_dh: 100, redevance_ttc: 18, nb_lignes_fac: 5, nb_lignes_red: 2, fichier_fac: 'f.xlsx', fichier_red: 'r.xlsx' })
+    expect(r.mensuel[0]).toMatchObject({ annee: 2026, mois: 3, associe: 'TEST010', etablissement: 'MIL', facture_total: 306, facture_dh: 50, regle_total: 160, regle_conv: 60, regle_dh: 100, redevance_ttc: 18, nb_lignes_fac: 9, nb_lignes_red: 2, fichier_fac: 'f.xlsx', fichier_red: 'r.xlsx' })
   })
   it('agrège par chirurgien et par bucket, avec séjours distincts', () => {
     const par = Object.fromEntries(r.chirurgiens.map(c => [c.chirurgien, c]))
@@ -123,6 +124,10 @@ describe('agreger', () => {
   it('met de côté tout sauf les consultations, et contrôle attribué + buckets = facturé', () => {
     expect(r.misDeCote.map(l => l.bucket)).toEqual([BUCKETS.sejourInconnu])
     expect(r.controle[0]).toMatchObject({ mois: '2026-03', facture: 306, attribue: 120 })
+  })
+  it('ignore les actes à 0 €, y compris facturés puis annulés : ni chirurgien, ni bucket, ni mis de côté', () => {
+    expect(r.chirurgiens.reduce((s, c) => s + c.nb_lignes, 0)).toBe(5)
+    expect(r.misDeCote.some(l => l.sejour === 'H8' || l.sejour === 'H7')).toBe(false)
   })
   it('refuse deux FAC pour le même mois × associé × établissement', () => {
     expect(() => agreger([jf, { ...jf, fichier: 'g.xlsx' }], index)).toThrow(/Deux fichiers FAC/)
@@ -184,5 +189,52 @@ describe('completerParCpa', () => {
     expect(idx.has('H4')).toBe(false)
     expect([...idx.get('H9')]).toEqual(['NOGUES Laurent'])
     expect(viaCpa.has('H9') || idx.has('X5')).toBe(false)
+  })
+})
+
+describe('YYYY400 (opacification des voies biliopancréatiques)', () => {
+  // Spécialités fictives : TOURNESOL et LAMPION gastros, HADDOCK viscéral, CASTAFIORE pas encore classée
+  const SPEC = { TOURNESOL: 'endoscopie', LAMPION: 'endoscopie', HADDOCK: 'viscerale' }
+  const specDe = (cle) => SPEC[cle.split(' ')[0]] ?? null
+  const l = (sejour, code, dateActe, nom = 'DUPONT', prenom = 'Alice') => ({ sejour, code, dateActe, nom, prenom, total: 20 })
+  const y = l('H1', 'YYYY400', '2026-03-02')
+  const historique = historiquePatients(
+    [{ sejour: 'H5', nom: 'TOURNESOL', prenom: 'Tryphon', patientNom: 'Dupont', patientPrenom: 'Alice' },
+      { sejour: 'H6', nom: 'ABBAL', prenom: 'B', patientNom: 'DUPONT', patientPrenom: 'Alice' }],
+    [], new Map())
+  it('lit le type de l\'acte biliaire du même jour dans le séjour', () => {
+    expect(typeActeBiliaire(y, [y, l('H1', 'HMGE002', '2026-03-02')])).toBe('endoscopique')
+    expect(typeActeBiliaire(y, [y, l('H1', 'HMFC004', '2026-03-02')])).toBe('chirurgical')
+    expect(typeActeBiliaire(y, [y, l('H1', 'HMFC004', '2026-03-02'), l('H1', 'HMGE002', '2026-03-02')])).toBeNull()
+    expect(typeActeBiliaire(y, [y, l('H1', 'HMGE002', '2026-03-05')])).toBeNull()
+  })
+  it('l\'historique du patient ignore les anesthésistes', () => {
+    expect([...historique.chirurgiensDe('DUPONT', 'Alice')]).toEqual(['TOURNESOL Tryphon'])
+  })
+  const sejourEndo = [y, l('H1', 'HMGE002', '2026-03-02')]
+  const inconnu = { cle: BUCKETS.sejourInconnu, motif: '' }
+  it('rattache au seul gastro du patient quand le séjour est inconnu', () => {
+    expect(rattacherOpacificationBiliaire(y, inconnu, { lignesDuSejour: sejourEndo, historique, specDe }).cle).toBe('TOURNESOL Tryphon')
+  })
+  it('sinon compte dans la spécialité sans praticien', () => {
+    const r = rattacherOpacificationBiliaire(y, inconnu, { lignesDuSejour: [y, l('H1', 'HMFC004', '2026-03-02')], historique, specDe })
+    expect(r.cle).toBe('__spec_viscerale')
+    const deux = historiquePatients([{ nom: 'TOURNESOL', prenom: 'T', patientNom: 'DUPONT', patientPrenom: 'Alice' }, { nom: 'LAMPION', prenom: 'S', patientNom: 'DUPONT', patientPrenom: 'Alice' }], [], new Map())
+    expect(rattacherOpacificationBiliaire(y, inconnu, { lignesDuSejour: sejourEndo, historique: deux, specDe }).cle).toBe('__spec_endoscopie')
+  })
+  it('ne touche pas un YYYY400 déjà sur un gastro, un viscéral ou un chirurgien non classé, ni un autre code', () => {
+    const ctx = { lignesDuSejour: sejourEndo, historique, specDe }
+    expect(rattacherOpacificationBiliaire(y, { cle: 'HADDOCK Archibald' }, ctx)).toBeNull()
+    expect(rattacherOpacificationBiliaire(y, { cle: 'CASTAFIORE Bianca' }, ctx)).toBeNull()
+    expect(rattacherOpacificationBiliaire(l('H1', 'HMGE002', '2026-03-02'), inconnu, ctx)).toBeNull()
+    expect(rattacherOpacificationBiliaire(y, inconnu, { ...ctx, lignesDuSejour: [y] })).toBeNull()
+  })
+  it('agreger applique la règle, liste les rattachements et ne met pas de côté le total de spécialité', () => {
+    const j = { ...lireJustificatif(fac([lf('H1', 'YYYY400', 0, 20, 0), lf('H1', 'HMGE002', 0, 80, 0), lf('H2', 'YYYY400', 0, 20, 0, 'MARTIN'), lf('H2', 'HMFC004', 0, 80, 0, 'MARTIN')], [0, 200, 0, 0, 200])), associe: 'TEST010', etablissement: 'MIL', fichier: 'f.xlsx' }
+    const r = agreger([j], new Map(), { historique, specDe })
+    const par = Object.fromEntries(r.chirurgiens.map(c => [c.chirurgien, c.montant]))
+    expect(par).toMatchObject({ 'TOURNESOL Tryphon': 20, __spec_viscerale: 20, [BUCKETS.sejourInconnu]: 160 })
+    expect(r.rattachements.map(x => x.chirurgien)).toEqual(['TOURNESOL Tryphon', '__spec_viscerale'])
+    expect(r.misDeCote.some(x => x.bucket === '__spec_viscerale')).toBe(false)
   })
 })

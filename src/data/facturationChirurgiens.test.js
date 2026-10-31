@@ -23,7 +23,7 @@ describe('CHIRURGIENS ↔ Consultations', () => {
 describe('specialitesFacturation', () => {
   const s = (v) => Array.from({ length: 12 }, (_, m) => (m === 0 ? v : 0))
   const specs = specialitesFacturation({
-    2026: { 'NOGUES Laurent': s(100), 'DRAN Gregory': s(300), 'INCONNU Paul': s(7), 'LEON Piera': s(20), 'WARTHMANN Paul': s(30), 'AYRAL Jean': s(60), __consultations: s(40), __sejour_inconnu: s(5) },
+    2026: { 'NOGUES Laurent': s(100), 'DRAN Gregory': s(300), 'INCONNU Paul': s(7), 'LEON Piera': s(20), 'WARTHMANN Paul': s(30), 'AYRAL Jean': s(60), __consultations: s(40), __sejour_inconnu: s(5), __spec_viscerale: s(9), __spec_endoscopie: s(4) },
     2025: { 'NOGUES Laurent': s(50) },
   }, [2026, 2025])
   it('range les chirurgiens connus dans leur spécialité, triés par facturé', () => {
@@ -31,10 +31,14 @@ describe('specialitesFacturation', () => {
     expect(neuro.praticiens.map(p => p.id)).toEqual(['dran', 'nogues'])
     expect(neuro.praticiens[1].valeurs).toEqual({ 2026: s(100), 2025: s(50) })
   })
+  it('compte un YYYY400 sans praticien identifié dans le total de sa spécialité', () => {
+    expect(specs.find(x => x.id === 'viscerale').valeurs[2026]).toEqual(s(9))
+    expect(specs.some(x => x.id === '__spec_viscerale')).toBe(false)
+  })
   it('compte la chirurgie bariatrique dans le bucket de Gastro, sans praticien', () => {
     const gastro = specs.find(x => x.id === 'endoscopie')
     expect(gastro.praticiens.map(p => p.id)).toEqual(['ayral'])
-    expect(gastro.valeurs[2026]).toEqual(s(50))
+    expect(gastro.valeurs[2026]).toEqual(s(54))
     expect(specs.some(x => x.id === 'bariatrique')).toBe(false)
   })
   it('liste les inconnus un par un dans « Autres » et les buckets présents en pseudo-spécialités', () => {
