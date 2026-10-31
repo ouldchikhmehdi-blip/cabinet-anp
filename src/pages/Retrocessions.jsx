@@ -7,7 +7,7 @@ import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
-import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
+import { echelle, axeK, sansMoisFuturs } from '../utils/echelle'
 
 const ACCENT = '#534AB7'
 
@@ -60,11 +60,11 @@ export default function Retrocessions() {
   // Barres empilées fixe/variable : année principale.
   const dataBar = labels.map((m, i) => ({ mois: m, fixe: fixeDe(primary)[i] ?? 0, variable: varDe(primary)[i] ?? 0 }))
   // Cumul du total versé : une courbe par année comparée.
-  const dataCumul = labels.map((m, i) => {
+  const dataCumul = sansMoisFuturs(labels.map((m, i) => {
     const row = { mois: m }
     years.forEach(y => { row[y] = sum(totalSerie(y).slice(0, i + 1)) })
     return row
-  })
+  }), S, de)
 
   // Détail par associé sur l'année principale (année entière, hors filtre de mois).
   const parAssocie = S.RETRO_PAR_ASSOCIE[primary] || {}
@@ -169,7 +169,7 @@ export default function Retrocessions() {
           <BarChart data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataBar, { empile: true })} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             <Bar dataKey="fixe" stackId="s" fill="#534AB7" radius={[0,0,0,0]} name="Fixe" />
             <Bar dataKey="variable" stackId="s" fill="#1D9E75" radius={[3,3,0,0]} name="Variable" />
@@ -185,10 +185,10 @@ export default function Retrocessions() {
           <LegendAnnees years={years} />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={sansMoisFuturs(dataCumul, S, de)}>
+          <LineChart data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataCumul)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Line

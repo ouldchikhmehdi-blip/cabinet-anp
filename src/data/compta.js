@@ -115,6 +115,11 @@ export function calculerSeries(transactions, soldes = [], doc = null) {
       }
     }
   }
+  // Ordre des cases : celui de la taxonomie, sauf « Impôts et taxes » et « Prévoyance et mutuelle
+  // salariés » qui échangent leur place (choix de drmoc, 2026-10-31). Chaque case garde sa couleur.
+  const iPrev = DEPENSES.findIndex(d => d.id === 'Prévoyance et mutuelle salariés')
+  const iImpots = DEPENSES.findIndex(d => d.id === 'Impôts et taxes')
+  if (iPrev >= 0 && iImpots >= 0) [DEPENSES[iPrev], DEPENSES[iImpots]] = [DEPENSES[iImpots], DEPENSES[iPrev]]
 
   const moisActuel = (y) => {
     const lignes = parAnnee[y] || []

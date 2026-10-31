@@ -5,11 +5,13 @@ import { TAXONOMIE } from './categories'
 
 const COTISATIONS = TAXONOMIE.find(g => g.groupe === 'Charges sociales et fiscales').sous
 
+// L'ordre est celui de l'affichage (boutons, piles, tableaux) : le personnel salarié et ses
+// cotisations côte à côte, puis les remplaçants.
 export const POSTES = [
   { id: 'cdi', label: 'Salariés CDI', serie: 'SALAIRES_CDI', couleur: '#534AB7', categories: ['Salaire IADE CDI'] },
+  { id: 'cot', label: 'Cotisations et charges', serie: 'COTISATIONS', couleur: '#0C447C', categories: COTISATIONS },
   { id: 'iade', label: 'Rempla IADE', serie: 'REMPL_IADE', couleur: '#EF9F27', categories: ['Remplaçant IADE (CDD)'] },
   { id: 'mar', label: 'Rempla MAR', serie: 'REMPL_MAR', couleur: '#D85A30', categories: ['Remplaçant MAR', 'Frais de remplaçant'] },
-  { id: 'cot', label: 'Cotisations et charges', serie: 'COTISATIONS', couleur: '#0C447C', categories: COTISATIONS },
 ]
 
 // Une ligne du relevé appartient-elle à l'un des postes ? (débits seulement, comme les séries)

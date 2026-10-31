@@ -8,7 +8,7 @@ import ContenuCategorie from '../components/ContenuCategorie'
 import { useCompta, CAT_CA } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
-import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
+import { echelle, axeK, sansMoisFuturs } from '../utils/echelle'
 
 const ACCENT = '#534AB7'
 
@@ -47,16 +47,16 @@ export default function ChiffreAffaires() {
   const rRef = rembDe(ref)
 
   const labels = MOIS_COURT.slice(de, a + 1)
-  const dataMensuel = labels.map((m, i) => {
+  const dataMensuel = sansMoisFuturs(labels.map((m, i) => {
     const row = { mois: m }
     years.forEach(y => { row[y] = serieDe(y)[i] ?? 0 })
     return row
-  })
-  const dataCumul = labels.map((m, i) => {
+  }), S, de)
+  const dataCumul = sansMoisFuturs(labels.map((m, i) => {
     const row = { mois: m }
     years.forEach(y => { row[y] = sum(serieDe(y).slice(0, i + 1)) })
     return row
-  })
+  }), S, de)
 
   const exportsCA = [{
     label: 'CA',
@@ -145,10 +145,10 @@ export default function ChiffreAffaires() {
           <LegendAnnees years={years} />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={sansMoisFuturs(dataMensuel, S, de)}>
+          <LineChart data={dataMensuel}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataMensuel)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {renderLignes()}
           </LineChart>
@@ -163,10 +163,10 @@ export default function ChiffreAffaires() {
           <LegendAnnees years={years} />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={sansMoisFuturs(dataCumul, S, de)}>
+          <LineChart data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataCumul)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {renderLignes()}
           </LineChart>

@@ -8,7 +8,7 @@ import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
-import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
+import { echelle, axeK, sansMoisFuturs } from '../utils/echelle'
 
 const ACCENT = '#534AB7'
 
@@ -55,11 +55,11 @@ export default function SalariesCDI() {
   const sPrimary = selected ? coutPeriode(selected, primary) : 0
   const sRef = selected ? coutPeriode(selected, ref) : 0
 
-  const dataMensuel = MOIS_COURT.slice(de, a + 1).map((m, i) => {
+  const dataMensuel = sansMoisFuturs(MOIS_COURT.slice(de, a + 1).map((m, i) => {
     const row = { mois: m }
     years.forEach(y => { row[y] = selected ? (selected.mensuel[y] || [])[de + i] ?? 0 : 0 })
     return row
-  })
+  }), S, de)
 
   const cardStyle = {
     background: 'var(--color-surface)',
@@ -167,10 +167,10 @@ export default function SalariesCDI() {
             <LegendAnnees years={years} />
           </div>
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart key={years.join('-')} data={sansMoisFuturs(dataMensuel, S, de)}>
+            <BarChart key={years.join('-')} data={dataMensuel}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
               <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-              <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+              <YAxis {...echelle(dataMensuel)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
               <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
               {ordreAffichage(years).map(({ y, rang }) => (
                 <Bar key={y} dataKey={y} fill={couleurAnnee(rang, ACCENT)} radius={[3,3,0,0]} />

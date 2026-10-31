@@ -66,6 +66,11 @@ describe('calculerSeries', () => {
     expect(S.DEPENSES.map(d => d.id)).toEqual(['URSSAF', 'Banque'])
     expect(S.DEPENSES[0].montants[2025][1]).toBe(1500)
   })
+  it('dépenses : Impôts et taxes prend la place de Prévoyance et mutuelle salariés, et inversement', () => {
+    const l = (categorie) => ({ date: '2025-01-05', montant: -100, categorie, groupe: 'Charges sociales et fiscales', libelle: 'X', tiers: 'X' })
+    const ids = calculerSeries(['URSSAF', 'Prévoyance et mutuelle salariés', 'Épargne salariale', 'Impôts et taxes'].map(l)).DEPENSES.map(d => d.id)
+    expect(ids).toEqual(['URSSAF', 'Impôts et taxes', 'Épargne salariale', 'Prévoyance et mutuelle salariés'])
+  })
   it('moisActuel = dernier mois avec des lignes', () => {
     expect(S.moisActuel(2025)).toBe(2)
   })

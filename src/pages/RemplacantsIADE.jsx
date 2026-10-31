@@ -7,7 +7,7 @@ import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
-import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
+import { echelle, axeK, sansMoisFuturs } from '../utils/echelle'
 
 const ACCENT = '#EF9F27'
 
@@ -41,16 +41,16 @@ export default function RemplacantsIADE() {
   const tRef = totalDe(ref)
 
   const labels = MOIS_COURT.slice(de, a + 1)
-  const dataBar = labels.map((m, i) => {
+  const dataBar = sansMoisFuturs(labels.map((m, i) => {
     const row = { mois: m }
     years.forEach(y => { row[y] = serieDe(y)[i] ?? 0 })
     return row
-  })
-  const dataCumul = labels.map((m, i) => {
+  }), S, de)
+  const dataCumul = sansMoisFuturs(labels.map((m, i) => {
     const row = { mois: m }
     years.forEach(y => { row[y] = sum(serieDe(y).slice(0, i + 1)) })
     return row
-  })
+  }), S, de)
 
   const exportsIADE = [{
     label: 'Remplaçants IADE',
@@ -115,10 +115,10 @@ export default function RemplacantsIADE() {
           <LegendAnnees years={years} type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart key={years.join('-')} data={sansMoisFuturs(dataBar, S, de)}>
+          <BarChart key={years.join('-')} data={dataBar}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataBar)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={y} dataKey={y} fill={couleurAnnee(rang, ACCENT)} radius={[3,3,0,0]} />
@@ -135,10 +135,10 @@ export default function RemplacantsIADE() {
           <LegendAnnees years={years} type="line" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={sansMoisFuturs(dataCumul, S, de)}>
+          <LineChart data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataCumul)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Line

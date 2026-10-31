@@ -9,7 +9,7 @@ import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { POSTES, dansPostes } from '../data/postesSalariaux'
 import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, ordreAffichage } from '../data/mockData'
-import { axeK } from '../utils/echelle'
+import { echelle, axeK } from '../utils/echelle'
 
 const TOOLTIP = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
 // Clé d'une barre : poste + année (jamais « ref » ni « key », réservés par React)
@@ -182,7 +182,7 @@ export default function SuiviMensuelCharges() {
           <BarChart data={data} onClick={choisir} style={{ cursor: 'pointer' }} barGap={2}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(data, { cles: k => k.includes('_'), empile: k => k.split('_')[1] })} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip content={<InfoMois years={years} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
             {annees.flatMap(({ y, rang }) => postes.map((p, i) => (
               <Bar key={cle(p.id, y)} dataKey={cle(p.id, y)} stackId={`annee-${y}`} fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0}>

@@ -9,7 +9,7 @@ import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { POSTES, dansPostes } from '../data/postesSalariaux'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
-import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
+import { echelle, axeK, sansMoisFuturs } from '../utils/echelle'
 
 
 const ACCENT_CUMUL = '#534AB7'
@@ -78,14 +78,14 @@ export default function ComparaisonCharges() {
   }
   // Coût de chaque mois (postes cochés) et cumul depuis le début de la période, une série par année
   const totalMois = (y, i) => sum(postes.map(p => mois(p, y)[i] ?? 0))
-  const dataCumul = MOIS_COURT.slice(de, a + 1).map((m, i) => {
+  const dataCumul = sansMoisFuturs(MOIS_COURT.slice(de, a + 1).map((m, i) => {
     const row = { mois: m }
     years.forEach(y => {
       row[`m${y}`] = Math.round(totalMois(y, i) * 100) / 100
       row[`c${y}`] = Math.round(sum(Array.from({ length: i + 1 }, (_, k) => totalMois(y, k))) * 100) / 100
     })
     return row
-  })
+  }), S, de)
   const totalDetail = totalSel(anneeDetail)
 
   const tooltipStyle = TOOLTIP
@@ -169,7 +169,7 @@ export default function ComparaisonCharges() {
           <BarChart data={dataAnnees} onClick={choisirColonne} style={{ cursor: 'pointer' }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="annee" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataAnnees, { empile: true })} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip content={<InfoTotal periode={periode} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
             {postes.map((p, i) => (
               <Bar key={p.id} dataKey={p.id} stackId="postes" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0}>
@@ -213,11 +213,11 @@ export default function ComparaisonCharges() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={240}>
-          <ComposedChart key={years.join('-')} data={sansMoisFuturs(dataCumul, S, de)}>
+          <ComposedChart key={years.join('-')} data={dataCumul}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis domain={echelleVisible} yAxisId="mois" tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
-            <YAxis domain={echelleVisible} yAxisId="cumul" orientation="right" tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataCumul, { cles: k => /^m\d{4}$/.test(k) })} yAxisId="mois" tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataCumul, { cles: k => /^c\d{4}$/.test(k) })} yAxisId="cumul" orientation="right" tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v, nom) => [fmtEur(v), nom]} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={`m${y}`} yAxisId="mois" dataKey={`m${y}`} name={`${y} · mois`} fill={couleurAnnee(rang, ACCENT_CUMUL)} fillOpacity={0.55} radius={[3,3,0,0]} />
@@ -247,7 +247,7 @@ export default function ComparaisonCharges() {
           <LineChart data={dataTemps}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis {...echelle(dataTemps)} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v, id) => [fmtEur(v), nomPoste(id)]} />
             {postes.map(p => (
               <Line key={p.id} type="monotone" dataKey={p.id} stroke={p.couleur} strokeWidth={2} dot={{ r: 2 }} />
