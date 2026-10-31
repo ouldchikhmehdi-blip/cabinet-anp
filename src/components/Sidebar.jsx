@@ -4,6 +4,7 @@ import { peutQuitter } from '../utils/gardeNavigation'
 const navItems = [
   { id: 'vue-globale', label: 'Vue globale', icon: '⊞' },
   { id: 'chiffre-affaires', label: "Chiffre d'affaires", icon: '↗' },
+  { id: 'facturation', label: 'Facturé', icon: '🧾' },
   { id: 'charges-salariales', label: 'Charges salariales', icon: '👤' },
   { id: 'depenses', label: 'Dépenses', icon: '🧾' },
   { id: 'consultations', label: 'Consultations', icon: '🩺' },

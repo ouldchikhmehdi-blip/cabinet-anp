@@ -10,6 +10,7 @@ import ResetPassword from './auth/ResetPassword'
 import Sidebar from './components/Sidebar'
 import VueGlobale from './pages/VueGlobale'
 import ChiffreAffaires from './pages/ChiffreAffaires'
+import Facturation from './pages/Facturation'
 import Depenses from './pages/Depenses'
 import Consultations from './pages/Consultations'
 import Retrocessions from './pages/Retrocessions'
@@ -286,6 +287,7 @@ export default function App() {
     switch(page) {
       case 'vue-globale':      return <VueGlobale />
       case 'chiffre-affaires': return <ChiffreAffaires />
+      case 'facturation':      return <Facturation />
       case 'charges-salariales': return <ChargesSalariales />
       // Anciennes entrées du menu, devenues sous-onglets de « Charges salariales »
       case 'salaries-cdi':

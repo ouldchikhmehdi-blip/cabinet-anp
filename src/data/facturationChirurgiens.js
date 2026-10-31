@@ -1,0 +1,138 @@
+// ============================================================
+// facturationChirurgiens.js — qui est qui dans le facturé par chirurgien.
+//
+// Le script compta/facturation.js enregistre, par mois, le facturé par chirurgien
+// sous la clé « NOM Prenom » (colonne med0 des exports d'actes), ou sous un bucket
+// « __… » quand aucun chirurgien n'a pu être retrouvé. Ce module relie ces clés aux
+// spécialités et praticiens de l'onglet Consultations (src/data/mockData.js) pour
+// naviguer de la même façon : spécialité → praticiens. Un chirurgien absent d'ici
+// est affiché tel quel dans « Autres chirurgiens (à classer) », jusqu'à ce que
+// drmoc dise où il va.
+// ============================================================
+
+// Nom de famille (majuscules, tel que dans med0) → { spec, id, nom } du praticien de Consultations.
+// Les ids reprennent ceux de CONSULT_SPECIALITES (test : facturationChirurgiens.test.js).
+export const CHIRURGIENS = {
+  // Gastro / coloscopies
+  AYRAL: { spec: 'endoscopie', id: 'ayral', nom: 'Dr Ayral' },
+  BLANC: { spec: 'endoscopie', id: 'blanc', nom: 'Dr Blanc' },
+  CHARPY: { spec: 'endoscopie', id: 'charpy', nom: 'Dr Charpy-Debourdeau' },
+  ESPERANCE: { spec: 'endoscopie', id: 'esperance', nom: 'Mme Espérance' },
+  FEDKOVIC: { spec: 'endoscopie', id: 'fedkovic', nom: 'Dr Fedkovic' },
+  GARCIA: { spec: 'endoscopie', id: 'garcia', nom: 'Dr Garcia' },
+  GUILLET: { spec: 'endoscopie', id: 'guillet', nom: 'Dr Guillet' },
+  HANSLIK: { spec: 'endoscopie', id: 'hanslik', nom: 'Dr Hanslik' },
+  LHOTE: { spec: 'endoscopie', id: 'lhote', nom: 'Dr Lhote' },
+  LIAUTARD: { spec: 'endoscopie', id: 'liautard', nom: 'Dr Liautard' },
+  LOUVETY: { spec: 'endoscopie', id: 'louvety', nom: 'Dr Louvety' },
+  MONNIN: { spec: 'endoscopie', id: 'monnin', nom: 'Dr Monnin' },
+  ROLLIN: { spec: 'endoscopie', id: 'rollin', nom: 'Dr Rollin' },
+  RUDLER: { spec: 'endoscopie', id: 'rudler', nom: 'Dr Rudler' },
+  SALOUM: { spec: 'endoscopie', id: 'saloum', nom: 'Dr Saloum' },
+  SUMA: { spec: 'endoscopie', id: 'suma', nom: 'Dr Suma' },
+  VALATS: { spec: 'endoscopie', id: 'valats', nom: 'Dr Valats' },
+  'VERCAMBRE AUFORT': { spec: 'endoscopie', id: 'vercambre-aufort', nom: 'Dr Vercambre' },
+  VERCAMBRE: { spec: 'endoscopie', id: 'vercambre-aufort', nom: 'Dr Vercambre' },
+  DANAN: { spec: 'endoscopie', id: 'danan', nom: 'Dr Danan' },
+  BOYER: { spec: 'endoscopie', id: 'boyer', nom: 'Dr Boyer' },
+  JAOUEN: { spec: 'endoscopie', id: 'jaouen', nom: 'Dr Jaouen' },
+  MONTARIOL: { spec: 'endoscopie', id: 'montariol', nom: 'Dr Montariol' },
+  FABRE: { spec: 'endoscopie', id: 'fabre', nom: 'Dr Fabre' },
+  PARELON: { spec: 'endoscopie', id: 'parelon', nom: 'Dr Parelon' },
+  // Neurochirurgie
+  NOGUES: { spec: 'neurochirurgie', id: 'nogues', nom: 'Dr Nogues' },
+  'MEYER-BISCH': { spec: 'neurochirurgie', id: 'meyer-bisch', nom: 'Dr Meyer-Bisch' },
+  DRAN: { spec: 'neurochirurgie', id: 'dran', nom: 'Dr Dran' },
+  ROLLAND: { spec: 'neurochirurgie', id: 'rolland', nom: 'Dr Rolland' },
+  BLANQUET: { spec: 'neurochirurgie', id: 'blanquet', nom: 'Dr Blanquet' },
+  GHARBI: { spec: 'neurochirurgie', id: 'gharbi', nom: 'Dr Gharbi' },
+  // Chirurgie viscérale
+  MALGOIRE: { spec: 'viscerale', id: 'malgoire', nom: 'Dr Malgoire' },
+  FLAMEIN: { spec: 'viscerale', id: 'flamein', nom: 'Dr Flamein' },
+  PISSAS: { spec: 'viscerale', id: 'pissas', nom: 'Dr Pissas' },
+  // Pneumologie
+  FROMENT: { spec: 'pneumologie', id: 'froment', nom: 'Dr Froment' },
+  'GAUTIER-DECHAUD': { spec: 'pneumologie', id: 'gautier-dechaud', nom: 'Dr Gautier-Déchaud' },
+  MAESTRE: { spec: 'pneumologie', id: 'maestre', nom: 'Dr Maestre' },
+  BUGHIN: { spec: 'pneumologie', id: 'bughin', nom: 'Dr Bughin' },
+  MARCANO: { spec: 'pneumologie', id: 'marcano', nom: 'Dr Marcano' },
+  DEMAZEAU: { spec: 'pneumologie', id: 'demazeau', nom: 'Dr Demazeau' },
+  ADAM: { spec: 'pneumologie', id: 'adam', nom: 'Dr Adam' },
+  // Chirurgie bariatrique : chirurgiens, pas gastro-entérologues (CONSULTATIONS.md, motif FIBRO)
+  LEON: { spec: 'bariatrique', id: 'leon', nom: 'Dr Léon' },
+  WARTHMANN: { spec: 'bariatrique', id: 'warthmann', nom: 'Dr Warthmann' },
+}
+
+// Spécialités, dans l'ordre d'affichage. Les quatre premières = celles de Consultations (mêmes ids
+// et couleurs) ; `bariatrique` et `autres` n'existent que pour la facturation.
+export const SPECIALITES = [
+  { id: 'endoscopie', nom: 'Gastro / Coloscopies', couleur: '#534AB7' },
+  { id: 'neurochirurgie', nom: 'Neurochirurgie', couleur: '#EF9F27' },
+  { id: 'viscerale', nom: 'Chirurgie viscérale', couleur: '#D85A30' },
+  { id: 'pneumologie', nom: 'Pneumologie', couleur: '#1D9E75' },
+  { id: 'bariatrique', nom: 'Chirurgie bariatrique', couleur: '#0E7490' },
+  { id: 'autres', nom: 'Autres chirurgiens (à classer)', couleur: '#7A8B99', aClasser: true },
+]
+
+// Buckets du script : affichés comme des pseudo-spécialités sans praticien, après les vraies.
+export const BUCKETS = [
+  { id: '__consultations', nom: 'Consultations', couleur: '#8C8C86', note: 'consultations et avis facturés, sans séjour opératoire' },
+  { id: '__sans_chirurgien', nom: 'Réa / sans chirurgien', couleur: '#A3A39E', note: 'séjour retrouvé, mais sans chirurgien (réanimation, visites)' },
+  { id: '__sejour_inconnu', nom: 'Séjour non retrouvé', couleur: '#B4B2A9', note: 'séjour absent des exports d\'actes (souvent un acte de l\'année précédente)' },
+  { id: '__a_arbitrer', nom: 'À arbitrer', couleur: '#C2476B', note: 'plusieurs chirurgiens sur le même séjour' },
+]
+
+// « VERCAMBRE AUFORT Lucile » → « VERCAMBRE AUFORT » (les mots tout en majuscules)
+export const nomFamille = (cle) => String(cle || '').split(' ').filter(m => m && m === m.toUpperCase()).join(' ')
+
+/** Le praticien de Consultations correspondant à une clé du script, ou null. */
+export function praticienDe(cle) {
+  if (!cle || cle.startsWith('__')) return null
+  return CHIRURGIENS[nomFamille(cle)] || null
+}
+
+// « GALLET DE SANTERRE Philippe » → « Dr Gallet de Santerre » (nom lisible d'un chirurgien non classé)
+export const libelleChirurgien = (cle) => {
+  const fam = nomFamille(cle)
+  const t = fam.toLowerCase().replace(/(^|[\s-])\S/g, c => c.toUpperCase()).replace(/ De /g, ' de ')
+  return `Dr ${t}`
+}
+
+/**
+ * Construit les spécialités de la page (même forme que CONSULT_SPECIALITES :
+ * { id, nom, couleur, praticiens: [{ id, nom, valeurs: {y: [12]} }] } ou { …, valeurs }) depuis
+ * les séries du store : parChirurgien[y][cle] = [12]. Les chirurgiens non classés deviennent
+ * chacun un praticien de « Autres chirurgiens (à classer) ».
+ */
+export function specialitesFacturation(parChirurgien, annees) {
+  const vide = () => Array(12).fill(0)
+  const specs = SPECIALITES.map(s => ({ ...s, praticiens: [] }))
+  const parId = Object.fromEntries(specs.map(s => [s.id, s]))
+  const prats = new Map() // id praticien → objet
+  const ajouter = (spec, id, nom, y, serie) => {
+    if (!prats.has(id)) {
+      const p = { id, nom, valeurs: {} }
+      prats.set(id, p); parId[spec].praticiens.push(p)
+    }
+    const p = prats.get(id)
+    p.valeurs[y] ||= vide()
+    for (let m = 0; m < 12; m++) p.valeurs[y][m] += serie[m] || 0
+  }
+  const buckets = BUCKETS.map(b => ({ ...b, valeurs: {} }))
+  for (const y of annees) {
+    for (const [cle, serie] of Object.entries(parChirurgien[y] || {})) {
+      if (cle.startsWith('__')) {
+        const b = buckets.find(x => x.id === cle)
+        if (b) b.valeurs[y] = serie.slice()
+        continue
+      }
+      const p = praticienDe(cle)
+      if (p) ajouter(p.spec, p.id, p.nom, y, serie)
+      else ajouter('autres', 'autre:' + cle, libelleChirurgien(cle), y, serie)
+    }
+  }
+  // Ordre stable : praticiens classés par facturé décroissant (toutes années), puis nom
+  const total = (p) => Object.values(p.valeurs).flat().reduce((s, v) => s + v, 0)
+  for (const s of specs) s.praticiens.sort((a, b) => total(b) - total(a) || a.nom.localeCompare(b.nom))
+  return [...specs, ...buckets.filter(b => Object.keys(b.valeurs).length > 0)]
+}

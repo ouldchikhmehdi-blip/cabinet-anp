@@ -186,3 +186,51 @@ supprimée : `delete from compta_soldes where date = '2025-11-06';`
 - Chocolats (Jeff de Brugge, Kovacs) = vie du groupe ; tabliers Cormedica = impression et
   fournitures ; Willis Towers Watson reçu = remboursement reçu. Laissés à la comptable : titre
   CHU, cotisation STAR, parking Gomez, Clinique du Millénaire, Infogem.
+
+## Facturation : facturé / réglé par mois, facturé par chirurgien (onglet « Facturé »)
+
+Source : les justificatifs d'honoraires que la clinique dépose chaque mois dans
+`~/partage/Facturés réglés/<année>/<année>.<mois>/`, un fichier **FAC** (lignes facturées dans le
+mois) et un **RED** (lignes réglées dans le mois, avec la redevance) par associé et par
+établissement (`…&OULD010&MIL&FAC.xlsx` ; le suffixe `(1)` est toléré). Le chirurgien d'une ligne
+facturée n'y figure pas : il est retrouvé par le **numéro de séjour** (`N° Dossier`) dans les exports
+d'actes des associés déposés à la racine de `~/partage/` (`*.xls`, colonnes `sejo.sejo_num_sej`,
+`med0.mede_nom_usu` = chirurgien ou gastro du séjour, jamais l'anesthésiste).
+
+```bash
+# rapport seul (rien en base)
+node compta/facturation.js --annee 2026 --sans-base
+# import (un mois rejoué est effacé puis réécrit dans les deux tables)
+node --env-file=.env compta/facturation.js --annee 2026 [--mois 2026.09]
+```
+
+Options : `--dossier` (défaut `~/partage/Facturés réglés`), `--actes` (défaut `~/partage`), `--sortie`
+(défaut `~/partage/facturation`).
+
+- **Contrôles bloquants** : chaque colonne de montant recolle à la ligne « Total » du fichier
+  (0,05 €) ; attribué + buckets = facturé du mois ; un seul FAC et un seul RED par mois × associé ×
+  établissement ; la période du fichier correspond à son dossier.
+- **Réglé** = Base Conv + Base DH (brut, comparable au facturé) ; la redevance TTC est stockée à part.
+  Tous les établissements comptent (MIL, CLE, STR…), l'établissement est conservé en base.
+- **Buckets** (clés `__…` de `facturation_chirurgiens`) : `__consultations` (code CS, MCS, APC, CSCPA… ou
+  séjour `X…`), `__sans_chirurgien` (séjour retrouvé mais `med0` = anesthésiste : réa, visites),
+  `__sejour_inconnu` (séjour absent des exports, typiquement un acte de l'année précédente facturé en
+  janvier), `__a_arbitrer` (plusieurs chirurgiens). Rien n'est deviné.
+- **Sorties locales, hors dépôt** (elles portent des noms de patients) : `~/partage/facturation/<année>-rapport.md`
+  (agrégats par mois, chirurgiens à classer, cumul par chirurgien) et `<année>-mis-de-cote.xlsx`
+  (une feuille par bucket + « Chirurgiens à classer »). drmoc arbitre, puis on complète
+  `src/data/facturationChirurgiens.js` (nom `med0` → praticien de Consultations) et on relance.
+- **Côté dashboard** : `src/data/facturation.js` (séries `FACTURE`, `REGLE`, `REDEVANCE`, `DH`,
+  `PAR_CHIRURGIEN`, `RENSEIGNE`, `moisActuel`), `src/data/facturationChirurgiens.js` (spécialités de
+  Consultations + « Chirurgie bariatrique » + « Autres chirurgiens (à classer) » + buckets en
+  pseudo-spécialités), pages `src/pages/Facturation{,Mensuel,Chirurgiens}.jsx`. Un mois non importé
+  reste vide, jamais compté comme 0.
+
+| Table | Contenu | Lecture | Écriture |
+|---|---|---|---|
+| `facturation_mensuelle` | une ligne par mois × associé × établissement : facturé (total, DH, AMO, AMC, patient), réglé (total, conv, DH), redevance TTC, nb de lignes, fichiers | `acces_cabinet()` | `is_admin()` (le script écrit en service role) |
+| `facturation_chirurgiens` | une ligne par mois × chirurgien (ou bucket `__…`) : montant facturé, nb de lignes, nb de séjours | `acces_cabinet()` | `is_admin()` |
+
+Interdits identiques au reste du dossier : jamais un nom de patient, un numéro de séjour ni un
+montant réel dans le dépôt, un test, une doc ou un message. Les tests
+(`compta/facturationMoteur.test.js`) n'utilisent que des justificatifs inventés.
