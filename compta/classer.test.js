@@ -293,3 +293,25 @@ describe('sorties', () => {
     expect(md).toContain('est incomplet')
   })
 })
+
+describe('formats 2024 (relevés PDF) : décisions du 2026-10-31', () => {
+  it('motif vide : le motif est lu dans la référence donneur (/REFDO)', () => {
+    expect(cat('VIR CPTE A CPTE EMIS', '/MOTIF /BEN SELARL ALPHA /REFDO COMPLEMENT HONORAIRES ALPHA /REF', -1000))
+      .toMatchObject({ categorie: "Complément d'honoraires", associe: 'AA' })
+  })
+  it('« REMPLACE SDF DR … » = remplacement', () => {
+    expect(cat('VIR SCT INST EMIS', '/MOTIF REMPLACE SDF DR EXEMPLE /BEN EXEMPLE JEAN /REFDO /REF', -900).categorie).toBe('Remplaçant MAR')
+  })
+  it('« PRIME » à un CDI = salaire', () => {
+    expect(cat('VIREMENT SEPA EMIS', '/MOTIF PRIME DURAND /BEN DURAND JEAN /REFDO /REF', -500).categorie).toBe('Salaire IADE CDI')
+  })
+  it('trop-perçu reversé par un salarié : déduit de son coût', () => {
+    expect(cat('VIR SEPA RECU', '/FRM MONSIEUR PETIT /EID /RNF TROP PERCU SALAIRE', 300)).toMatchObject({ categorie: 'Remplaçant IADE (CDD)', regle: 'trop-percu-cdd' })
+    expect(cat('VIR SEPA RECU', '/FRM DURAND JEAN /EID /RNF TROP PERCU', 100)).toMatchObject({ categorie: 'Salaire IADE CDI', regle: 'trop-percu-cdi' })
+  })
+  it('caisses écrites autrement : « C P A M », « CPCAM », CPAM Hérault sans points', () => {
+    expect(cat('VIR SEPA RECU', '/FRM C P A M DU GARD /EID X', 31.5).categorie).toBe('Tiers payant consultations')
+    expect(cat('VIR SEPA RECU', '/FRM CPCAM BOUCHES DU RHONE /EID X', 31.5).categorie).toBe('Tiers payant consultations')
+    expect(cat('VIR SEPA RECU', '/FRM CPAM DE L HERAULT /EID X', 900).categorie).toBe('Versements CPAM hors tiers payant')
+  })
+})

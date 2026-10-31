@@ -191,8 +191,11 @@ export function analyserLibelle(memo) {
   }
   if (m.includes('/MOTIF')) {
     const mo = m.match(/\/MOTIF\s*(.*?)(?:\s*\/BEN\s*(.*))?$/)
-    const motif = (mo?.[1] || '').replace(/\s+/g, ' ').trim()
+    let motif = (mo?.[1] || '').replace(/\s+/g, ' ').trim()
     const beneficiaire = (mo?.[2] || '').split(/\s*\/REF/)[0].replace(/\s+/g, ' ').trim()
+    // Motif vide : certains virements (2024) portent le motif dans la référence donneur
+    // (« /MOTIF /BEN SELARL… /REFDO COMPLEMENT HONORAIRES X /REF »)
+    if (!motif) motif = (m.match(/\/REFDO\s*(.*?)\s*(?:\/REF\b|$)/)?.[1] || '').replace(/\s+/g, ' ').trim()
     return { tiers: beneficiaire || motif, motif, beneficiaire }
   }
   if (/ ECH\//.test(m)) {
@@ -269,8 +272,8 @@ export function classer(ligne, R) {
   const mar = trouver(R._mar, texte)
   // Motifs saisis à la main à la banque : on tolère les coquilles vues sur les relevés
   // (RMPLA, REMOLA, REM0LA ; SALAIRZ, QALAIRE) et les heures sup payées à part.
-  const estRempla = /\bR?E?M[P0O]LA(?:CANT|CEMENT)?\b/i.test(motif) || /REMPLA$/i.test(motif.trim())
-  const estSalaire = /\b[SQ]ALAIR[EZS]?S?\b/i.test(motif) || /\bHEURES? SUP/i.test(motif)
+  const estRempla = /\bR?E?M[P0O]LA(?:CANT|CEMENT|CE)?\b/i.test(motif) || /REMPLA$/i.test(motif.trim())
+  const estSalaire = /\b[SQ]ALAIR[EZS]?S?\b/i.test(motif) || /\bHEURES? SUP/i.test(motif) || /\bPRIMES?\b/i.test(motif)
 
   // 2. Virements reçus : tiers payant, remboursements
   if (credit) {
@@ -286,6 +289,9 @@ export function classer(ligne, R) {
         alerte: assoRecu ? '' : 'associé indéterminable (libellé tronqué)',
       })
     }
+    // Trop-perçu reversé par un salarié : vient en déduction de son coût (décision du 2026-10-31)
+    if (trouver(R._cdd, texte)) return resultat(R, 'Remplaçant IADE (CDD)', { regle: 'trop-percu-cdd', alerte: 'reversement d\'un IADE CDD (trop-perçu) : déduit du coût des CDD' })
+    if (trouver(R._cdi, texte)) return resultat(R, 'Salaire IADE CDI', { regle: 'trop-percu-cdi', alerte: 'reversement d\'un IADE CDI (trop-perçu) : déduit du coût des CDI' })
     if (mar) return resultat(R, 'Remboursement reçu', { regle: 'remboursement-remplacant', alerte: `remboursement reçu d'un remplaçant MAR (${mar.nom})` })
     if (/\bREMB/i.test(motif)) return resultat(R, 'Remboursement reçu', { regle: 'remboursement-motif', alerte: 'remboursement reçu, émetteur à préciser' })
     return resultat(R, A_ARBITRER, { regle: '', alerte: 'virement reçu d\'un tiers inconnu' })

@@ -83,7 +83,10 @@
     "BENBAKHTI",
     "PLANCHE",
     "BOUERY",
-    "FANJAUD"
+    "FANJAUD",
+    "GIL FREDERIQUE",
+    "LUCERI",
+    "GOMEZ"
   ],
   "mar_remplacants": [
     "DELBERT",
@@ -104,9 +107,12 @@
     "LEROUX",
     "CHAIX",
     "LANCELOT",
-    "HAMMANI"
+    "HAMMANI",
+    "ROMAN",
+    "BEAUFILS",
+    "BOICHAT"
   ],
-  "caisses_tiers_payant": "CPAM|C\\.P\\.A\\.M|\\bMSA\\b|MUTUALITE SOCIALE|CGSS|CCSS|C\\.?N\\.?M\\.?S\\.?S|CAMIEG|MGEN|MUTUELLE|\\bMGP\\b|\\bCPR\\b|C\\.?R\\.?P\\.?C\\.?E\\.?N|\\bENIM\\b|SENAT|ASSEMBLEE NATIONALE|\\bMINES\\b|CPRPF|INTERIALE|RELYENS|YVELIN|CAISSE DE PREVOYANCE|CAISSE GENERALE|VILLE DE MONTPELLIER|SECURITE SOCIALE|CAVIMAC|CCAS DE LA RATP",
+  "caisses_tiers_payant": "CPAM|C\\.P\\.A\\.M|C P A M|CPCAM|\\bMSA\\b|MUTUALITE SOCIALE|CGSS|CCSS|C\\.?N\\.?M\\.?S\\.?S|CAMIEG|MGEN|MUTUELLE|\\bMGP\\b|\\bCPR\\b|C\\.?R\\.?P\\.?C\\.?E\\.?N|\\bENIM\\b|SENAT|ASSEMBLEE NATIONALE|\\bMINES\\b|CPRPF|INTERIALE|RELYENS|YVELIN|CAISSE DE PREVOYANCE|CAISSE GENERALE|VILLE DE MONTPELLIER|SECURITE SOCIALE|CAVIMAC|CCAS DE LA RATP",
   "tiers_payant_montant_max": 500,
   "commercants_carte": "PETIT JARDIN|AU BUREAU|BRASSEURS|GROUPE LAGRANGE|AKS2|L ATELIER|CLICKEAT",
   "regles": [
@@ -122,7 +128,7 @@
       "id": "cpam-herault-hors-tiers-payant",
       "quand": {
         "sens": "credit",
-        "tiers": "^C\\.P\\.A\\.M\\. DE L HERAULT",
+        "tiers": "^C\\.?P\\.?A\\.?M\\.? DE L HERAULT",
         "montant_min": 500.01
       },
       "categorie": "Versements CPAM hors tiers payant"
@@ -320,6 +326,106 @@
       "associe": "YC"
     },
     {
+      "id": "kovacs-chocolats",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^KOVACS"
+      },
+      "categorie": "Vie du groupe et réceptions"
+    },
+    {
+      "id": "cormedica",
+      "quand": {
+        "sens": "debit",
+        "beneficiaire": "^CORMEDICA"
+      },
+      "categorie": "Impression et fournitures"
+    },
+    {
+      "id": "willis-towers-watson-recu",
+      "quand": {
+        "sens": "credit",
+        "tiers": "^WILLIS TOWERS WATSON"
+      },
+      "categorie": "Remboursement reçu"
+    },
+    {
+      "id": "complement-2024-05-16-eh",
+      "quand": {
+        "fitid": "bnp-117c00464ec1e6-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "EH"
+    },
+    {
+      "id": "complement-2024-05-16-fxd",
+      "quand": {
+        "fitid": "bnp-1a0d7551c2dadd-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "FXD"
+    },
+    {
+      "id": "complement-2024-05-16-ba",
+      "quand": {
+        "fitid": "bnp-1b03843abffb29-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "BA"
+    },
+    {
+      "id": "complement-2024-05-16-moc",
+      "quand": {
+        "fitid": "bnp-125d69b0dc5d29-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "MOC"
+    },
+    {
+      "id": "complement-2024-05-16-mp",
+      "quand": {
+        "fitid": "bnp-0c87de1a634c77-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "MP"
+    },
+    {
+      "id": "complement-2024-05-16-ff",
+      "quand": {
+        "fitid": "bnp-1a76e0dfcf12cd-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "FF",
+      "alerte": "bénéficiaire tronqué : associé attribué par élimination (validé par drmoc le 2026-10-31)"
+    },
+    {
+      "id": "complement-2024-05-16-rc",
+      "quand": {
+        "fitid": "bnp-1d509e60159c35-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "RC",
+      "alerte": "bénéficiaire tronqué : associé attribué par élimination (validé par drmoc le 2026-10-31)"
+    },
+    {
+      "id": "complement-2024-05-16-yc",
+      "quand": {
+        "fitid": "bnp-1d509e60159c35-1"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "YC",
+      "alerte": "bénéficiaire tronqué : associé attribué par élimination (validé par drmoc le 2026-10-31)"
+    },
+    {
+      "id": "complement-2024-07-19-ff",
+      "quand": {
+        "fitid": "bnp-1e88fee18de7d9-0"
+      },
+      "categorie": "Complément d'honoraires",
+      "associe": "FF",
+      "alerte": "bénéficiaire tronqué : associé attribué par élimination (validé par drmoc le 2026-10-31)"
+    },
+    {
       "id": "adspl",
       "quand": {
         "sens": "debit",
@@ -339,7 +445,7 @@
       "id": "jeff-de-bruges",
       "quand": {
         "sens": "debit",
-        "beneficiaire": "^JEFF DE BRUGES"
+        "beneficiaire": "^JEFF DE BRUG"
       },
       "categorie": "Vie du groupe et réceptions"
     },

@@ -59,6 +59,22 @@ Sorties :
 
 CSV : séparateur `;`, virgule décimale, UTF-8 avec BOM (s'ouvre directement dans Excel en français).
 
+## Relevés anciens en PDF (historique non téléchargeable en CSV/OFX)
+
+`node compta/pdf-vers-csv.js <releves.pdf> --avant AAAA-MM-JJ --sortie <fichier.csv>` lit les
+relevés PDF BNP (« RELEVE DE VOTRE COMPTE COURANT EN EURO », via `pdftotext -layout`) et écrit un
+CSV au format du CSV natif BNP, à importer ensuite par la page comme n'importe quel relevé.
+
+- **Contrôle bloquant** : pour chaque relevé, débits et crédits lus = « TOTAL DES OPERATIONS »,
+  solde de début + crédits − débits = solde de fin, et enchaînement des soldes d'un relevé au
+  suivant. Au moindre centime d'écart, rien n'est écrit.
+- **`--avant`** : couper à la date où commence un relevé déjà importé (ex. le début de l'OFX).
+  Les libellés PDF sont découpés autrement que ceux de l'OFX/CSV : le dédoublonnage par libellé
+  n'est pas garanti sur la période commune, d'où la coupe nette.
+- En-tête du CSV sans solde : un relevé ancien ne doit pas devenir l'ancre des soldes.
+- 2024 (fait le 2026-10-31) : 35 relevés, contrôle juste au centime ; décembre 2024, déjà en base
+  via l'OFX, retrouvé à l'identique (103 opérations, mêmes dates et montants) → coupe au 2024-11-30.
+
 ## Comment le script lit une ligne
 
 Chaque ligne donne `type` (le `NAME` de l'OFX = le libellé court du CSV : `VIR SEPA RECU`,
@@ -157,3 +173,16 @@ supprimée : `delete from compta_soldes where date = '2025-11-06';`
   reçus = « Remboursement reçu » ; Benbakhti, Planche, Bouery, Fanjaud = IADE CDD ;
   Hammani = MAR ; « REGULARISATION 2025 » = Régularisation ; les trois reliquats tronqués du
   11/04/2025 = Fedide, Chouki, Coisel (déduits par symétrie, validé par drmoc).
+
+## Décisions de classement (2026-10-31, relevés 2024)
+
+- 16/05/2024, 10 000 € à chacun des 8 associés (motif « VIR SDF » ou vide) = complément
+  d'honoraires ; bénéficiaires tronqués attribués par élimination (FF, RC, YC) ; 19/07/2024,
+  7 500 € tronqué = complément FF (règles `fitid`).
+- Motif vide : le moteur lit le motif dans la référence donneur (`/REFDO`).
+- ROMAN (François-Xavier), BEAUFILS, BOICHAT = MAR ; GIL Frédérique, LUCERI, GOMEZ = IADE CDD.
+- « PRIME » à un CDI = Salaire IADE CDI ; trop-perçu reversé par un salarié = déduit de son
+  coût (catégorie de son salaire, montant positif).
+- Chocolats (Jeff de Brugge, Kovacs) = vie du groupe ; tabliers Cormedica = impression et
+  fournitures ; Willis Towers Watson reçu = remboursement reçu. Laissés à la comptable : titre
+  CHU, cotisation STAR, parking Gomez, Clinique du Millénaire, Infogem.
