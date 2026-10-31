@@ -32,6 +32,10 @@ describe('bornes', () => {
     expect(domain[0]).toBeLessThanOrEqual(20000)
     expect(domain[1]).toBeGreaterThan(20000)
     expect(bornes([null, undefined])).toEqual({})
+    expect(bornes([0, 0, 0])).toEqual({})
+    expect(bornes([], { depuis0: true })).toEqual({})
+    expect(echelle([{ mois: 'Jan', 2025: 0, 2026: null }])).toEqual({})
+    expect(echelle([{ mois: 'Jan', fixe: 0, variable: 0 }], { empile: true })).toEqual({})
   })
 })
 

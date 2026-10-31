@@ -12,18 +12,23 @@ export function bornes(valeurs, { depuis0 = false } = {}) {
   if (v.length === 0) return {}
   const min = Math.min(...v)
   const max = Math.max(...v)
+  // Que des 0 (catégorie vide sur la période) : échelle par défaut de Recharts
+  if (min === 0 && max === 0) return {}
   const ecart = max - min || Math.abs(max) || 1
   let bas = min - ecart * 0.05
   let haut = max + ecart * 0.05
   // 0 gardé quand les valeurs en sont proches (moins d'un quart de l'écart)
   if (min >= 0 && min - ecart * 0.25 < 0) bas = 0
   if (max <= 0 && max + ecart * 0.25 > 0) haut = 0
+  if (!(haut > bas)) haut = bas + (Math.abs(bas) || 1)
   // Pas candidats autour de l'écart ; préférés : 1 et 5 × 10ⁿ avec 3 à 6 intervalles, puis 2 × 10ⁿ
   const intervalles = (p) => Math.ceil(haut / p) - Math.floor(bas / p)
   const e0 = Math.floor(Math.log10(haut - bas))
   const candidats = [e0 - 2, e0 - 1, e0, e0 + 1].flatMap(e => [1, 2, 5].map(k => ({ k, p: k * 10 ** e })))
   const ok = (c) => intervalles(c.p) >= 3 && intervalles(c.p) <= 6
-  const pas = (candidats.find(c => c.k !== 2 && ok(c)) || candidats.find(ok) || candidats.find(c => intervalles(c.p) <= 6)).p
+  const choix = candidats.find(c => c.k !== 2 && ok(c)) || candidats.find(ok) || candidats.find(c => intervalles(c.p) <= 6)
+  if (!choix) return {} // filet : jamais de plantage de page pour une graduation
+  const pas = choix.p
   const debut = Math.floor(bas / pas)
   const n = Math.max(1, Math.ceil(haut / pas) - debut)
   const ticks = Array.from({ length: n + 1 }, (_, i) => Number(((debut + i) * pas).toPrecision(12)))
