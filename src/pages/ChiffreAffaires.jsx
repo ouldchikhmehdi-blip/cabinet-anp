@@ -107,6 +107,12 @@ export default function ChiffreAffaires() {
         </div>
       </div>
 
+      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: -6 }}>
+        CA = <strong>versements de la clinique</strong> (honoraires reçus du compte médecins du Millénaire et de Clémentville)
+        + <strong>tiers payant</strong> (CPAM, MSA, mutuelles et autres caisses) + versements CPAM hors tiers payant
+        (permanence des soins, forfaits). Les remboursements reçus sont à part, en bas de page.
+      </div>
+
       <EtatCompta etat={etat} />
 
       <PeriodeFilter
