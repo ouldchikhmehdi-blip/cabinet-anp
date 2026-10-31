@@ -227,10 +227,12 @@ dashboard masque les chirurgiens à 0 € sur toutes les années.
   établissement ; la période du fichier correspond à son dossier.
 - **Réglé** = Base Conv + Base DH (brut, comparable au facturé) ; la redevance TTC est stockée à part.
   Tous les établissements comptent (MIL, CLE, STR…), l'établissement est conservé en base.
-- **Buckets** (clés `__…` de `facturation_chirurgiens`) : `__consultations` (code CS, MCS, APC, CSCPA… ou
-  séjour `X…`), `__sans_chirurgien` (séjour retrouvé mais `med0` = anesthésiste : réa, visites),
+- **Buckets** (clés `__…` de `facturation_chirurgiens`) : `__reanimation` (Réanimation / USC :
+  codes YYYY015 et YYYY020 = réanimation et soins intensifs, JVJ… = dialyse, quel que soit le séjour ;
+  décision drmoc du 2026-10-31), `__consultations` (code CS, MCS, APC, CSCPA… ou séjour `X…`),
   `__sejour_inconnu` (séjour absent des exports, typiquement un acte de l'année précédente facturé en
-  janvier), `__a_arbitrer` (plusieurs chirurgiens). Rien n'est deviné.
+  janvier), `__a_arbitrer` (plusieurs chirurgiens, nom illisible, ou séjour où seul un anesthésiste
+  est noté). Rien n'est deviné. L'ancien `__sans_chirurgien` est remis à 0 € en base et masqué.
 - **Sorties locales, hors dépôt** (elles portent des noms de patients) : `~/partage/facturation/<année>-rapport.md`
   (agrégats par mois, chirurgiens à classer, cumul par chirurgien) et `<année>-mis-de-cote.xlsx`
   (une feuille par bucket + « Chirurgiens à classer »). drmoc arbitre, puis on complète

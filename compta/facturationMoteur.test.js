@@ -92,7 +92,10 @@ describe('indexerSejours / attribuer', () => {
     expect(attribuer({ sejour: 'H1', code: 'CSCPA' }, index).cle).toBe(BUCKETS.consultations)
     expect(attribuer({ sejour: 'X9', code: 'ZZLP025' }, index).cle).toBe(BUCKETS.consultations)
     expect(attribuer({ sejour: 'H2', code: 'HHFE002' }, index).cle).toBe(BUCKETS.sejourInconnu)
-    expect(attribuer({ sejour: 'H3', code: 'YYYY015' }, index).cle).toBe(BUCKETS.sansChirurgien)
+    expect(attribuer({ sejour: 'H3', code: 'YYYY015' }, index).cle).toBe(BUCKETS.reanimation)
+    expect(attribuer({ sejour: 'H1', code: 'YYYY020' }, index).cle).toBe(BUCKETS.reanimation) // même sur un séjour avec chirurgien
+    expect(attribuer({ sejour: 'H2', code: 'JVJF005' }, index).cle).toBe(BUCKETS.reanimation) // dialyse
+    expect(attribuer({ sejour: 'H3', code: 'HHFE002' }, index)).toMatchObject({ cle: BUCKETS.aArbitrer, motif: expect.stringMatching(/sans chirurgien/) })
     expect(attribuer({ sejour: 'H4', code: 'LDFA002' }, index).cle).toBe(BUCKETS.aArbitrer)
   })
   it('lireActes lit les colonnes par nom', () => {
@@ -114,11 +117,11 @@ describe('agreger', () => {
     const par = Object.fromEntries(r.chirurgiens.map(c => [c.chirurgien, c]))
     expect(par['NOGUES Laurent']).toMatchObject({ montant: 120, nb_lignes: 2, nb_sejours: 1 })
     expect(par[BUCKETS.consultations].montant).toBe(40)
-    expect(par[BUCKETS.sansChirurgien].montant).toBe(96)
+    expect(par[BUCKETS.reanimation].montant).toBe(96)
     expect(par[BUCKETS.sejourInconnu].montant).toBe(50)
   })
   it('met de côté tout sauf les consultations, et contrôle attribué + buckets = facturé', () => {
-    expect(r.misDeCote.map(l => l.bucket).sort()).toEqual([BUCKETS.sansChirurgien, BUCKETS.sejourInconnu].sort())
+    expect(r.misDeCote.map(l => l.bucket)).toEqual([BUCKETS.sejourInconnu])
     expect(r.controle[0]).toMatchObject({ mois: '2026-03', facture: 306, attribue: 120 })
   })
   it('refuse deux FAC pour le même mois × associé × établissement', () => {
@@ -177,7 +180,7 @@ describe('completerParCpa', () => {
   })
   it('met de côté ce qui est douteux', () => {
     expect(attribuer({ sejour: 'H2', code: 'HHFE002' }, idx)).toMatchObject({ cle: BUCKETS.aArbitrer })
-    expect(attribuer({ sejour: 'H3', code: 'HHFE002' }, idx).cle).toBe(BUCKETS.sansChirurgien)
+    expect(attribuer({ sejour: 'H3', code: 'HHFE002' }, idx).cle).toBe(BUCKETS.aArbitrer)
     expect(idx.has('H4')).toBe(false)
     expect([...idx.get('H9')]).toEqual(['NOGUES Laurent'])
     expect(viaCpa.has('H9') || idx.has('X5')).toBe(false)

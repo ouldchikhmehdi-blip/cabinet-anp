@@ -79,9 +79,9 @@ export const SPECIALITES = [
 // Buckets du script : affichés comme des pseudo-spécialités sans praticien, après les vraies.
 export const BUCKETS = [
   { id: '__consultations', nom: 'Consultations', couleur: '#8C8C86', note: 'consultations et avis facturés, sans séjour opératoire' },
-  { id: '__sans_chirurgien', nom: 'Réa / sans chirurgien', couleur: '#A3A39E', note: 'séjour retrouvé, mais sans chirurgien (réanimation, visites)' },
+  { id: '__reanimation', nom: 'Réanimation / USC', couleur: '#0E7490', note: 'actes de réanimation et de soins intensifs (YYYY015, YYYY020) et dialyses (JVJ…), quel que soit le séjour' },
   { id: '__sejour_inconnu', nom: 'Séjour non retrouvé', couleur: '#B4B2A9', note: 'séjour absent des exports d\'actes (souvent un acte de l\'année précédente)' },
-  { id: '__a_arbitrer', nom: 'À arbitrer', couleur: '#C2476B', note: 'plusieurs chirurgiens possibles, ou nom de chirurgien illisible dans la consultation' },
+  { id: '__a_arbitrer', nom: 'À arbitrer', couleur: '#C2476B', note: 'plusieurs chirurgiens possibles, nom de chirurgien illisible, ou séjour où seul un anesthésiste est noté' },
 ]
 
 // « VERCAMBRE AUFORT Lucile » → « VERCAMBRE AUFORT » (les mots tout en majuscules)
@@ -142,5 +142,6 @@ export function specialitesFacturation(parChirurgien, annees) {
   // Un chirurgien à 0 € sur toutes les années (lignes annulées, ou remis à zéro après un meilleur
   // rattachement) n'est pas affiché
   for (const s of specs) s.praticiens = s.praticiens.filter(p => total(p) !== 0).sort((a, b) => total(b) - total(a) || a.nom.localeCompare(b.nom))
-  return [...specs, ...buckets.filter(b => Object.keys(b.valeurs).length > 0)]
+  // Bucket affiché s'il porte un montant (un ancien bucket remis à 0 € disparaît)
+  return [...specs, ...buckets.filter(b => Object.values(b.valeurs).flat().some(v => v !== 0))]
 }

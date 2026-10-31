@@ -93,13 +93,13 @@ const eur = (v) => Math.round(v).toLocaleString('fr-FR') + ' €'
 const pct = (a, b) => b ? Math.round(a / b * 100) + ' %' : '–'
 const lignesRapport = [`# Facturation ${annee} — rapport du ${new Date().toISOString().slice(0, 10)}`, '',
   `${justificatifs.length} fichiers lus (${justificatifs.filter(j => j.type === 'FAC').length} FAC, ${justificatifs.filter(j => j.type === 'RED').length} RED), ${indexActes.size} séjours dans les exports d'actes, ${cpas.length} CPA, ${viaCpa.size} séjours rattachés par la CPA.`, '',
-  '| Mois | Facturé | Réglé | Redevance TTC | Attribué | dont par la CPA | Consultations | Sans chirurgien | Séjour inconnu | À arbitrer |', '|---|---|---|---|---|---|---|---|---|---|']
+  '| Mois | Facturé | Réglé | Redevance TTC | Attribué | dont par la CPA | Consultations | Réanimation / USC | Séjour inconnu | À arbitrer |', '|---|---|---|---|---|---|---|---|---|---|']
 for (const c of r.controle) {
   const [y, m] = c.mois.split('-').map(Number)
   const men = r.mensuel.filter(x => x.annee === y && x.mois === m)
   const regle = men.reduce((s, x) => s + x.regle_total, 0), redev = men.reduce((s, x) => s + x.redevance_ttc, 0)
   const b = c.buckets
-  lignesRapport.push(`| ${y}-${String(m).padStart(2, '0')} | ${eur(c.facture)} | ${eur(regle)} | ${eur(redev)} | ${eur(c.attribue)} (${pct(c.attribue, c.facture)}) | ${eur(c.parCpa)} | ${eur(b.__consultations || 0)} | ${eur(b.__sans_chirurgien || 0)} | ${eur(b.__sejour_inconnu || 0)} | ${eur(b.__a_arbitrer || 0)} |`)
+  lignesRapport.push(`| ${y}-${String(m).padStart(2, '0')} | ${eur(c.facture)} | ${eur(regle)} | ${eur(redev)} | ${eur(c.attribue)} (${pct(c.attribue, c.facture)}) | ${eur(c.parCpa)} | ${eur(b.__consultations || 0)} | ${eur(b.__reanimation || 0)} | ${eur(b.__sejour_inconnu || 0)} | ${eur(b.__a_arbitrer || 0)} |`)
 }
 const cumul = {}
 for (const c of r.chirurgiens) if (!estBucket(c.chirurgien)) cumul[c.chirurgien] = (cumul[c.chirurgien] || 0) + c.montant
@@ -112,7 +112,7 @@ writeFileSync(join(sortie, `${annee}-rapport.md`), lignesRapport.join('\n') + '\
 
 const wb = XLSX.utils.book_new()
 const colonnes = (l) => ({ Mois: `${l.annee}-${String(l.mois).padStart(2, '0')}`, Associé: l.associe, Établissement: l.etablissement, Motif: l.motif, 'N° séjour': l.sejour, Nom: l.nom, Prénom: l.prenom, 'Code acte': l.code, 'Date acte': l.dateActe, 'Date facture': l.date, 'Mt DH': l.dh, 'Mt AMO': l.amo, 'Mt AMC': l.amc, 'Mt Pat': l.pat, 'Mt Total': l.total })
-const ongletsMisDeCote = [['Séjour non retrouvé', '__sejour_inconnu'], ['Sans chirurgien', '__sans_chirurgien'], ['À arbitrer', '__a_arbitrer']]
+const ongletsMisDeCote = [['Séjour non retrouvé', '__sejour_inconnu'], ['À arbitrer', '__a_arbitrer']]
 for (const [nom, bucket] of ongletsMisDeCote) {
   const lignes = r.misDeCote.filter(l => l.bucket === bucket).map(colonnes)
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignes.length ? lignes : [{ Info: 'aucune ligne' }]), nom)

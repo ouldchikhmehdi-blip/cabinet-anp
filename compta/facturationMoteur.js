@@ -18,13 +18,17 @@ export const ANESTHESISTES = [
 
 export const BUCKETS = {
   consultations: '__consultations',   // consultation ou avis (code CS…, séjour externe X…)
-  sansChirurgien: '__sans_chirurgien', // séjour retrouvé, mais sans chirurgien (réa, visites)
+  reanimation: '__reanimation',       // actes de réanimation / soins intensifs et dialyses, quel que soit le séjour
   sejourInconnu: '__sejour_inconnu',   // séjour absent des exports d'actes (ex. acte de l'année précédente)
   aArbitrer: '__a_arbitrer',           // plusieurs chirurgiens sur le séjour
 }
 export const estBucket = (cle) => typeof cle === 'string' && cle.startsWith('__')
 
 export const CODES_CONSULTATION = /^(CS|MCS|MPC|APC|CSCPA|MCSCPA|APCCPA|MPCCPA|MPCMCS)$/i
+// Réanimation / USC (décision drmoc, 2026-10-31) : YYYY015 et YYYY020 = actes de réanimation et de
+// soins intensifs ; JVJ… = épuration extrarénale (dialyse) cotée en réanimation. Comptés à part, pas
+// sur le chirurgien du séjour.
+export const CODES_REANIMATION = /^(YYYY015|YYYY020|JVJ[A-Z]\d{3})$/i
 
 const sansAccents = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
 const propre = (s) => sansAccents(s).replace(/\s+/g, ' ').trim()
@@ -299,7 +303,7 @@ export function completerParCpa(index, lignesFac, cpas, annuaire) {
   // Un séjour = un patient et une fenêtre de dates (toutes ses lignes)
   const sejours = new Map()
   for (const l of lignesFac) {
-    if (!l.sejour || index.has(l.sejour) || CODES_CONSULTATION.test(l.code) || /^X/i.test(l.sejour)) continue
+    if (!l.sejour || index.has(l.sejour) || CODES_CONSULTATION.test(l.code) || CODES_REANIMATION.test(l.code) || /^X/i.test(l.sejour)) continue
     const debut = l.entree || l.dateActe, fin = l.sortie || l.dateActe
     const s = sejours.get(l.sejour)
     if (!s) sejours.set(l.sejour, { nom: l.nom, prenom: l.prenom, debut, fin })
@@ -321,10 +325,11 @@ export function completerParCpa(index, lignesFac, cpas, annuaire) {
 
 /** À qui va une ligne facturée : { cle, motif }. `cle` = chirurgien normalisé ou bucket. */
 export function attribuer(ligne, index) {
+  if (CODES_REANIMATION.test(ligne.code)) return { cle: BUCKETS.reanimation, motif: 'réanimation / USC' }
   if (CODES_CONSULTATION.test(ligne.code) || /^X/i.test(ligne.sejour)) return { cle: BUCKETS.consultations, motif: 'consultation' }
   const chirs = index.get(ligne.sejour)
   if (!chirs) return { cle: BUCKETS.sejourInconnu, motif: 'séjour absent des exports d\'actes' }
-  if (chirs.size === 0) return { cle: BUCKETS.sansChirurgien, motif: 'séjour sans chirurgien (réa, visites)' }
+  if (chirs.size === 0) return { cle: BUCKETS.aArbitrer, motif: 'séjour sans chirurgien identifié (seul un anesthésiste est noté)' }
   const illisibles = [...chirs].filter(c => c.startsWith('?'))
   if (illisibles.length) return { cle: BUCKETS.aArbitrer, motif: `chirurgien illisible dans la CPA : ${illisibles.map(c => c.slice(1) || '(vide)').join(', ')}` }
   if (chirs.size > 1) return { cle: BUCKETS.aArbitrer, motif: `plusieurs chirurgiens : ${[...chirs].join(', ')}` }
@@ -364,7 +369,7 @@ export function agreger(justificatifs, index, { viaCpa = new Set() } = {}) {
         ch.montant = arrondi(ch.montant + l.total); ch.nb_lignes += 1; ch.sejours.add(l.sejour)
         if (estBucket(cle)) {
           c.buckets[cle] = arrondi((c.buckets[cle] || 0) + l.total)
-          if (cle !== BUCKETS.consultations) misDeCote.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, bucket: cle, motif, ...l })
+          if (cle !== BUCKETS.consultations && cle !== BUCKETS.reanimation) misDeCote.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, bucket: cle, motif, ...l })
         } else {
           c.attribue = arrondi(c.attribue + l.total)
           if (viaCpa.has(l.sejour)) c.parCpa = arrondi(c.parCpa + l.total)
