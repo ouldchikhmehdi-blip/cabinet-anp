@@ -2,6 +2,8 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
+import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -57,9 +59,15 @@ export default function RemplacantsMAR() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Remplaçants MAR</h1>
-        <span style={{ fontSize: 11, background: '#FAECE7', color: '#712B13', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
-          Honoraires directs
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, background: '#FAECE7', color: '#712B13', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>
+            Honoraires directs
+          </span>
+          <BoutonExport
+            exports={[entreeReleve({ page: 'remplacants-mar', transactions: etat.transactions, years, de, a, filtre: t => t.categorie === 'Remplaçant MAR' || t.categorie === 'Frais de remplaçant' })]}
+            disabled={masque}
+          />
+        </div>
       </div>
 
       <EtatCompta etat={etat} />

@@ -26,7 +26,7 @@ import { chargerDocRegles, chargerTransactions, chargerSoldes } from './comptaAp
 import { groupeDe, TAXONOMIE } from './categories'
 
 const VIDE = () => Array(12).fill(0)
-const CAT_CA = ['Honoraires clinique', 'Tiers payant consultations', 'Versements CPAM hors tiers payant']
+export const CAT_CA = ['Honoraires clinique', 'Tiers payant consultations', 'Versements CPAM hors tiers payant']
 const GROUPES_CHARGES = ['Remplaçants', 'Salariés', 'Charges sociales et fiscales', 'Fonctionnement']
 const PALETTE = ['#534AB7', '#1D9E75', '#D85A30', '#EF9F27', '#0C447C', '#712B13', '#633806', '#3C3489', '#085041', '#A32D2D', '#444441', '#8C8C86', '#2B7FB8']
 
@@ -227,3 +227,39 @@ export function reglesDeCategorie(doc, categorie) {
   }
   return out
 }
+
+// ---- Export des lignes du relevé : une feuille par année ----
+
+/**
+ * Lignes bancaires qui composent ce que montre une page, prêtes pour l'export Excel :
+ * une feuille par année de `years` (ordre chronologique), mois de..a, triées par date,
+ * filtrées par `filtre(t)`, terminées par une ligne TOTAL. Montant signé (crédit +, débit −).
+ */
+export function feuillesReleve(transactions, { years, de = 0, a = 11, filtre = () => true }) {
+  return [...years].sort((x, y) => x - y).map(y => {
+    const lignes = transactions
+      .filter(t => t.date.startsWith(`${y}-`) && filtre(t))
+      .filter(t => { const m = Number(t.date.slice(5, 7)) - 1; return m >= de && m <= a })
+      .sort((x, z) => x.date.localeCompare(z.date) || String(x.fitid).localeCompare(String(z.fitid)))
+      .map(t => ({
+        Date: t.date.split('-').reverse().join('/'),
+        Libellé: t.libelle || '',
+        Tiers: t.tiers || '',
+        Montant: Number(t.montant),
+        Groupe: t.groupe || '',
+        Catégorie: t.categorie || '',
+        Associé: t.associe || '',
+        Règle: t.regle || '',
+        Alerte: t.alerte || '',
+        Fichier: t.fichier || '',
+      }))
+    if (lignes.length) {
+      const total = Math.round(lignes.reduce((s, l) => s + l.Montant, 0) * 100) / 100
+      lignes.push({ Date: 'TOTAL', Libellé: `${lignes.length} ligne${lignes.length > 1 ? 's' : ''}`, Tiers: '', Montant: total, Groupe: '', Catégorie: '', Associé: '', Règle: '', Alerte: '', Fichier: '' })
+    }
+    return { nom: String(y), lignes }
+  })
+}
+
+// Groupes des pages Dépenses (débits) : mêmes que series.DEPENSES
+export const GROUPES_DEPENSES = ['Charges sociales et fiscales', 'Fonctionnement', 'Investissements']

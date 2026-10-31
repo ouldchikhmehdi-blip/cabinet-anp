@@ -2,6 +2,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
@@ -91,7 +92,8 @@ export default function Retrocessions() {
       return { nomFichier: `virements-associes_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'Virements associés' }
     }
   }]
-  // BoutonExport ne gère qu'une feuille par export : le détail par associé est un 2e export du menu.
+  // Le détail par associé est un 2e export du menu.
+  exportsRetro.push(entreeReleve({ page: 'virements-associes', transactions: etat.transactions, years, de, a, filtre: t => t.groupe === 'Associés' }))
   if (initiales.length > 0) {
     exportsRetro.push({
       label: `Par associé · ${primary}`,

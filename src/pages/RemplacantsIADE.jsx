@@ -2,6 +2,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
@@ -66,6 +67,7 @@ export default function RemplacantsIADE() {
       return { nomFichier: `remplacants-iade_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'Remplaçants IADE' }
     }
   }]
+  exportsIADE.push(entreeReleve({ page: 'remplacants-iade', transactions: etat.transactions, years, de, a, filtre: t => t.categorie === 'Remplaçant IADE (CDD)' }))
 
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }

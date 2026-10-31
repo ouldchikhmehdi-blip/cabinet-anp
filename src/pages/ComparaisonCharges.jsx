@@ -3,15 +3,17 @@ import { BarChart, Bar, LineChart, Line, ComposedChart, Cell, XAxis, YAxis, Cart
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
+import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
 // Les trois postes du personnel, mêmes couleurs que leurs sous-onglets.
 const POSTES = [
-  { id: 'cdi', label: 'Salariés CDI', serie: 'SALAIRES_CDI', couleur: '#534AB7' },
-  { id: 'iade', label: 'Rempla IADE', serie: 'REMPL_IADE', couleur: '#EF9F27' },
-  { id: 'mar', label: 'Rempla MAR', serie: 'REMPL_MAR', couleur: '#D85A30' },
+  { id: 'cdi', label: 'Salariés CDI', serie: 'SALAIRES_CDI', couleur: '#534AB7', categories: ['Salaire IADE CDI'] },
+  { id: 'iade', label: 'Rempla IADE', serie: 'REMPL_IADE', couleur: '#EF9F27', categories: ['Remplaçant IADE (CDD)'] },
+  { id: 'mar', label: 'Rempla MAR', serie: 'REMPL_MAR', couleur: '#D85A30', categories: ['Remplaçant MAR', 'Frais de remplaçant'] },
 ]
 
 const ACCENT_CUMUL = '#534AB7'
@@ -98,7 +100,13 @@ export default function ComparaisonCharges() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 18, fontWeight: 500 }}>Comparaison CDI · rempla IADE · rempla MAR</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Comparaison CDI · rempla IADE · rempla MAR</h1>
+        <BoutonExport
+          exports={[entreeReleve({ label: 'Lignes du relevé des postes cochés', page: 'charges-salariales', transactions: etat.transactions, years, de, a, filtre: t => postes.some(p => p.categories.includes(t.categorie)) })]}
+          disabled={masque}
+        />
+      </div>
 
       <EtatCompta etat={etat} />
 

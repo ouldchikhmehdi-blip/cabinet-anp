@@ -2,6 +2,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
+import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -76,6 +78,10 @@ export default function VueGlobale() {
           color: 'var(--color-primary-dark)', padding: '3px 10px',
           borderRadius: 20, fontWeight: 500
         }}>SARM · 8 associés</span>
+        <BoutonExport
+          exports={[entreeReleve({ label: 'Tout le relevé (une feuille par année)', page: 'complet', transactions: etat.transactions, years, de, a })]}
+          disabled={masque}
+        />
       </div>
 
       <EtatCompta etat={etat} />

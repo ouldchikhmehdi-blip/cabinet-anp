@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { exporterExcel } from '../utils/export'
+import { exporterExcel, exporterClasseur } from '../utils/export'
 
-// exports = [{ label, build }] où build() renvoie { nomFichier, lignes, feuille }
+// exports = [{ label, build }] où build() renvoie { nomFichier, lignes, feuille } (une feuille)
+// ou { nomFichier, feuilles: [{ nom, lignes }] } (plusieurs feuilles, ex. une par année)
 export default function BoutonExport({ exports, disabled = false }) {
   const [ouvert, setOuvert] = useState(false)
 
   const lancer = (entry) => {
-    const { nomFichier, lignes, feuille } = entry.build()
-    exporterExcel(nomFichier, lignes, feuille)
+    const { nomFichier, lignes, feuille, feuilles } = entry.build()
+    if (feuilles) exporterClasseur(nomFichier, feuilles)
+    else exporterExcel(nomFichier, lignes, feuille)
     setOuvert(false)
   }
 

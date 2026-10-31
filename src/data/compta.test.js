@@ -1,6 +1,6 @@
 // Séries des pages finance, sur des lignes INVENTÉES (jamais de ligne bancaire réelle).
 import { describe, it, expect } from 'vitest'
-import { reglesDeCategorie, calculerSeries, soldesFinDeMois } from './compta'
+import { feuillesReleve, reglesDeCategorie, calculerSeries, soldesFinDeMois } from './compta'
 
 const t = (date, montant, categorie, extra = {}) => ({
   fitid: `${date}-${montant}-${categorie}`, date, montant, type: '', libelle: extra.libelle || '', tiers: extra.tiers || '',
@@ -107,5 +107,28 @@ describe('reglesDeCategorie', () => {
     ])
     expect(reglesDeCategorie(null, 'Mutuelle')).toEqual([])
     expect(reglesDeCategorie(doc, 'Remboursement reçu').map(r => r.id)).toEqual(['remboursement-associe', 'remboursement-remplacant', 'remboursement-motif'])
+  })
+})
+
+describe('feuillesReleve', () => {
+  const L = [
+    t('2026-02-10', -50, 'Banque', { libelle: 'FRAIS EXEMPLE' }),
+    t('2025-03-02', 200, 'Honoraires clinique'),
+    t('2025-01-15', 100, 'Honoraires clinique', { libelle: 'VIR EXEMPLE', tiers: 'CLINIQUE EXEMPLE' }),
+    t('2025-12-01', 999, 'Honoraires clinique'),
+    t('2025-02-01', -30, 'Banque'),
+  ]
+  it('une feuille par année, filtre, période, tri et ligne TOTAL', () => {
+    const f = feuillesReleve(L, { years: [2026, 2025], de: 0, a: 5, filtre: x => x.categorie === 'Honoraires clinique' })
+    expect(f.map(x => x.nom)).toEqual(['2025', '2026'])
+    expect(f[0].lignes.map(l => l.Date)).toEqual(['15/01/2025', '02/03/2025', 'TOTAL'])
+    expect(f[0].lignes[0]).toMatchObject({ Libellé: 'VIR EXEMPLE', Tiers: 'CLINIQUE EXEMPLE', Montant: 100, Catégorie: 'Honoraires clinique' })
+    expect(f[0].lignes.at(-1)).toMatchObject({ Libellé: '2 lignes', Montant: 300 })
+    expect(f[1].lignes).toEqual([])
+  })
+  it('sans filtre : tout le relevé, montants signés', () => {
+    const f = feuillesReleve(L, { years: [2025, 2026] })
+    expect(f[0].lignes.at(-1).Montant).toBe(100 + 200 + 999 - 30)
+    expect(f[1].lignes[0].Montant).toBe(-50)
   })
 })

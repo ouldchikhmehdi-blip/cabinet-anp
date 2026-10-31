@@ -2,9 +2,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import EtatCompta from '../components/EtatCompta'
 import ContenuCategorie from '../components/ContenuCategorie'
-import { useCompta } from '../data/compta'
+import { useCompta, CAT_CA } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
@@ -72,6 +73,10 @@ export default function ChiffreAffaires() {
       return { nomFichier: `chiffre-affaires_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${years.join('-')}.xlsx`, lignes, feuille: 'CA' }
     }
   }]
+  exportsCA.push(
+    entreeReleve({ label: 'Lignes du relevé : CA (une feuille par année)', page: 'chiffre-affaires', transactions: etat.transactions, years, de, a, filtre: t => CAT_CA.includes(t.categorie) }),
+    entreeReleve({ label: 'Lignes du relevé : remboursements reçus (hors CA)', page: 'remboursements-recus', transactions: etat.transactions, years, de, a, filtre: t => t.categorie === 'Remboursement reçu' }),
+  )
 
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }

@@ -3,6 +3,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import EtatCompta from '../components/EtatCompta'
+import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -69,7 +71,13 @@ export default function SalariesCDI() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 18, fontWeight: 500 }}>Salariés CDI</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Salariés CDI</h1>
+        <BoutonExport
+          exports={[entreeReleve({ page: 'salaries-cdi', transactions: etat.transactions, years, de, a, filtre: t => t.categorie === 'Salaire IADE CDI' })]}
+          disabled={masque}
+        />
+      </div>
 
       <EtatCompta etat={etat} />
 

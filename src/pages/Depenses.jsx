@@ -3,8 +3,9 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
+import { entreeReleve } from '../utils/exportReleve'
 import EtatCompta from '../components/EtatCompta'
-import { useCompta } from '../data/compta'
+import { useCompta, GROUPES_DEPENSES } from '../data/compta'
 import ContenuCategorie from '../components/ContenuCategorie'
 import { usePeriode } from '../data/periode'
 import { couleurGroupe } from '../data/categories'
@@ -60,7 +61,7 @@ export default function Depenses() {
           color: 'var(--color-primary-dark)', padding: '3px 10px',
           borderRadius: 20, fontWeight: 500
         }}>SARM · 8 associés</span>
-        {DEPENSES.length > 0 && <BoutonExport exports={exportsDe(DEPENSES, labels, de, a, years)} disabled={masque} />}
+        {DEPENSES.length > 0 && <BoutonExport exports={[...exportsReleveDe(etat.transactions, DEPENSES.find(d => d.id === selectedId) || DEPENSES[0], years, de, a), ...exportsDe(DEPENSES, labels, de, a, years)]} disabled={masque} />}
       </div>
     </div>
   )
@@ -272,6 +273,13 @@ export default function Depenses() {
       </div>
     </div>
   )
+}
+
+// Exports des lignes du relevé : toutes les dépenses, puis la catégorie sélectionnée
+function exportsReleveDe(transactions, selected, years, de, a) {
+  const entrees = [entreeReleve({ label: 'Lignes du relevé : toutes les dépenses', page: 'depenses', transactions, years, de, a, filtre: t => t.montant < 0 && GROUPES_DEPENSES.includes(t.groupe) })]
+  if (selected) entrees.push(entreeReleve({ label: `Lignes du relevé : ${selected.nom}`, page: `depenses-${selected.id}`, transactions, years, de, a, filtre: t => t.montant < 0 && t.categorie === selected.nom }))
+  return entrees
 }
 
 // Exports Excel : toutes les dépenses, puis une entrée par catégorie (période et années sélectionnées).
