@@ -10,6 +10,7 @@ import ContenuCategorie from '../components/ContenuCategorie'
 import { usePeriode } from '../data/periode'
 import { couleurGroupe } from '../data/categories'
 import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
+import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
 
 // Légende des années comparées pour le détail d'une catégorie (accent = couleur de la catégorie).
 function LegendAnnees({ years, accent, type }) {
@@ -138,7 +139,7 @@ export default function Depenses() {
           <BarChart data={dataStack}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [fmtEur(v), DEPENSES.find(d => d.id === name)?.nom || name]} />
             {DEPENSES.map((dep, i) => (
               <Bar
@@ -232,10 +233,10 @@ export default function Depenses() {
           <LegendAnnees years={years} accent={selected.couleur} type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart key={years.join('-')} data={dataBar}>
+          <BarChart key={years.join('-')} data={sansMoisFuturs(dataBar, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={y} dataKey={y} fill={couleurAnnee(rang, selected.couleur)} radius={[3,3,0,0]} />
@@ -252,10 +253,10 @@ export default function Depenses() {
           <LegendAnnees years={years} accent={selected.couleur} type="line" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={dataCumul}>
+          <LineChart data={sansMoisFuturs(dataCumul, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Line

@@ -7,6 +7,7 @@ import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
+import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
 
 function LegendAnnees({ years, accent }) {
   return (
@@ -140,10 +141,10 @@ export default function VueGlobale() {
           <LegendAnnees years={years} accent="#534AB7" />
         </div>
         <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={dataCA}>
+          <LineChart data={sansMoisFuturs(dataCA, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {renderLignes('#534AB7')}
           </LineChart>
@@ -158,10 +159,10 @@ export default function VueGlobale() {
           <LegendAnnees years={years} accent="#D85A30" />
         </div>
         <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={dataCH}>
+          <LineChart data={sansMoisFuturs(dataCH, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {renderLignes('#D85A30')}
           </LineChart>

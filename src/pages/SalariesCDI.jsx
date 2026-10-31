@@ -8,6 +8,7 @@ import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
+import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
 
 const ACCENT = '#534AB7'
 
@@ -166,10 +167,10 @@ export default function SalariesCDI() {
             <LegendAnnees years={years} />
           </div>
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart key={years.join('-')} data={dataMensuel}>
+            <BarChart key={years.join('-')} data={sansMoisFuturs(dataMensuel, S, de)}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
               <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(1)+'k'} hide={masque} />
+              <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
               <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
               {ordreAffichage(years).map(({ y, rang }) => (
                 <Bar key={y} dataKey={y} fill={couleurAnnee(rang, ACCENT)} radius={[3,3,0,0]} />

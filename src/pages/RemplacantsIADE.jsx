@@ -7,6 +7,7 @@ import EtatCompta from '../components/EtatCompta'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
+import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
 
 const ACCENT = '#EF9F27'
 
@@ -114,10 +115,10 @@ export default function RemplacantsIADE() {
           <LegendAnnees years={years} type="bar" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <BarChart key={years.join('-')} data={dataBar}>
+          <BarChart key={years.join('-')} data={sansMoisFuturs(dataBar, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={y} dataKey={y} fill={couleurAnnee(rang, ACCENT)} radius={[3,3,0,0]} />
@@ -134,10 +135,10 @@ export default function RemplacantsIADE() {
           <LegendAnnees years={years} type="line" />
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={dataCumul}>
+          <LineChart data={sansMoisFuturs(dataCumul, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={v => fmtEur(v)} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Line

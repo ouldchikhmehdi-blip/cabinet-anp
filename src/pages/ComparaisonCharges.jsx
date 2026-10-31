@@ -9,6 +9,7 @@ import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
 import { POSTES, dansPostes } from '../data/postesSalariaux'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
+import { echelleVisible, axeK, sansMoisFuturs } from '../utils/echelle'
 
 
 const ACCENT_CUMUL = '#534AB7'
@@ -65,7 +66,8 @@ export default function ComparaisonCharges() {
   // Mois après mois, années bout à bout
   const dataTemps = years.flatMap(y => MOIS_COURT.slice(de, a + 1).map((m, i) => {
     const row = { mois: `${m} ${String(y).slice(2)}` }
-    postes.forEach(p => { row[p.id] = mois(p, y)[i] ?? 0 })
+    // Mois pas encore écoulés : null, la courbe s'arrête au dernier mois connu
+    postes.forEach(p => { row[p.id] = de + i > S.moisActuel(y) ? null : (mois(p, y)[i] ?? 0) })
     return row
   }))
 
@@ -167,7 +169,7 @@ export default function ComparaisonCharges() {
           <BarChart data={dataAnnees} onClick={choisirColonne} style={{ cursor: 'pointer' }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="annee" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip content={<InfoTotal periode={periode} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
             {postes.map((p, i) => (
               <Bar key={p.id} dataKey={p.id} stackId="postes" fill={p.couleur} radius={i === postes.length - 1 ? [3,3,0,0] : 0}>
@@ -211,11 +213,11 @@ export default function ComparaisonCharges() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={240}>
-          <ComposedChart key={years.join('-')} data={dataCumul}>
+          <ComposedChart key={years.join('-')} data={sansMoisFuturs(dataCumul, S, de)}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
-            <YAxis yAxisId="mois" tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
-            <YAxis yAxisId="cumul" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} yAxisId="mois" tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
+            <YAxis domain={echelleVisible} yAxisId="cumul" orientation="right" tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v, nom) => [fmtEur(v), nom]} />
             {ordreAffichage(years).map(({ y, rang }) => (
               <Bar key={`m${y}`} yAxisId="mois" dataKey={`m${y}`} name={`${y} · mois`} fill={couleurAnnee(rang, ACCENT_CUMUL)} fillOpacity={0.55} radius={[3,3,0,0]} />
@@ -245,7 +247,7 @@ export default function ComparaisonCharges() {
           <LineChart data={dataTemps}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
             <XAxis dataKey="mois" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={v => (v/1000).toFixed(0)+'k'} hide={masque} />
+            <YAxis domain={echelleVisible} tick={{ fontSize: 11 }} tickFormatter={axeK} hide={masque} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v, id) => [fmtEur(v), nomPoste(id)]} />
             {postes.map(p => (
               <Line key={p.id} type="monotone" dataKey={p.id} stroke={p.couleur} strokeWidth={2} dot={{ r: 2 }} />
