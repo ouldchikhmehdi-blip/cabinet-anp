@@ -10,7 +10,8 @@
 // drmoc dise où il va.
 // ============================================================
 
-// Nom de famille (majuscules, tel que dans med0) → { spec, id, nom } du praticien de Consultations.
+// Nom de famille (majuscules, tel que dans med0) → { spec, id, nom } du praticien de Consultations,
+// ou { spec, bucket } pour compter dans le total d'une spécialité sans praticien (bucket `valeurs`).
 // Les ids reprennent ceux de CONSULT_SPECIALITES (test : facturationChirurgiens.test.js).
 export const CHIRURGIENS = {
   // Gastro / coloscopies
@@ -58,19 +59,20 @@ export const CHIRURGIENS = {
   MARCANO: { spec: 'pneumologie', id: 'marcano', nom: 'Dr Marcano' },
   DEMAZEAU: { spec: 'pneumologie', id: 'demazeau', nom: 'Dr Demazeau' },
   ADAM: { spec: 'pneumologie', id: 'adam', nom: 'Dr Adam' },
-  // Chirurgie bariatrique : chirurgiens, pas gastro-entérologues (CONSULTATIONS.md, motif FIBRO)
-  LEON: { spec: 'bariatrique', id: 'leon', nom: 'Dr Léon' },
-  WARTHMANN: { spec: 'bariatrique', id: 'warthmann', nom: 'Dr Warthmann' },
+  // Chirurgie bariatrique : comptée dans le total Gastro, dans son bucket « non attribué »
+  // (jamais sur un gastro-entérologue, cf. CONSULTATIONS.md, motif FIBRO) — décision drmoc 2026-10-31.
+  LEON: { spec: 'endoscopie', bucket: 'Chir. bariatrique' },
+  WARTHMANN: { spec: 'endoscopie', bucket: 'Chir. bariatrique' },
 }
 
 // Spécialités, dans l'ordre d'affichage. Les quatre premières = celles de Consultations (mêmes ids
-// et couleurs) ; `bariatrique` et `autres` n'existent que pour la facturation.
+// et couleurs) ; `autres` n'existe que pour la facturation. `bucketNom` : libellé du bucket
+// « non attribué » de la spécialité (somme des entrées `bucket` de CHIRURGIENS).
 export const SPECIALITES = [
-  { id: 'endoscopie', nom: 'Gastro / Coloscopies', couleur: '#534AB7' },
+  { id: 'endoscopie', nom: 'Gastro / Coloscopies', couleur: '#534AB7', bucketNom: 'Chir. bariatrique (Léon, Warthmann)' },
   { id: 'neurochirurgie', nom: 'Neurochirurgie', couleur: '#EF9F27' },
   { id: 'viscerale', nom: 'Chirurgie viscérale', couleur: '#D85A30' },
   { id: 'pneumologie', nom: 'Pneumologie', couleur: '#1D9E75' },
-  { id: 'bariatrique', nom: 'Chirurgie bariatrique', couleur: '#0E7490' },
   { id: 'autres', nom: 'Autres chirurgiens (à classer)', couleur: '#7A8B99', aClasser: true },
 ]
 
@@ -85,7 +87,7 @@ export const BUCKETS = [
 // « VERCAMBRE AUFORT Lucile » → « VERCAMBRE AUFORT » (les mots tout en majuscules)
 export const nomFamille = (cle) => String(cle || '').split(' ').filter(m => m && m === m.toUpperCase()).join(' ')
 
-/** Le praticien de Consultations correspondant à une clé du script, ou null. */
+/** L'entrée CHIRURGIENS (praticien de Consultations, ou bucket de spécialité) d'une clé du script, ou null. */
 export function praticienDe(cle) {
   if (!cle || cle.startsWith('__')) return null
   return CHIRURGIENS[nomFamille(cle)] || null
@@ -102,11 +104,12 @@ export const libelleChirurgien = (cle) => {
  * Construit les spécialités de la page (même forme que CONSULT_SPECIALITES :
  * { id, nom, couleur, praticiens: [{ id, nom, valeurs: {y: [12]} }] } ou { …, valeurs }) depuis
  * les séries du store : parChirurgien[y][cle] = [12]. Les chirurgiens non classés deviennent
- * chacun un praticien de « Autres chirurgiens (à classer) ».
+ * chacun un praticien de « Autres chirurgiens (à classer) » ; les entrées `bucket` vont dans
+ * `valeurs` de leur spécialité (comptées dans son total, sans praticien).
  */
 export function specialitesFacturation(parChirurgien, annees) {
   const vide = () => Array(12).fill(0)
-  const specs = SPECIALITES.map(s => ({ ...s, praticiens: [] }))
+  const specs = SPECIALITES.map(s => ({ ...s, praticiens: [], valeurs: {} }))
   const parId = Object.fromEntries(specs.map(s => [s.id, s]))
   const prats = new Map() // id praticien → objet
   const ajouter = (spec, id, nom, y, serie) => {
@@ -127,7 +130,10 @@ export function specialitesFacturation(parChirurgien, annees) {
         continue
       }
       const p = praticienDe(cle)
-      if (p) ajouter(p.spec, p.id, p.nom, y, serie)
+      if (p && p.bucket) {
+        const v = (parId[p.spec].valeurs[y] ||= vide())
+        for (let m = 0; m < 12; m++) v[m] += serie[m] || 0
+      } else if (p) ajouter(p.spec, p.id, p.nom, y, serie)
       else ajouter('autres', 'autre:' + cle, libelleChirurgien(cle), y, serie)
     }
   }

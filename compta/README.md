@@ -224,8 +224,9 @@ passer par le connecteur Supabase, insertions seulement : il refuse les `delete`
   `src/data/facturationChirurgiens.js` (nom `med0` → praticien de Consultations) et on relance.
 - **Côté dashboard** : `src/data/facturation.js` (séries `FACTURE`, `REGLE`, `REDEVANCE`, `DH`,
   `PAR_CHIRURGIEN`, `RENSEIGNE`, `moisActuel`), `src/data/facturationChirurgiens.js` (spécialités de
-  Consultations + « Chirurgie bariatrique » + « Autres chirurgiens (à classer) » + buckets en
-  pseudo-spécialités), pages `src/pages/Facturation{,Mensuel,Chirurgiens}.jsx`. Un mois non importé
+  Consultations + « Autres chirurgiens (à classer) » + buckets en pseudo-spécialités ; Léon et
+  Warthmann, chirurgie bariatrique, comptent dans le total Gastro via son bucket `valeurs`, sans
+  praticien, comme dans Consultations), pages `src/pages/Facturation{,Mensuel,Chirurgiens}.jsx`. Un mois non importé
   reste vide, jamais compté comme 0.
 
 | Table | Contenu | Lecture | Écriture |

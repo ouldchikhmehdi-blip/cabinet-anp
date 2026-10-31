@@ -96,8 +96,26 @@ export default function FacturationChirurgiens() {
   const detailTprimary = sum(detailPrats.map(p => sum((p.valeurs[primary] || []).slice(de, a + 1))))
   const detailTref = sum(detailPrats.map(p => sumComparable(p.valeurs[ref])))
 
-  const pratBar = showMulti ? sansMoisFuturs(labels.map((m, i) => { const row = { mois: m }; detailPrats.forEach(p => { row[p.id] = (p.valeurs[primary] || [])[de + i] ?? 0 }); return row }), S, de, primary) : []
-  const pratCumul = showMulti ? sansMoisFuturs(labels.map((m, i) => { const row = { mois: m }; detailPrats.forEach(p => { row[p.id] = sum((p.valeurs[primary] || []).slice(de, de + i + 1)) }); return row }), S, de, primary) : []
+  // Bucket « non attribué » de la spécialité (ex. chirurgie bariatrique dans Gastro) : compté dans
+  // le total de la spécialité, montré comme une série à part en vue « Tous », jamais sur un praticien.
+  const autreValues = spec.bucketNom && spec.valeurs ? (spec.valeurs[primary] || Array(12).fill(0)) : null
+  const autreT = autreValues ? sum(autreValues.slice(de, a + 1)) : 0
+  const hasAutre = !!autreValues && autreValues.some(v => v !== 0)
+  const showAutre = isAllPrat && hasAutre
+  const AUTRE_COULEUR = '#B4B2A9'
+
+  const pratBar = showMulti ? sansMoisFuturs(labels.map((m, i) => {
+    const row = { mois: m }
+    detailPrats.forEach(p => { row[p.id] = (p.valeurs[primary] || [])[de + i] ?? 0 })
+    if (showAutre) row.__autre = autreValues[de + i] ?? 0
+    return row
+  }), S, de, primary) : []
+  const pratCumul = showMulti ? sansMoisFuturs(labels.map((m, i) => {
+    const row = { mois: m }
+    detailPrats.forEach(p => { row[p.id] = sum((p.valeurs[primary] || []).slice(de, de + i + 1)) })
+    if (showAutre) row.__autre = sum(autreValues.slice(de, de + i + 1))
+    return row
+  }), S, de, primary) : []
 
   const exports = [{
     label: 'Facturé par chirurgien (année principale)',
@@ -112,6 +130,7 @@ export default function FacturationChirurgiens() {
           lignes.push(ligne)
         }
         for (const p of sp.praticiens || []) ajouter(p.nom, p.valeurs[primary] || Array(12).fill(0))
+        if (sp.bucketNom && sp.valeurs?.[primary]) ajouter(`${sp.bucketNom} (non attribué)`, sp.valeurs[primary])
         if (!(sp.praticiens || []).length) ajouter('(total)', serie)
       }
       return { nomFichier: `facture-par-chirurgien_${primary}_${MOIS_COURT[de]}-${MOIS_COURT[a]}.xlsx`, lignes, feuille: `Chirurgiens ${primary}` }
@@ -123,7 +142,7 @@ export default function FacturationChirurgiens() {
   const pillBase = { fontSize: 11, padding: '4px 12px', borderRadius: 16, border: '0.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s' }
   const pillActive = { ...pillBase, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '0.5px solid var(--color-primary)', fontWeight: 500 }
   const nomCourt = (p) => p.nom.replace(/^(Dr|Mme|M\.)\s+/, '')
-  const nomDe = (id) => pratsVisibles.find(p => p.id === id)?.nom || id
+  const nomDe = (id) => (id === '__autre' ? `${spec.bucketNom} · non attribué` : (pratsVisibles.find(p => p.id === id)?.nom || id))
   const kpiRef = (v1, v2) => (refRenseignee ? diffLabel(v1, v2, ref) : periode)
   const kpiCouleur = (v1, v2) => (refRenseignee ? diffColor(v1, v2) : 'neutral')
 
@@ -196,6 +215,11 @@ export default function FacturationChirurgiens() {
       {spec.note && (
         <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)' }}>{spec.nom} : {spec.note}.</div>
       )}
+      {hasAutre && (
+        <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)' }}>
+          Le total {spec.nom} comprend <strong>{fmtEur(autreT)}</strong> de {spec.bucketNom}, comptés dans la spécialité sans être attribués à un praticien.
+        </div>
+      )}
       {spec.aClasser && (
         <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '7px 12px' }}>
           Ces chirurgiens ne sont pas encore rattachés à une spécialité (table <code>src/data/facturationChirurgiens.js</code>). Leur facturé est montré tel quel en attendant.
@@ -258,6 +282,12 @@ export default function FacturationChirurgiens() {
                     {nomCourt(p)}
                   </span>
                 ))}
+                {showAutre && (
+                  <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, background: AUTRE_COULEUR, borderRadius: 2 }} />
+                    {spec.bucketNom}
+                  </span>
+                )}
               </div>
             </div>
             <ResponsiveContainer width="100%" height={200}>
@@ -267,8 +297,9 @@ export default function FacturationChirurgiens() {
                 <YAxis {...echelle(pratBar, { empile: true })} tick={TICK} tickFormatter={axeK} hide={masque} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [fmtEur(v), nomDe(name)]} />
                 {detailPrats.map((p, i) => (
-                  <Bar key={p.id} dataKey={p.id} stackId="prat" fill={colorOf(p)} radius={i === detailPrats.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                  <Bar key={p.id} dataKey={p.id} stackId="prat" fill={colorOf(p)} radius={i === detailPrats.length - 1 && !showAutre ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
                 ))}
+                {showAutre && <Bar dataKey="__autre" stackId="prat" fill={AUTRE_COULEUR} radius={[3, 3, 0, 0]} />}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -285,6 +316,7 @@ export default function FacturationChirurgiens() {
                 {detailPrats.map(p => (
                   <Line key={p.id} type="monotone" dataKey={p.id} stroke={colorOf(p)} strokeWidth={2} dot={{ r: 2 }} />
                 ))}
+                {showAutre && <Line type="monotone" dataKey="__autre" stroke={AUTRE_COULEUR} strokeWidth={1.5} strokeDasharray="4 3" dot={{ r: 2 }} />}
               </LineChart>
             </ResponsiveContainer>
           </div>
