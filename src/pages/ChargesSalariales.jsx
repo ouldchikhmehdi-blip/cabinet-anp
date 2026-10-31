@@ -1,6 +1,7 @@
 // ============================================================
 // ChargesSalariales — un seul onglet pour tout ce que coûte le personnel :
-// salariés CDI, remplaçants MAR, remplaçants IADE, et leur comparaison dans le temps.
+// suivi mensuel de tout ce qui part (salaires, rempla, cotisations), salariés CDI,
+// remplaçants MAR, remplaçants IADE, et leur comparaison dans le temps.
 // Chaque sous-onglet est une page à part, avec son propre filtre de période.
 // ============================================================
 import { useState } from 'react'
@@ -8,8 +9,10 @@ import SalariesCDI from './SalariesCDI'
 import RemplacantsMAR from './RemplacantsMAR'
 import RemplacantsIADE from './RemplacantsIADE'
 import ComparaisonCharges from './ComparaisonCharges'
+import SuiviMensuelCharges from './SuiviMensuelCharges'
 
 const ONGLETS = [
+  { id: 'suivi', label: 'Suivi mensuel', icone: '📅', Page: SuiviMensuelCharges },
   { id: 'salaries-cdi', label: 'Salariés CDI', icone: '👤', Page: SalariesCDI },
   { id: 'remplacants-mar', label: 'Rempla MAR', icone: '⚕', Page: RemplacantsMAR },
   { id: 'remplacants-iade', label: 'Rempla IADE', icone: '↺', Page: RemplacantsIADE },
@@ -28,8 +31,8 @@ const styleOnglet = (actif) => ({
 })
 
 // `initial` : sous-onglet ouvert d'entrée (anciens liens vers une des trois pages).
-export default function ChargesSalariales({ initial = 'salaries-cdi' }) {
-  const [vue, setVue] = useState(ONGLETS.some(o => o.id === initial) ? initial : 'salaries-cdi')
+export default function ChargesSalariales({ initial = 'suivi' }) {
+  const [vue, setVue] = useState(ONGLETS.some(o => o.id === initial) ? initial : 'suivi')
   const { Page } = ONGLETS.find(o => o.id === vue)
 
   return (

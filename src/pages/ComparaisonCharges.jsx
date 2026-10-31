@@ -7,14 +7,9 @@ import BoutonExport from '../components/BoutonExport'
 import { entreeReleve } from '../utils/exportReleve'
 import { useCompta } from '../data/compta'
 import { usePeriode } from '../data/periode'
+import { POSTES, dansPostes } from '../data/postesSalariaux'
 import { MOIS_COURT, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 
-// Les trois postes du personnel, mêmes couleurs que leurs sous-onglets.
-const POSTES = [
-  { id: 'cdi', label: 'Salariés CDI', serie: 'SALAIRES_CDI', couleur: '#534AB7', categories: ['Salaire IADE CDI'] },
-  { id: 'iade', label: 'Rempla IADE', serie: 'REMPL_IADE', couleur: '#EF9F27', categories: ['Remplaçant IADE (CDD)'] },
-  { id: 'mar', label: 'Rempla MAR', serie: 'REMPL_MAR', couleur: '#D85A30', categories: ['Remplaçant MAR', 'Frais de remplaçant'] },
-]
 
 const ACCENT_CUMUL = '#534AB7'
 const TOOLTIP = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
@@ -41,7 +36,7 @@ function InfoTotal({ active, payload, label, periode }) {
   )
 }
 
-// Comparaison dans le temps des trois postes, sur les mois et années choisis.
+// Comparaison dans le temps des postes (CDI, rempla IADE, rempla MAR, cotisations), sur les mois et années choisis.
 // Chaque poste se coche ou se décoche ; il en reste toujours au moins un.
 export default function ComparaisonCharges() {
   const etat = useCompta()
@@ -101,9 +96,9 @@ export default function ComparaisonCharges() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Comparaison CDI · rempla IADE · rempla MAR</h1>
+        <h1 style={{ fontSize: 18, fontWeight: 500 }}>Comparaison des charges salariales</h1>
         <BoutonExport
-          exports={[entreeReleve({ label: 'Lignes du relevé des postes cochés', page: 'charges-salariales', transactions: etat.transactions, years, de, a, filtre: t => postes.some(p => p.categories.includes(t.categorie)) })]}
+          exports={[entreeReleve({ label: 'Lignes du relevé des postes cochés', page: 'charges-salariales', transactions: etat.transactions, years, de, a, filtre: t => dansPostes(postes, t) })]}
           disabled={masque}
         />
       </div>
@@ -301,7 +296,7 @@ export default function ComparaisonCharges() {
       <div style={{ ...cardStyle, background: '#EEEDFE', border: '0.5px solid #AFA9EC' }}>
         <div style={{ fontSize: 12, color: '#3C3489', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>ℹ</span>
-          <span>Montants virés depuis le compte : salaires nets des CDI, salaires des IADE en CDD, honoraires et frais des MAR remplaçants. Les charges sociales (URSSAF, retraite, prévoyance) n'y sont pas, elles sont dans « Dépenses ».</span>
+          <span>Montants virés depuis le compte : salaires nets des CDI, salaires des IADE en CDD, honoraires et frais des MAR remplaçants, et cotisations et charges (URSSAF, retraite, prévoyance et mutuelle, épargne salariale, médecine du travail, impôts et taxes), qui restent aussi dans « Dépenses ».</span>
         </div>
       </div>
     </div>

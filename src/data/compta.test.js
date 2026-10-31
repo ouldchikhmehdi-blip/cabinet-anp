@@ -53,6 +53,7 @@ describe('calculerSeries', () => {
     expect(S.REMPL_MAR[2025][1]).toBe(900)
     expect(S.REMPL_IADE[2025][1]).toBe(300)
     expect(S.SALAIRES_CDI[2025][1]).toBe(2000)
+    expect(S.COTISATIONS[2025][1]).toBe(1500)
     expect(S.ENTREES[2025][0]).toBe(10030)
     expect(S.SORTIES[2025][0]).toBe(2200)
   })
