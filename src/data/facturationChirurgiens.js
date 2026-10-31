@@ -81,11 +81,11 @@ export const BUCKETS = [
   { id: '__consultations', nom: 'Consultations', couleur: '#8C8C86', note: 'consultations et avis facturés, sans séjour opératoire' },
   { id: '__sans_chirurgien', nom: 'Réa / sans chirurgien', couleur: '#A3A39E', note: 'séjour retrouvé, mais sans chirurgien (réanimation, visites)' },
   { id: '__sejour_inconnu', nom: 'Séjour non retrouvé', couleur: '#B4B2A9', note: 'séjour absent des exports d\'actes (souvent un acte de l\'année précédente)' },
-  { id: '__a_arbitrer', nom: 'À arbitrer', couleur: '#C2476B', note: 'plusieurs chirurgiens sur le même séjour' },
+  { id: '__a_arbitrer', nom: 'À arbitrer', couleur: '#C2476B', note: 'plusieurs chirurgiens possibles, ou nom de chirurgien illisible dans la consultation' },
 ]
 
 // « VERCAMBRE AUFORT Lucile » → « VERCAMBRE AUFORT » (les mots tout en majuscules)
-export const nomFamille = (cle) => String(cle || '').split(' ').filter(m => m && m === m.toUpperCase()).join(' ')
+export const nomFamille = (cle) => String(cle || '').split(' ').filter(m => m.length > 1 && m === m.toUpperCase()).join(' ')
 
 /** L'entrée CHIRURGIENS (praticien de Consultations, ou bucket de spécialité) d'une clé du script, ou null. */
 export function praticienDe(cle) {
@@ -139,6 +139,8 @@ export function specialitesFacturation(parChirurgien, annees) {
   }
   // Ordre stable : praticiens classés par facturé décroissant (toutes années), puis nom
   const total = (p) => Object.values(p.valeurs).flat().reduce((s, v) => s + v, 0)
-  for (const s of specs) s.praticiens.sort((a, b) => total(b) - total(a) || a.nom.localeCompare(b.nom))
+  // Un chirurgien à 0 € sur toutes les années (lignes annulées, ou remis à zéro après un meilleur
+  // rattachement) n'est pas affiché
+  for (const s of specs) s.praticiens = s.praticiens.filter(p => total(p) !== 0).sort((a, b) => total(b) - total(a) || a.nom.localeCompare(b.nom))
   return [...specs, ...buckets.filter(b => Object.keys(b.valeurs).length > 0)]
 }

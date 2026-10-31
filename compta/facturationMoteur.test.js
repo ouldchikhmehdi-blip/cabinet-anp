@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest'
 import {
   nomFichier, lireJustificatif, indexerSejours, lireActes, attribuer, agreger,
   normaliserChirurgien, versDate, BUCKETS,
+  lireCpa, construireAnnuaire, resoudreChirurgien, completerParCpa,
 } from './facturationMoteur.js'
 
 // Feuille FAC fictive, même disposition que les exports de la clinique (en-tête en ligne 9)
@@ -42,6 +43,8 @@ describe('nomFichier', () => {
 describe('versDate', () => {
   it('accepte Date, numéro de série Excel et jj/mm/aaaa', () => {
     expect(versDate(new Date(2026, 2, 11, 23, 59))).toBe('2026-03-11')
+    // décalage de 21 s de la lecture Excel : 23:59:39 la veille = minuit du jour
+    expect(versDate(new Date(2026, 2, 11, 23, 59, 39))).toBe('2026-03-12')
     expect(versDate(46092)).toBe('2026-03-11')
     expect(versDate('11/03/2026')).toBe('2026-03-11')
     expect(versDate('')).toBe('')
@@ -54,7 +57,7 @@ describe('lireJustificatif', () => {
     expect(j.type).toBe('FAC')
     expect([j.annee, j.mois, j.associe, j.nbLignes]).toEqual([2026, 3, 'TEST010', 2])
     expect(j.total).toEqual({ dh: 50, amo: 60, amc: 0, pat: 30, total: 140 })
-    expect(j.lignes[0]).toMatchObject({ sejour: 'H1', code: 'HHFE002', total: 100, date: '2026-03-10', dateActe: '2026-03-02' })
+    expect(j.lignes[0]).toMatchObject({ sejour: 'H1', code: 'HHFE002', total: 100, date: '2026-03-10', dateActe: '2026-03-02', entree: '2026-03-01', sortie: '2026-03-01' })
   })
   it('refuse un FAC dont la somme des lignes ne recolle pas au total', () => {
     expect(() => lireJustificatif(fac([lf('H1', 'HHFE002', 40, 60, 0)], [50, 60, 0, 0, 110]))).toThrow(/≠ total/)
@@ -116,9 +119,67 @@ describe('agreger', () => {
   })
   it('met de côté tout sauf les consultations, et contrôle attribué + buckets = facturé', () => {
     expect(r.misDeCote.map(l => l.bucket).sort()).toEqual([BUCKETS.sansChirurgien, BUCKETS.sejourInconnu].sort())
-    expect(r.controle[0]).toMatchObject({ mois: '2026-3', facture: 306, attribue: 120 })
+    expect(r.controle[0]).toMatchObject({ mois: '2026-03', facture: 306, attribue: 120 })
   })
   it('refuse deux FAC pour le même mois × associé × établissement', () => {
     expect(() => agreger([jf, { ...jf, fichier: 'g.xlsx' }], index)).toThrow(/Deux fichiers FAC/)
+  })
+})
+
+describe('annuaire des chirurgiens (noms saisis librement dans la CPA)', () => {
+  const annuaire = construireAnnuaire(
+    [{ nom: 'DUPOND-MARTIN', prenom: 'Paul' }, { nom: 'ABBAL', prenom: 'B' }],
+    ['DUPOND-MARTIN Paul', 'TOURNESOL Tryphon', 'TOURNESOL Tryphonn', 'HADDOCK Archibald', 'HADDOCK Abdallah',
+      'LAMPION SERAPHIN', 'CASTAFIORE_Bianca', 'TOURNESOL T', 'DR LAMPION', 'CASTAFIORE OU LAMPION', 'NESTOR'],
+  )
+  it('ramène les variantes à une clé unique', () => {
+    expect(resoudreChirurgien('DUPOND-MARTIN Paul', annuaire)).toBe('DUPOND-MARTIN Paul')
+    expect(resoudreChirurgien('DUPOND MARTIN PAUL', annuaire)).toBe('DUPOND-MARTIN Paul')
+    expect(resoudreChirurgien('TOURNESOL T', annuaire)).toBe('TOURNESOL Tryphon')
+    expect(resoudreChirurgien('TOURNESOL Tryphonn', annuaire)).toBe('TOURNESOL Tryphon')
+    expect(resoudreChirurgien('CASTAFIORE_Bianca', annuaire)).toBe('CASTAFIORE Bianca')
+    expect(resoudreChirurgien('DR LAMPION', annuaire)).toBe('LAMPION Seraphin')
+  })
+  it('refuse de deviner : homonymes, deux noms, inconnu, vide', () => {
+    expect(resoudreChirurgien('HADDOCK', annuaire)).toBe('?HADDOCK')
+    expect(resoudreChirurgien('HADDOCK Ar', annuaire)).toBe('HADDOCK Archibald')
+    expect(resoudreChirurgien('CASTAFIORE OU LAMPION', annuaire)).toBe('?CASTAFIORE OU LAMPION')
+    expect(resoudreChirurgien('NESTOR', annuaire)).toBe('?NESTOR')
+    expect(resoudreChirurgien('', annuaire)).toBe('?')
+  })
+  it('n\'enregistre pas les anesthésistes', () => {
+    expect(annuaire.has('ABBAL')).toBe(false)
+  })
+})
+
+describe('completerParCpa', () => {
+  const cpas = lireCpa([
+    ['IPP', 'nom', 'nom marital', 'prénom', 'DDN', 'Date CPA', 'date bloc', 'Chirurgien'],
+    ['1', 'DURAND', 'MARTIN', 'Marie-Claire', '', '01/02/2025', '10/02/2025', 'TOURNESOL T'],
+    ['2', 'PETIT', '', 'Jean', '', '01/02/2025', '20/02/2025', 'HADDOCK'],
+    ['3', 'LEGRAND', '', 'Luc', '', '01/02/2025', '15/02/2025', 'ABBAL'],
+    ['4', 'LEGRAND', '', 'Luc', '', '01/01/2025', '01/01/2025', 'TOURNESOL Tryphon'],
+  ])
+  const annuaire = construireAnnuaire([], ['TOURNESOL Tryphon', 'HADDOCK Archibald', 'HADDOCK Abdallah'])
+  const l = (sejour, nom, prenom, entree, sortie, code = 'HHFE002') => ({ sejour, nom, prenom, entree, sortie, dateActe: entree, code })
+  const index = new Map([['H9', new Set(['NOGUES Laurent'])]])
+  const { index: idx, viaCpa } = completerParCpa(index, [
+    l('A1', 'MARTIN', 'Claire', '2025-02-10', '2025-02-10'),  // nom marital + prénom composé
+    l('H2', 'PETIT', 'Jean', '2025-02-19', '2025-02-25'),     // homonymes chirurgien → illisible
+    l('H3', 'LEGRAND', 'Luc', '2025-02-15', '2025-02-16'),    // anesthésiste en « chirurgien »
+    l('H4', 'DURAND', 'Marie', '2025-03-10', '2025-03-11'),   // bloc hors séjour
+    l('H9', 'DURAND', 'Marie', '2025-02-10', '2025-02-10'),   // déjà connu par le séjour : inchangé
+    l('X5', 'DURAND', 'Marie', '2025-02-10', '2025-02-10', 'CSCPA'),
+  ], cpas, annuaire)
+  it('rattache par nom (ou nom marital), prénom compatible et bloc dans le séjour', () => {
+    expect([...idx.get('A1')]).toEqual(['TOURNESOL Tryphon'])
+    expect(viaCpa.has('A1')).toBe(true)
+  })
+  it('met de côté ce qui est douteux', () => {
+    expect(attribuer({ sejour: 'H2', code: 'HHFE002' }, idx)).toMatchObject({ cle: BUCKETS.aArbitrer })
+    expect(attribuer({ sejour: 'H3', code: 'HHFE002' }, idx).cle).toBe(BUCKETS.sansChirurgien)
+    expect(idx.has('H4')).toBe(false)
+    expect([...idx.get('H9')]).toEqual(['NOGUES Laurent'])
+    expect(viaCpa.has('H9') || idx.has('X5')).toBe(false)
   })
 })

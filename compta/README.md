@@ -197,6 +197,18 @@ facturée n'y figure pas : il est retrouvé par le **numéro de séjour** (`N° 
 d'actes des associés déposés à la racine de `~/partage/` (`*.xls`, colonnes `sejo.sejo_num_sej`,
 `med0.mede_nom_usu` = chirurgien ou gastro du séjour, jamais l'anesthésiste).
 
+**Séjour absent des exports d'actes** (toute l'année 2025, actes de l'année précédente facturés en
+janvier) : le chirurgien est cherché dans l'**export Diane des CPA** déposé au même endroit (feuille
+« Résultats », colonnes `nom`, `nom marital`, `prénom`, `date bloc`, `Chirurgien` ; détecté
+automatiquement). Règle : même nom ou nom marital, prénom compatible (premier prénom commun) et date
+de bloc comprise dans le séjour, de l'entrée − 1 j à la sortie + 1 j. Le nom du chirurgien y est saisi
+librement (« MUNOS E », « AYRAL JEAN », « DR NADER ») : `construireAnnuaire` / `resoudreChirurgien`
+le ramènent à une clé unique, les exports d'actes faisant référence ; deux noms (« X OU Y »), un nom
+inconnu ou un prénom qui ne départage pas deux homonymes vont « À arbitrer ». Un anesthésiste inscrit
+comme chirurgien compte « sans chirurgien ». Le numéro de séjour reste prioritaire quand il existe.
+Une consultation datée de l'année précédente n'est pas dans l'export de l'année : janvier reste peu
+attribué tant que l'export CPA de l'année précédente n'est pas déposé.
+
 ```bash
 # rapport seul (rien en base)
 node compta/facturation.js --annee 2026 --sans-base
@@ -206,8 +218,9 @@ node --env-file=.env compta/facturation.js --annee 2026 [--mois 2026.09]
 
 Options : `--dossier` (défaut `~/partage/Facturés réglés`), `--actes` (défaut `~/partage`), `--sortie`
 (défaut `~/partage/facturation`). Sans clé service role valable dans `.env`, `--sql <fichier.sql>`
-écrit les mêmes suppressions et insertions dans un fichier local à coller dans le SQL Editor (ou à
-passer par le connecteur Supabase, insertions seulement : il refuse les `delete`).
+écrit les mêmes écritures dans un fichier local, sans aucun `delete` (refusé par le connecteur
+Supabase) : insertion ou mise à jour, puis mise à zéro des lignes du mois qui ont disparu. Le
+dashboard masque les chirurgiens à 0 € sur toutes les années.
 
 - **Contrôles bloquants** : chaque colonne de montant recolle à la ligne « Total » du fichier
   (0,05 €) ; attribué + buckets = facturé du mois ; un seul FAC et un seul RED par mois × associé ×

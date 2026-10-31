@@ -39,7 +39,7 @@ export function normaliserChirurgien(nom, prenom = '') {
 }
 
 /** Nom de famille (clé de rapprochement avec les praticiens de Consultations). */
-export const nomFamille = (chirurgien) => String(chirurgien || '').split(' ').filter(m => m === m.toUpperCase()).join(' ')
+export const nomFamille = (chirurgien) => String(chirurgien || '').split(' ').filter(m => m.length > 1 && m === m.toUpperCase()).join(' ')
 
 export const estAnesthesiste = (nom) => ANESTHESISTES.includes(propre(nom).toUpperCase())
 
@@ -56,8 +56,10 @@ export function nomFichier(nom) {
 // Cellule date : Date, numéro de série Excel, ou « jj/mm/aaaa » → 'AAAA-MM-JJ' (sinon '')
 export function versDate(v) {
   if (v instanceof Date && !Number.isNaN(v.getTime())) {
-    // Les exports portent une heure (23:59:39 locale) : on lit le jour en heure locale
-    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`
+    // La lecture Excel rend les dates 21 s trop tôt (minuit → 23:59:39 la veille, 12:30 → 12:29:39) :
+    // on ajoute 30 s avant de lire le jour en heure locale.
+    const d = new Date(v.getTime() + 30 * 1000)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
   if (typeof v === 'number' && Number.isFinite(v)) {
     const d = new Date(Math.round((v - 25569) * 86400 * 1000))
@@ -76,7 +78,7 @@ const arrondi = (v) => Math.round(v * 100) / 100
 
 const COLONNES = {
   FAC: {
-    sejour: 'N° Dossier', nom: 'Nom', prenom: 'Prénom', code: 'Code Acte', dateActe: 'Date Acte', date: 'Date Facture',
+    sejour: 'N° Dossier', nom: 'Nom', prenom: 'Prénom', code: 'Code Acte', dateActe: 'Date Acte', date: 'Date Facture', entree: 'Date Entrée', sortie: 'Date Sortie',
     montants: { dh: 'Mt DH', amo: 'Mt AMO', amc: 'Mt AMC', pat: 'Mt Pat', total: 'Mt Total' },
   },
   RED: {
@@ -102,6 +104,7 @@ export function lireJustificatif(rows, { type: typeAttendu } = {}) {
   const col = COLONNES[type]
   const idx = (nom) => entete.findIndex(c => c.toLowerCase() === propre(nom).toLowerCase())
   const iSejour = idx(col.sejour), iNom = idx(col.nom), iPrenom = idx(col.prenom), iCode = idx(col.code), iDateActe = idx(col.dateActe), iDate = idx(col.date)
+  const iEntree = col.entree ? idx(col.entree) : -1, iSortie = col.sortie ? idx(col.sortie) : -1
   const iMontants = Object.fromEntries(Object.entries(col.montants).map(([k, nom]) => [k, idx(nom)]))
   const manquantes = [[col.sejour, iSejour], [col.code, iCode], [col.date, iDate], ...Object.entries(col.montants).map(([k, nom]) => [nom, iMontants[k]])].filter(([, i]) => i < 0).map(([n]) => n)
   if (manquantes.length) throw new Error(`Colonnes manquantes : ${manquantes.join(', ')}`)
@@ -127,6 +130,7 @@ export function lireJustificatif(rows, { type: typeAttendu } = {}) {
     lignes.push({
       sejour, nom: String(r[iNom] ?? '').trim(), prenom: String(r[iPrenom] ?? '').trim(),
       code: String(r[iCode] ?? '').trim().toUpperCase(), dateActe: versDate(r[iDateActe]), date: versDate(r[iDate]), ...montants,
+      ...(type === 'FAC' ? { entree: iEntree >= 0 ? versDate(r[iEntree]) : '', sortie: iSortie >= 0 ? versDate(r[iSortie]) : '' } : {}),
     })
   }
 
@@ -170,12 +174,159 @@ export function lireActes(rows) {
   return rows.slice(1).filter(r => r && r[iS] != null).map(r => ({ sejour: r[iS], nom: r[iN], prenom: iP >= 0 ? r[iP] : '' }))
 }
 
+// ---- Rattachement par la consultation d'anesthésie (CPA) quand le séjour n'est pas dans les exports ----
+//
+// L'export Diane des CPA (feuille « Résultats ») donne, pour chaque patient vu en consultation, le
+// chirurgien prévu et la date de bloc, mais pas le numéro de séjour. Une ligne facturée est rattachée
+// quand une CPA a le même nom (ou nom marital), un prénom compatible et une date de bloc comprise dans
+// le séjour (entrée − 1 j → sortie + 1 j). Plusieurs chirurgiens possibles → « À arbitrer ».
+
+const motsNom = (s) => sansAccents(s).toUpperCase().replace(/[-_'.]/g, ' ').split(/\s+/).filter(Boolean)
+const MOTS_IGNORES = new Set(['DR', 'DOCTEUR', 'PR'])
+
+/** Lignes de l'export CPA (en-tête en ligne 0) → [{ nom, nomMarital, prenom, dateBloc, chirurgien }]. [] si ce n'en est pas un. */
+export function lireCpa(rows) {
+  const h = (rows[0] || []).map(c => String(c ?? '').trim().toLowerCase())
+  const i = (n) => h.indexOf(n)
+  const iN = i('nom'), iM = i('nom marital'), iP = i('prénom'), iB = i('date bloc'), iC = i('chirurgien')
+  if (iN < 0 || iP < 0 || iB < 0 || iC < 0) return []
+  return rows.slice(1).filter(r => r && r[iN]).map(r => ({
+    nom: String(r[iN] ?? '').trim(), nomMarital: iM >= 0 ? String(r[iM] ?? '').trim() : '', prenom: String(r[iP] ?? '').trim(),
+    dateBloc: versDate(r[iB]), chirurgien: String(r[iC] ?? '').trim(),
+  }))
+}
+
+/**
+ * Annuaire des chirurgiens : nom de famille (mots en majuscules) → prénoms connus → clé canonique.
+ * Sources, par priorité : `med0` des exports d'actes (`{ nom, prenom }`), puis les noms bien écrits
+ * de la CPA (« NOM Prénom »), puis les noms tout en majuscules à 2 mots ou plus (« NOM PRENOM »).
+ * Deux prénoms qui commencent par les 3 mêmes lettres sont la même personne (Franz / Frantz).
+ */
+export function construireAnnuaire(med0 = [], brutsCpa = []) {
+  const familles = new Map() // 'MEYER BISCH' → [{ prenom: 'VINCENT', cle }]
+  const enregistrer = (motsFamille, prenom, cle) => {
+    if (!motsFamille.length) return
+    const f = motsFamille.join(' ')
+    if (ANESTHESISTES.some(a => motsNom(a).join(' ') === f)) return
+    const liste = familles.get(f) || familles.set(f, []).get(f)
+    const p = motsNom(prenom)[0] || ''
+    if (liste.some(x => x.prenom.slice(0, 3) === p.slice(0, 3))) return
+    liste.push({ prenom: p, cle })
+  }
+  for (const { nom, prenom } of med0) if (nom) enregistrer(motsNom(nom), prenom, normaliserChirurgien(nom, prenom))
+  const restes = []
+  for (const brut of new Set(brutsCpa)) {
+    const b = String(brut).replace(/_/g, ' ').replace(/\s+/g, ' ').trim()
+    const m = /^(.*?[A-ZÀ-Ý]{2,})\s+([A-ZÀ-Ý][a-zà-ÿ].*)$/.exec(b)
+    if (m && m[1] === m[1].toUpperCase()) enregistrer(motsNom(m[1]).filter(w => !MOTS_IGNORES.has(w)), m[2], normaliserChirurgien(m[1], m[2]))
+    else restes.push(b)
+  }
+  // « NOM PRENOM » tout en majuscules, nom de famille inconnu : le dernier mot est le prénom
+  for (const b of restes) {
+    const mots = motsNom(b).filter(w => !MOTS_IGNORES.has(w))
+    if (mots.length < 2 || mots.at(-1).length < 2 || b !== b.toUpperCase() || /\bOU\b/.test(b)) continue
+    if (trouverFamilles(familles, mots).length) continue
+    enregistrer(mots.slice(0, -1), mots.at(-1), normaliserChirurgien(mots.slice(0, -1).join(' '), mots.at(-1)))
+  }
+  return familles
+}
+
+// Familles de l'annuaire présentes dans une suite de mots (les plus longues d'abord, sans chevauchement)
+function trouverFamilles(familles, mots) {
+  const trouvees = []
+  const pris = new Set()
+  const cles = [...familles.keys()].sort((a, b) => b.split(' ').length - a.split(' ').length)
+  for (const f of cles) {
+    const fm = f.split(' ')
+    for (let i = 0; i + fm.length <= mots.length; i++) {
+      if (fm.every((w, k) => mots[i + k] === w) && fm.every((_, k) => !pris.has(i + k))) {
+        fm.forEach((_, k) => pris.add(i + k)); trouvees.push({ famille: f, debut: i, fin: i + fm.length })
+      }
+    }
+  }
+  return trouvees
+}
+
+/**
+ * Nom de chirurgien saisi librement dans la CPA → clé canonique, ou « ?<texte> » quand il est
+ * illisible (vide, inconnu, deux noms, prénom qui ne départage pas deux homonymes).
+ */
+export function resoudreChirurgien(brut, annuaire) {
+  const texte = String(brut ?? '').trim()
+  const mots = motsNom(texte).filter(w => !MOTS_IGNORES.has(w))
+  if (!mots.length) return '?'
+  const trouvees = trouverFamilles(annuaire, mots)
+  if (trouvees.length !== 1) return '?' + texte
+  const { famille, debut, fin } = trouvees[0]
+  const prenoms = annuaire.get(famille)
+  const autres = [...mots.slice(0, debut), ...mots.slice(fin)]
+  if (!autres.length) return prenoms.length === 1 ? prenoms[0].cle : '?' + texte
+  const p = autres[0]
+  const ok = prenoms.filter(x => (p.length < 3 ? x.prenom.startsWith(p) : x.prenom.slice(0, 3) === p.slice(0, 3)))
+  if (ok.length === 1) return ok[0].cle
+  if (prenoms.length === 1 && p.length > 1) return prenoms[0].cle // prénom mal orthographié, un seul porteur du nom
+  return '?' + texte
+}
+
+const FAMILLES_ANESTH = ANESTHESISTES.map(a => motsNom(a))
+const nommeAnesthesiste = (brut) => {
+  const mots = motsNom(brut)
+  return FAMILLES_ANESTH.some(f => f.every(w => mots.includes(w)))
+}
+
+const decaler = (jour, n) => {
+  const d = new Date(jour + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+const prenomsCompatibles = (a, b) => {
+  const x = motsNom(a), y = motsNom(b)
+  return x.length > 0 && y.length > 0 && (x[0] === y[0] || y.includes(x[0]) || x.includes(y[0]))
+}
+
+/**
+ * Complète l'index séjour → chirurgiens avec la CPA, pour les séjours absents des exports d'actes.
+ * `lignesFac` = lignes FAC (sejour, nom, prenom, entree, sortie, dateActe, code). Renvoie
+ * { index (nouveau Map), viaCpa: Set des séjours rattachés par la CPA }.
+ */
+export function completerParCpa(index, lignesFac, cpas, annuaire) {
+  const parNom = new Map()
+  for (const c of cpas) {
+    if (!c.dateBloc) continue
+    for (const n of new Set([motsNom(c.nom).join(' '), motsNom(c.nomMarital).join(' ')].filter(Boolean))) {
+      (parNom.get(n) || parNom.set(n, []).get(n)).push(c)
+    }
+  }
+  // Un séjour = un patient et une fenêtre de dates (toutes ses lignes)
+  const sejours = new Map()
+  for (const l of lignesFac) {
+    if (!l.sejour || index.has(l.sejour) || CODES_CONSULTATION.test(l.code) || /^X/i.test(l.sejour)) continue
+    const debut = l.entree || l.dateActe, fin = l.sortie || l.dateActe
+    const s = sejours.get(l.sejour)
+    if (!s) sejours.set(l.sejour, { nom: l.nom, prenom: l.prenom, debut, fin })
+    else { if (debut && (!s.debut || debut < s.debut)) s.debut = debut; if (fin && fin > s.fin) s.fin = fin }
+  }
+  const nouvel = new Map(index), viaCpa = new Set()
+  for (const [sejour, s] of sejours) {
+    if (!s.debut) continue
+    const de = decaler(s.debut, -1), a = decaler(s.fin || s.debut, 1)
+    const cands = (parNom.get(motsNom(s.nom).join(' ')) || []).filter(c => prenomsCompatibles(s.prenom, c.prenom) && c.dateBloc >= de && c.dateBloc <= a)
+    if (!cands.length) continue
+    // Un anesthésiste inscrit comme « chirurgien » (endoscopie sans opérateur…) : pas de chirurgien
+    const chirs = new Set(cands.filter(c => !nommeAnesthesiste(c.chirurgien)).map(c => resoudreChirurgien(c.chirurgien, annuaire)))
+    nouvel.set(sejour, chirs)
+    viaCpa.add(sejour)
+  }
+  return { index: nouvel, viaCpa }
+}
+
 /** À qui va une ligne facturée : { cle, motif }. `cle` = chirurgien normalisé ou bucket. */
 export function attribuer(ligne, index) {
   if (CODES_CONSULTATION.test(ligne.code) || /^X/i.test(ligne.sejour)) return { cle: BUCKETS.consultations, motif: 'consultation' }
   const chirs = index.get(ligne.sejour)
   if (!chirs) return { cle: BUCKETS.sejourInconnu, motif: 'séjour absent des exports d\'actes' }
   if (chirs.size === 0) return { cle: BUCKETS.sansChirurgien, motif: 'séjour sans chirurgien (réa, visites)' }
+  const illisibles = [...chirs].filter(c => c.startsWith('?'))
+  if (illisibles.length) return { cle: BUCKETS.aArbitrer, motif: `chirurgien illisible dans la CPA : ${illisibles.map(c => c.slice(1) || '(vide)').join(', ')}` }
   if (chirs.size > 1) return { cle: BUCKETS.aArbitrer, motif: `plusieurs chirurgiens : ${[...chirs].join(', ')}` }
   return { cle: [...chirs][0], motif: '' }
 }
@@ -184,7 +335,7 @@ export function attribuer(ligne, index) {
  * Agrège des justificatifs lus (chacun complété de { associe, etablissement, fichier } d'après
  * son nom) : lignes des deux tables + lignes mises de côté + contrôle par mois.
  */
-export function agreger(justificatifs, index) {
+export function agreger(justificatifs, index, { viaCpa = new Set() } = {}) {
   const mensuel = new Map(), chirurgiens = new Map(), misDeCote = [], controle = new Map()
   const cleM = (j) => `${j.annee}-${j.mois}-${j.associe}-${j.etablissement}`
   for (const j of justificatifs) {
@@ -201,8 +352,8 @@ export function agreger(justificatifs, index) {
       m.fichier_fac = j.fichier; m.nb_lignes_fac = j.nbLignes
       m.facture_total = arrondi(m.facture_total + j.total.total); m.facture_dh = arrondi(m.facture_dh + j.total.dh)
       m.facture_amo = arrondi(m.facture_amo + j.total.amo); m.facture_amc = arrondi(m.facture_amc + j.total.amc); m.facture_pat = arrondi(m.facture_pat + j.total.pat)
-      const cm = `${j.annee}-${j.mois}`
-      if (!controle.has(cm)) controle.set(cm, { facture: 0, attribue: 0, buckets: {} })
+      const cm = `${j.annee}-${String(j.mois).padStart(2, '0')}`
+      if (!controle.has(cm)) controle.set(cm, { facture: 0, attribue: 0, parCpa: 0, buckets: {} })
       const c = controle.get(cm)
       c.facture = arrondi(c.facture + j.total.total)
       for (const l of j.lignes) {
@@ -214,7 +365,10 @@ export function agreger(justificatifs, index) {
         if (estBucket(cle)) {
           c.buckets[cle] = arrondi((c.buckets[cle] || 0) + l.total)
           if (cle !== BUCKETS.consultations) misDeCote.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, bucket: cle, motif, ...l })
-        } else c.attribue = arrondi(c.attribue + l.total)
+        } else {
+          c.attribue = arrondi(c.attribue + l.total)
+          if (viaCpa.has(l.sejour)) c.parCpa = arrondi(c.parCpa + l.total)
+        }
       }
     } else {
       if (m.fichier_red) throw new Error(`Deux fichiers RED pour ${k} : ${m.fichier_red} et ${j.fichier}`)
