@@ -1,6 +1,6 @@
 // Tests du détail des recettes, sur des lignes de relevé INVENTÉES (montants ronds).
 import { describe, it, expect } from 'vitest'
-import { sourceDe, nomCaisse, familleCaisse, detailRecettes, versementsDe, SOURCES } from './recettes'
+import { sourceDe, nomCaisse, familleCaisse, detailRecettes, versementsDe, serieDe, ecartsCaisses, SOURCES } from './recettes'
 import { calculerSeries } from './compta'
 
 const t = (date, categorie, montant, tiers = '', libelle = '') => ({ date, categorie, montant, tiers, libelle })
@@ -55,7 +55,7 @@ describe('detailRecettes', () => {
   it('détaille le tiers payant par famille puis par caisse, triées par montant', () => {
     expect(d.familles.map(f => f.id)).toEqual(['cpam', 'msa', 'speciaux', 'autres'])
     const cpam = d.familles[0]
-    expect(cpam.caisses).toEqual([{ nom: 'CPAM DE L HERAULT', mois: [60, ...Array(11).fill(0)], n: 2 }])
+    expect(cpam.caisses).toEqual([{ nom: 'CPAM DE L HERAULT', mois: [60, ...Array(11).fill(0)], nb: [2, ...Array(11).fill(0)], n: 2 }])
     expect(d.familles[2].caisses[0]).toMatchObject({ nom: 'MGEN', n: 2 })
     expect(d.familles[2].mois[1]).toBe(15)
   })
@@ -64,5 +64,26 @@ describe('detailRecettes', () => {
     expect(versementsDe(LIGNES, { annee: 2026, mois: 1, famille: 'speciaux' }).map(x => x.montant)).toEqual([10, 5])
     expect(versementsDe(LIGNES, { annee: 2026, mois: 0, caisse: 'CPAM DE L HERAULT' })).toHaveLength(2)
     expect(versementsDe(LIGNES, { annee: 2026, mois: 1, source: 'millenaire' })).toHaveLength(0)
+  })
+})
+
+describe('comparaison entre années', () => {
+  const d26 = detailRecettes(LIGNES, 2026), d25 = detailRecettes([
+    t('2025-01-15', 'Tiers payant consultations', 100, 'CPAM DE L HERAULT'),
+    t('2025-01-20', 'Tiers payant consultations', 15, 'CAMIEG'),
+    t('2025-02-20', 'Versements CPAM hors tiers payant', 250, 'C.P.A.M. DE L HERAULT'),
+  ], 2025)
+  it('donne la série d\'une source, d\'une famille ou d\'une caisse, avec le nombre de virements', () => {
+    expect(serieDe(d26, 'source:cpamHorsTp').mois[1]).toBe(300)
+    expect(serieDe(d26, 'source:tiersPayant').nb.slice(0, 2)).toEqual([3, 3])
+    expect(serieDe(d26, 'famille:msa').mois[0]).toBe(30)
+    expect(serieDe(d26, 'caisse:CPAM DE L HERAULT')).toMatchObject({ mois: [60, ...Array(11).fill(0)], nb: [2, ...Array(11).fill(0)] })
+    expect(serieDe(d25, 'caisse:MGEN').mois).toEqual(Array(12).fill(0))
+  })
+  it('liste les caisses qui ont bougé, de la plus forte variation à la plus faible', () => {
+    const e = ecartsCaisses(d26, d25, 0, 1)
+    expect(e[0]).toMatchObject({ nom: 'CPAM DE L HERAULT', a: 60, b: 100, nbA: 2, nbB: 1, ecart: -40 })
+    expect(e.find(x => x.nom === 'CAMIEG')).toMatchObject({ a: 0, b: 15, ecart: -15 })
+    expect(e.find(x => x.nom === 'MSA DU LANGUEDOC')).toMatchObject({ a: 30, b: 0, ecart: 30 })
   })
 })

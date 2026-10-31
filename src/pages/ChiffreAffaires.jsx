@@ -6,6 +6,7 @@ import { entreeReleve } from '../utils/exportReleve'
 import EtatCompta from '../components/EtatCompta'
 import ContenuCategorie from '../components/ContenuCategorie'
 import DetailRecettes from '../components/DetailRecettes'
+import ComparaisonRecettes from '../components/ComparaisonRecettes'
 import { SOURCES, detailRecettes } from '../data/recettes'
 import { useCompta, CAT_CA } from '../data/compta'
 import { usePeriode } from '../data/periode'
@@ -212,6 +213,13 @@ export default function ChiffreAffaires() {
         annee={primary} anneeRef={ref} de={de} a={a} periode={periode}
         masque={masque} cardStyle={cardStyle} tooltipStyle={tooltipStyle}
         moisMax={S.moisActuel(primary) ?? 11}
+      />
+
+      <ComparaisonRecettes
+        transactions={etat.transactions}
+        years={years} primary={primary} anneeRef={ref} de={de} a={a} periode={periode}
+        masque={masque} cardStyle={cardStyle} tooltipStyle={tooltipStyle}
+        moisMax={y => S.moisActuel(y) ?? 11}
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>

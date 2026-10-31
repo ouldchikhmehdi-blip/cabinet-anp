@@ -59,11 +59,13 @@ export function familleCaisse(nom) {
 }
 
 /**
- * Détail du CA d'une année : { parSource: {id: [12]}, total: [12], familles: [{ id, nom, mois: [12],
- * caisses: [{ nom, mois: [12], n }] }] } — familles et caisses triées par montant décroissant.
+ * Détail du CA d'une année : { parSource: {id: [12]}, nbParSource: {id: [12]}, total: [12],
+ * familles: [{ id, nom, mois: [12], nb: [12], caisses: [{ nom, mois: [12], nb: [12], n }] }] }
+ * — familles et caisses triées par montant décroissant ; `nb` = nombre de virements.
  */
 export function detailRecettes(transactions, annee) {
   const parSource = Object.fromEntries(SOURCES.map(s => [s.id, VIDE()]))
+  const nbParSource = Object.fromEntries(SOURCES.map(s => [s.id, VIDE()]))
   const caisses = new Map()
   for (const t of transactions) {
     if (!t.date.startsWith(`${annee}-`)) continue
@@ -71,11 +73,12 @@ export function detailRecettes(transactions, annee) {
     if (!src) continue
     const m = mois(t)
     parSource[src][m] += t.montant
+    nbParSource[src][m] += 1
     if (src === 'tiersPayant') {
       const nom = nomCaisse(t.tiers)
-      if (!caisses.has(nom)) caisses.set(nom, { nom, mois: VIDE(), n: 0 })
+      if (!caisses.has(nom)) caisses.set(nom, { nom, mois: VIDE(), nb: VIDE(), n: 0 })
       const c = caisses.get(nom)
-      c.mois[m] += t.montant; c.n += 1
+      c.mois[m] += t.montant; c.nb[m] += 1; c.n += 1
     }
   }
   for (const id of Object.keys(parSource)) parSource[id] = parSource[id].map(arrondi)
@@ -85,10 +88,44 @@ export function detailRecettes(transactions, annee) {
     const cs = [...caisses.values()].filter(c => familleCaisse(c.nom) === f.id)
       .map(c => ({ ...c, mois: c.mois.map(arrondi) }))
       .sort((a, b) => somme(b.mois) - somme(a.mois) || a.nom.localeCompare(b.nom))
-    return { ...f, caisses: cs, mois: VIDE().map((_, m) => arrondi(cs.reduce((s, c) => s + c.mois[m], 0))) }
+    return { ...f, caisses: cs, mois: VIDE().map((_, m) => arrondi(cs.reduce((s, c) => s + c.mois[m], 0))), nb: VIDE().map((_, m) => cs.reduce((s, c) => s + c.nb[m], 0)) }
   }).filter(f => f.caisses.length)
     .sort((a, b) => somme(b.mois) - somme(a.mois))
-  return { parSource, total, familles }
+  return { parSource, nbParSource, total, familles }
+}
+
+/**
+ * Série mensuelle d'une cible du détail : { mois: [12], nb: [12] }. `cible` = 'source:<id>',
+ * 'famille:<id>' ou 'caisse:<nom>' ; une cible absente de l'année donne des zéros.
+ */
+export function serieDe(detail, cible) {
+  const [type, ...reste] = String(cible).split(':')
+  const id = reste.join(':')
+  if (type === 'source' && detail.parSource[id]) return { mois: detail.parSource[id], nb: detail.nbParSource[id] }
+  if (type === 'famille') { const f = detail.familles.find(x => x.id === id); if (f) return { mois: f.mois, nb: f.nb } }
+  if (type === 'caisse') { for (const f of detail.familles) { const c = f.caisses.find(x => x.nom === id); if (c) return { mois: c.mois, nb: c.nb } } }
+  return { mois: VIDE(), nb: VIDE() }
+}
+
+/**
+ * Ce qui a bougé dans le tiers payant entre deux années, mois de..a : une ligne par caisse présente
+ * l'une ou l'autre année { nom, famille, a, b, nbA, nbB, ecart } (a = année principale, b = référence),
+ * triée par écart absolu décroissant.
+ */
+export function ecartsCaisses(detailA, detailB, de, a) {
+  const tranche = (arr) => arr.slice(de, a + 1).reduce((s, v) => s + v, 0)
+  const lignes = new Map()
+  const lire = (detail, cote) => {
+    for (const f of detail.familles) for (const c of f.caisses) {
+      if (!lignes.has(c.nom)) lignes.set(c.nom, { nom: c.nom, famille: f.id, a: 0, b: 0, nbA: 0, nbB: 0 })
+      const l = lignes.get(c.nom)
+      l[cote] = arrondi(tranche(c.mois)); l[cote === 'a' ? 'nbA' : 'nbB'] = tranche(c.nb)
+    }
+  }
+  lire(detailA, 'a'); lire(detailB, 'b')
+  return [...lignes.values()].map(l => ({ ...l, ecart: arrondi(l.a - l.b) }))
+    .filter(l => l.a !== 0 || l.b !== 0)
+    .sort((x, y) => Math.abs(y.ecart) - Math.abs(x.ecart) || x.nom.localeCompare(y.nom))
 }
 
 /**
