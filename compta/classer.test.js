@@ -157,8 +157,9 @@ describe('classer — charges et fonctionnement', () => {
   it('prélèvement inconnu → À arbitrer', () => {
     expect(cat('PRLV SEPA', 'NOUVEAU FOURNISSEUR ECH/020125', -99).categorie).toBe('À arbitrer')
   })
-  it('Société Générale : règle connue mais non tranchée → À arbitrer avec alerte', () => {
-    expect(cat('PRLV SEPA', 'SG-SOCIETE GENERALE ECH/020125', -1000)).toMatchObject({ categorie: 'À arbitrer', regle: 'societe-generale' })
+  it('Société Générale : prélèvement SG = épargne salariale (arbitré le 2026-10-30) ; autre libellé → À arbitrer', () => {
+    expect(cat('PRLV SEPA', 'SG-SOCIETE GENERALE ECH/020125', -1000)).toMatchObject({ categorie: 'Épargne salariale', regle: 'sg-societe-generale-epargne-salariale' })
+    expect(cat('PRLV SEPA', 'BANQUE SOCIETE GENERALE ECH/020125', -1000)).toMatchObject({ categorie: 'À arbitrer', regle: 'societe-generale' })
   })
   it('carte : commerçant connu → Vie du groupe, inconnu → À arbitrer', () => {
     expect(cat('FACTURE CARTE', 'DU 090125 RESTO TEST MONTPELLIER CARTE 4974XXXX', -200).categorie).toBe('Vie du groupe et réceptions')

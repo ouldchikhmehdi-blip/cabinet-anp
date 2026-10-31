@@ -145,7 +145,9 @@ supprimée : `delete from compta_soldes where date = '2025-11-06';`
 - `RCP DR …` = remboursement à chaque associé de sa prime de responsabilité civile.
 - CPAM de l'Hérault : ≤ 500 € = tiers payant ; au-delà = « Versements CPAM hors tiers
   payant » (permanence des soins, forfaits, aides).
-- Laissés à la comptable (règle « à arbitrer » volontaire) : Société Générale, Clinique du
+- Prélèvements « SG-SOCIETE GENERALE » = épargne salariale (arbitré par drmoc dans la page le
+  2026-10-30, règle `sg-societe-generale-epargne-salariale`).
+- Laissés à la comptable (règle « à arbitrer » volontaire) : autre libellé Société Générale, Clinique du
   Millénaire (petits prélèvements), SAS Millénaire Clinique, Infogem, SIE, remises de
   chèques, chèques émis.
 - Complété le même jour avec le CSV 2025-2026 : Clémentville = honoraires clinique ;

@@ -369,6 +369,14 @@
       "categorie": "Remboursement reçu"
     },
     {
+      "id": "sg-societe-generale-epargne-salariale",
+      "quand": {
+        "sens": "debit",
+        "tiers": "^SG-SOCIETE GENERALE"
+      },
+      "categorie": "Épargne salariale"
+    },
+    {
       "id": "societe-generale",
       "quand": {
         "type": "^PRLV",
