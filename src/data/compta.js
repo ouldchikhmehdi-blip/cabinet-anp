@@ -19,7 +19,8 @@
 //   series.NON_CLASSE[y][m]       débits « À arbitrer », positif
 //   series.PAR_CATEGORIE[y][cat]  [12] signé (crédits +, débits −)
 //   series.SALARIES               [{ id, initiales, nom, poste, type, couts: {y}, mensuel: {y: [12]} }]
-//   series.DEPENSES               [{ id, nom, groupe, couleur, montants: {y: [12]} }] (charges + investissements)
+//   series.DEPENSES               [{ id, nom, groupe, couleur, montants: {y: [12]} }] (salariés, rempla, charges, investissements ;
+//                                 groupe = groupe affiché, « Charges ressources humaines » pour les trois premiers)
 //   series.moisActuel(y)          dernier mois (0-11) ayant des lignes pour l'année y
 // ============================================================
 import { useEffect, useReducer } from 'react'
@@ -29,6 +30,10 @@ import { groupeDe, TAXONOMIE } from './categories'
 const VIDE = () => Array(12).fill(0)
 export const CAT_CA = ['Honoraires clinique', 'Tiers payant consultations', 'Versements CPAM hors tiers payant']
 const GROUPES_CHARGES = ['Remplaçants', 'Salariés', 'Charges sociales et fiscales', 'Fonctionnement']
+// Groupes des pages Dépenses (débits) : mêmes que series.DEPENSES
+export const GROUPES_DEPENSES = ['Salariés', 'Remplaçants', 'Charges sociales et fiscales', 'Fonctionnement', 'Investissements']
+export const GROUPE_RH = 'Charges ressources humaines'
+const GROUPES_RH = ['Salariés', 'Remplaçants', 'Charges sociales et fiscales']
 const PALETTE = ['#534AB7', '#1D9E75', '#D85A30', '#EF9F27', '#0C447C', '#712B13', '#633806', '#3C3489', '#085041', '#A32D2D', '#444441', '#8C8C86', '#2B7FB8']
 
 const titre = (s) => s.toLowerCase().replace(/(^|[\s-])\S/g, c => c.toUpperCase())
@@ -102,19 +107,28 @@ export function calculerSeries(transactions, soldes = [], doc = null) {
     return { id: `cdi-${i}`, initiales: nom.slice(0, 2).toUpperCase(), nom, poste: 'IADE', type: 'CDI', couts, mensuel }
   })
 
-  // Dépenses : une série par sous-catégorie de charges sociales/fiscales et de fonctionnement
+  // Dépenses : une série par sous-catégorie de salariés, remplaçants, charges sociales/fiscales,
+  // fonctionnement et investissements (affichées dans l'ordre de GROUPES_DEPENSES).
+  // Les couleurs sont attribuées dans l'ordre historique (charges, fonctionnement, investissements,
+  // puis salariés et remplaçants ajoutés le 2026-11-01) pour que les cases existantes gardent la leur.
   const DEPENSES = []
   let k = 0
   // Investissements : visibles dans Dépenses, mais hors CHARGES (ce n'est pas une charge courante)
-  for (const g of TAXONOMIE.filter(g => ['Charges sociales et fiscales', 'Fonctionnement', 'Investissements'].includes(g.groupe))) {
-    for (const c of g.sous) {
+  const ORDRE_COULEURS = ['Charges sociales et fiscales', 'Fonctionnement', 'Investissements', 'Salariés', 'Remplaçants']
+  for (const nomGroupe of ORDRE_COULEURS) {
+    const g = TAXONOMIE.find(g => g.groupe === nomGroupe)
+    for (const c of g?.sous || []) {
       const montants = {}
       for (const y of annees) montants[y] = serie(y, t => t.categorie === c && t.montant < 0, -1)
       if (Object.values(montants).some(s => s.some(v => v !== 0))) {
-        DEPENSES.push({ id: c, nom: c, groupe: g.groupe, couleur: PALETTE[k++ % PALETTE.length], montants })
+        DEPENSES.push({ id: c, nom: c, groupe: nomGroupe, couleur: PALETTE[k++ % PALETTE.length], montants })
       }
     }
   }
+  DEPENSES.sort((x, y) => GROUPES_DEPENSES.indexOf(x.groupe) - GROUPES_DEPENSES.indexOf(y.groupe))
+  // Affichage : salariés, remplaçants et charges sociales et fiscales réunis sous un seul
+  // groupe « Charges ressources humaines » (choix de drmoc, 2026-11-01). La taxonomie ne change pas.
+  for (const d of DEPENSES) if (GROUPES_RH.includes(d.groupe)) d.groupe = GROUPE_RH
   // Ordre des cases : celui de la taxonomie, sauf « Impôts et taxes » et « Prévoyance et mutuelle
   // salariés » qui échangent leur place (choix de drmoc, 2026-10-31). Chaque case garde sa couleur.
   const iPrev = DEPENSES.findIndex(d => d.id === 'Prévoyance et mutuelle salariés')
@@ -268,5 +282,3 @@ export function feuillesReleve(transactions, { years, de = 0, a = 11, filtre = (
   })
 }
 
-// Groupes des pages Dépenses (débits) : mêmes que series.DEPENSES
-export const GROUPES_DEPENSES = ['Charges sociales et fiscales', 'Fonctionnement', 'Investissements']

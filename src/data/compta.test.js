@@ -62,9 +62,17 @@ describe('calculerSeries', () => {
     expect(S.SALARIES[0].couts[2025]).toBe(2000)
     expect(S.SALARIES[1].couts[2025]).toBe(0)
   })
-  it('dépenses : une série par sous-catégorie non vide', () => {
-    expect(S.DEPENSES.map(d => d.id)).toEqual(['URSSAF', 'Banque'])
-    expect(S.DEPENSES[0].montants[2025][1]).toBe(1500)
+  it('dépenses : une série par sous-catégorie non vide, salariés et remplaçants en tête', () => {
+    expect(S.DEPENSES.map(d => d.id)).toEqual(['Salaire IADE CDI', 'Remplaçant MAR', 'Remplaçant IADE (CDD)', 'URSSAF', 'Banque'])
+    expect(S.DEPENSES.find(d => d.id === 'URSSAF').montants[2025][1]).toBe(1500)
+    expect(S.DEPENSES.find(d => d.id === 'Salaire IADE CDI').montants[2025][1]).toBe(2000)
+  })
+  it('dépenses : salariés, remplaçants et charges sociales réunis en « Charges ressources humaines »', () => {
+    expect(S.DEPENSES.map(d => d.groupe)).toEqual(['Charges ressources humaines', 'Charges ressources humaines', 'Charges ressources humaines', 'Charges ressources humaines', 'Fonctionnement'])
+  })
+  it('dépenses : les cases historiques gardent leur couleur', () => {
+    const seules = calculerSeries(LIGNES.filter(l => ['URSSAF', 'Banque'].includes(l.categorie)), [], DOC).DEPENSES
+    for (const d of seules) expect(S.DEPENSES.find(x => x.id === d.id).couleur).toBe(d.couleur)
   })
   it('dépenses : Impôts et taxes prend la place de Prévoyance et mutuelle salariés, et inversement', () => {
     const l = (categorie) => ({ date: '2025-01-05', montant: -100, categorie, groupe: 'Charges sociales et fiscales', libelle: 'X', tiers: 'X' })

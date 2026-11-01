@@ -34,6 +34,8 @@ const COULEURS = {
   'Remplaçants':                  { background: '#FAEEDA', color: '#633806' },
   'Salariés':                     { background: '#E6F1FB', color: '#0C447C' },
   'Charges sociales et fiscales': { background: '#FAECE7', color: '#712B13' },
+  // Groupe d'affichage de la page Dépenses (salariés + remplaçants + charges sociales et fiscales)
+  'Charges ressources humaines':  { background: '#FAECE7', color: '#712B13' },
   'Fonctionnement':               { background: '#F1EFE8', color: '#444441' },
   'Investissements':              { background: '#E8EEF8', color: '#24406B' },
   'À arbitrer':                   { background: '#FBE9E9', color: '#A32D2D' },

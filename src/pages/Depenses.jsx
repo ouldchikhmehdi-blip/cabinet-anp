@@ -73,7 +73,7 @@ export default function Depenses() {
         {enTete}
         <EtatCompta etat={etat} />
         <div style={{ ...cardStyle, textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 13 }}>
-          Aucune dépense classée — classez des débits en « Charges sociales et fiscales » ou « Fonctionnement » dans « Règles virements ».
+          Aucune dépense classée — classez des débits en « Salariés », « Remplaçants », « Charges sociales et fiscales » ou « Fonctionnement » dans « Règles virements ».
         </div>
       </div>
     )
@@ -154,7 +154,7 @@ export default function Depenses() {
         </ResponsiveContainer>
       </div>
 
-      {/* Sélecteur de catégories, groupé par groupe de la taxonomie */}
+      {/* Sélecteur de catégories, groupé par groupe affiché (cf. series.DEPENSES) */}
       <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500, letterSpacing: '0.04em' }}>
         Catégories — cliquez pour le détail
       </div>
