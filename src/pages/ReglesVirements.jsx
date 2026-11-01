@@ -37,7 +37,10 @@ const pastille = (cat) => <span style={{ fontSize: 11, padding: '2px 8px', borde
 
 // ---- Page ----
 
-export default function ReglesVirements() {
+// `lectureSeule` : associés non administrateurs. Ils voient tout (file d'attente, alertes,
+// dictionnaire) mais aucun contrôle de modification n'est affiché ; la base refuse de toute
+// façon l'écriture aux non-admins (policies is_admin() sur compta_*).
+export default function ReglesVirements({ lectureSeule = false }) {
   const etat = useCompta()
   const { doc, transactions } = etat
   const [message, setMessage] = useState('')
@@ -165,22 +168,36 @@ export default function ReglesVirements() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Règles virements</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input ref={fichierRef} type="file" accept=".ofx,.OFX,.csv,.CSV" style={{ display: 'none' }} onChange={e => importerFichier(e.target.files?.[0])} />
-          <button disabled={occupe || !doc} onClick={() => fichierRef.current?.click()} style={boutonStyle(!occupe && !!doc)}>Importer un relevé (OFX ou CSV BNP)</button>
-          <input ref={reglesRef} type="file" accept=".json" style={{ display: 'none' }} onChange={e => importerDictionnaire(e.target.files?.[0])} />
-          <button disabled={occupe} onClick={() => reglesRef.current?.click()} style={boutonStyle(!occupe, 'var(--color-border)', 'var(--color-surface)', 'var(--color-text-secondary)')}>Charger regles.json</button>
+          {!lectureSeule && (
+            <>
+              <input ref={fichierRef} type="file" accept=".ofx,.OFX,.csv,.CSV" style={{ display: 'none' }} onChange={e => importerFichier(e.target.files?.[0])} />
+              <button disabled={occupe || !doc} onClick={() => fichierRef.current?.click()} style={boutonStyle(!occupe && !!doc)}>Importer un relevé (OFX ou CSV BNP)</button>
+              <input ref={reglesRef} type="file" accept=".json" style={{ display: 'none' }} onChange={e => importerDictionnaire(e.target.files?.[0])} />
+              <button disabled={occupe} onClick={() => reglesRef.current?.click()} style={boutonStyle(!occupe, 'var(--color-border)', 'var(--color-surface)', 'var(--color-text-secondary)')}>Charger regles.json</button>
+            </>
+          )}
           <button disabled={!doc} onClick={exporterDictionnaire} style={boutonStyle(!!doc, 'var(--color-border)', 'var(--color-surface)', 'var(--color-text-secondary)')}>Exporter regles.json</button>
         </div>
       </div>
 
       <EtatCompta etat={etat} />
+      {lectureSeule && (
+        <div style={{ background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 14px', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+          Consultation seule : les règles, le classement des lignes et l'import des relevés sont réservés aux administrateurs.
+        </div>
+      )}
       {message && (
         <div style={{ background: '#EEEDFE', border: '0.5px solid #AFA9EC', borderRadius: 'var(--radius-md)', padding: '8px 14px', fontSize: 12, color: '#3C3489' }}>
           {occupe ? '⏳ ' : 'ℹ '}{message}
         </div>
       )}
 
-      {etat.statut === 'pret' && !doc && (
+      {etat.statut === 'pret' && !doc && lectureSeule && (
+        <div style={{ ...cardStyle, padding: 16, fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          Aucun dictionnaire de règles en base pour l'instant.
+        </div>
+      )}
+      {etat.statut === 'pret' && !doc && !lectureSeule && (
         <div style={{ ...cardStyle, padding: 16, fontSize: 13, color: 'var(--color-text-secondary)' }}>
           Aucun dictionnaire de règles en base. Chargez le fichier <code>compta/regles.json</code> du dépôt avec le bouton
           « Charger regles.json », ou lancez <code>node compta/importer.js … --regles-locales</code> depuis le mini PC.
@@ -189,9 +206,9 @@ export default function ReglesVirements() {
 
       {doc && (
         <>
-          <FileAttente lignes={aArbitrer} doc={doc} occupe={occupe} onLigne={classerLigne} onRegle={regleSurTiers} onNom={ajouterNom} />
-          <Alertes lignes={enAlerte} occupe={occupe} onConfirmer={confirmerAlerte} />
-          <Dictionnaire doc={doc} occupe={occupe} transactions={transactions} onAjouterNom={ajouterNom} onRetirerNom={retirerNom} onAjouterRegle={ajouterRegle} onSupprimerRegle={supprimerRegle} />
+          <FileAttente lignes={aArbitrer} doc={doc} occupe={occupe} lectureSeule={lectureSeule} onLigne={classerLigne} onRegle={regleSurTiers} onNom={ajouterNom} />
+          <Alertes lignes={enAlerte} occupe={occupe} lectureSeule={lectureSeule} onConfirmer={confirmerAlerte} />
+          <Dictionnaire doc={doc} occupe={occupe} lectureSeule={lectureSeule} transactions={transactions} onAjouterNom={ajouterNom} onRetirerNom={retirerNom} onAjouterRegle={ajouterRegle} onSupprimerRegle={supprimerRegle} />
         </>
       )}
     </div>
@@ -200,7 +217,7 @@ export default function ReglesVirements() {
 
 // ---- File d'attente ----
 
-function FileAttente({ lignes, doc, occupe, onLigne, onRegle, onNom }) {
+function FileAttente({ lignes, doc, occupe, lectureSeule, onLigne, onRegle, onNom }) {
   const [choix, setChoix] = useState({}) // fitid → { categorie, associe, nom, liste }
   const maj = (id, patch) => setChoix(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }))
   const [visibles, setVisibles] = useState(40)
@@ -214,9 +231,11 @@ function FileAttente({ lignes, doc, occupe, onLigne, onRegle, onNom }) {
             {lignes.length} ligne{lignes.length > 1 ? 's' : ''} à arbitrer
           </span>
         )}
-        <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>
-          « Cette ligne » = classement manuel ; « Règle sur ce tiers » = toutes les lignes de ce tiers, maintenant et à l'avenir
-        </span>
+        {!lectureSeule && (
+          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>
+            « Cette ligne » = classement manuel ; « Règle sur ce tiers » = toutes les lignes de ce tiers, maintenant et à l'avenir
+          </span>
+        )}
       </div>
 
       {lignes.length === 0 ? (
@@ -237,17 +256,21 @@ function FileAttente({ lignes, doc, occupe, onLigne, onRegle, onNom }) {
                     <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 1, wordBreak: 'break-all' }}>{t.libelle}</div>
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 500, color: t.montant < 0 ? 'var(--color-text)' : '#085041', whiteSpace: 'nowrap' }}>{fmtEur(t.montant)}</div>
-                  <SelecteurCategorie value={c.categorie} onChange={v => maj(t.fitid, { categorie: v })} categoriesDisponibles={CATEGORIES_CHOISISSABLES} />
-                  {besoinAssocie && (
-                    <select style={champStyle} value={c.associe || ''} onChange={e => maj(t.fitid, { associe: e.target.value })}>
-                      <option value="">Associé…</option>
-                      {Object.keys(doc.associes).map(ini => <option key={ini} value={ini}>{ini}</option>)}
-                    </select>
+                  {!lectureSeule && (
+                    <>
+                      <SelecteurCategorie value={c.categorie} onChange={v => maj(t.fitid, { categorie: v })} categoriesDisponibles={CATEGORIES_CHOISISSABLES} />
+                      {besoinAssocie && (
+                        <select style={champStyle} value={c.associe || ''} onChange={e => maj(t.fitid, { associe: e.target.value })}>
+                          <option value="">Associé…</option>
+                          {Object.keys(doc.associes).map(ini => <option key={ini} value={ini}>{ini}</option>)}
+                        </select>
+                      )}
+                      <button disabled={!pret || occupe} onClick={() => onLigne(t, c.categorie, c.associe)} style={boutonStyle(pret && !occupe)}>Cette ligne</button>
+                      <button disabled={!pret || occupe} onClick={() => onRegle(t, c.categorie, c.associe)} style={boutonStyle(pret && !occupe, '#534AB7', '#EEEDFE', '#3C3489')}>Règle sur ce tiers</button>
+                    </>
                   )}
-                  <button disabled={!pret || occupe} onClick={() => onLigne(t, c.categorie, c.associe)} style={boutonStyle(pret && !occupe)}>Cette ligne</button>
-                  <button disabled={!pret || occupe} onClick={() => onRegle(t, c.categorie, c.associe)} style={boutonStyle(pret && !occupe, '#534AB7', '#EEEDFE', '#3C3489')}>Règle sur ce tiers</button>
                 </div>
-                {nomDevine && (
+                {nomDevine && !lectureSeule && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--color-text-secondary)' }}>
                     Nom inconnu du dictionnaire :
                     <input style={{ ...champStyle, width: 180 }} value={c.nom ?? nomDevine} onChange={e => maj(t.fitid, { nom: e.target.value })} />
@@ -273,7 +296,7 @@ function FileAttente({ lignes, doc, occupe, onLigne, onRegle, onNom }) {
 
 // ---- Lignes classées mais à vérifier ----
 
-function Alertes({ lignes, occupe, onConfirmer }) {
+function Alertes({ lignes, occupe, lectureSeule, onConfirmer }) {
   const [ouvert, setOuvert] = useState(false)
   if (lignes.length === 0) return null
   return (
@@ -293,7 +316,7 @@ function Alertes({ lignes, occupe, onConfirmer }) {
               {pastille(t.categorie)}
               {t.associe && <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t.associe}</span>}
               <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>{fmtEur(t.montant)}</div>
-              <button disabled={occupe} onClick={() => onConfirmer(t)} style={boutonStyle(!occupe)}>Confirmer</button>
+              {!lectureSeule && <button disabled={occupe} onClick={() => onConfirmer(t)} style={boutonStyle(!occupe)}>Confirmer</button>}
             </div>
           ))}
         </div>
@@ -304,7 +327,7 @@ function Alertes({ lignes, occupe, onConfirmer }) {
 
 // ---- Dictionnaire ----
 
-function Dictionnaire({ doc, occupe, transactions, onAjouterNom, onRetirerNom, onAjouterRegle, onSupprimerRegle }) {
+function Dictionnaire({ doc, occupe, lectureSeule, transactions, onAjouterNom, onRetirerNom, onAjouterRegle, onSupprimerRegle }) {
   const [ajouts, setAjouts] = useState({})
   const [openCats, setOpenCats] = useState({})
   const [formOuvert, setFormOuvert] = useState(false)
@@ -337,12 +360,14 @@ function Dictionnaire({ doc, occupe, transactions, onAjouterNom, onRetirerNom, o
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={sousTitre}>DICTIONNAIRE DE RÈGLES</span>
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>— {doc.regles.length} règle{doc.regles.length > 1 ? 's' : ''} explicite{doc.regles.length > 1 ? 's' : ''} · {LISTES.reduce((s, l) => s + (doc[l.cle]?.length || 0), 0)} noms</span>
-        <button onClick={() => setFormOuvert(o => !o)} style={{ ...boutonStyle(true, 'var(--color-border)', formOuvert ? 'var(--color-primary-light)' : 'var(--color-surface)', formOuvert ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)'), marginLeft: 'auto' }}>
-          + Règle explicite
-        </button>
+        {!lectureSeule && (
+          <button onClick={() => setFormOuvert(o => !o)} style={{ ...boutonStyle(true, 'var(--color-border)', formOuvert ? 'var(--color-primary-light)' : 'var(--color-surface)', formOuvert ? 'var(--color-primary-dark)' : 'var(--color-text-secondary)'), marginLeft: 'auto' }}>
+            + Règle explicite
+          </button>
+        )}
       </div>
 
-      {formOuvert && (
+      {formOuvert && !lectureSeule && (
         <div style={{ ...cardStyle, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <input style={{ ...champStyle, width: 160 }} placeholder="Identifiant (ex. loyer-sci)" value={f.id} onChange={e => setF({ ...f, id: e.target.value })} />
           <select style={champStyle} value={f.sens} onChange={e => setF({ ...f, sens: e.target.value })}>
@@ -373,14 +398,14 @@ function Dictionnaire({ doc, occupe, transactions, onAjouterNom, onRetirerNom, o
               {(doc[l.cle] || []).map(n => (
                 <span key={n} style={{ fontSize: 11, padding: '2px 4px 2px 8px', borderRadius: 10, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   {n}
-                  <button disabled={occupe} title="Retirer" onClick={() => onRetirerNom(l.cle, n)} style={{ border: 'none', background: 'transparent', color: '#A32D2D', cursor: 'pointer', fontSize: 11, padding: '0 4px' }}>×</button>
+                  {!lectureSeule && <button disabled={occupe} title="Retirer" onClick={() => onRetirerNom(l.cle, n)} style={{ border: 'none', background: 'transparent', color: '#A32D2D', cursor: 'pointer', fontSize: 11, padding: '0 4px' }}>×</button>}
                 </span>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
+            {!lectureSeule && <div style={{ display: 'flex', gap: 6 }}>
               <input style={{ ...champStyle, flex: 1 }} placeholder="NOM tel qu'il apparaît à la banque" value={ajouts[l.cle] || ''} onChange={e => setAjouts({ ...ajouts, [l.cle]: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && ajouts[l.cle]?.trim()) { onAjouterNom(l.cle, ajouts[l.cle]); setAjouts({ ...ajouts, [l.cle]: '' }) } }} />
               <button disabled={occupe || !ajouts[l.cle]?.trim()} onClick={() => { onAjouterNom(l.cle, ajouts[l.cle]); setAjouts({ ...ajouts, [l.cle]: '' }) }} style={boutonStyle(!occupe && !!ajouts[l.cle]?.trim())}>Ajouter</button>
-            </div>
+            </div>}
           </div>
         ))}
         <div style={{ ...cardStyle, padding: '10px 14px' }}>
@@ -417,7 +442,7 @@ function Dictionnaire({ doc, occupe, transactions, onAjouterNom, onRetirerNom, o
                         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{resume(r)}{r.alerte ? ` · alerte : ${r.alerte}` : ''}</div>
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{usage[r.id] || 0} ligne{(usage[r.id] || 0) > 1 ? 's' : ''}</span>
-                      <button disabled={occupe} onClick={() => onSupprimerRegle(r.id)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-md)', border: '0.5px solid #F09595', background: 'transparent', color: '#A32D2D', cursor: 'pointer' }}>Supprimer</button>
+                      {!lectureSeule && <button disabled={occupe} onClick={() => onSupprimerRegle(r.id)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-md)', border: '0.5px solid #F09595', background: 'transparent', color: '#A32D2D', cursor: 'pointer' }}>Supprimer</button>}
                     </div>
                   ))}
                 </div>

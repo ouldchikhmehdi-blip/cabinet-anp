@@ -296,7 +296,7 @@ export default function App() {
       case 'depenses':         return <Depenses />
       case 'consultations':    return <Consultations />
       case 'retrocessions':    return <Retrocessions />
-      case 'regles-virements': return <ReglesVirements />
+      case 'regles-virements': return <ReglesVirements lectureSeule={profile?.role !== 'admin'} />
       case 'planning-desiderata': return <PlanningDesiderata />
       case 'mon-agenda':          return profile?.initiales ? <MonAgenda /> : <VueGlobale />
       case 'planning-calendrier': return profile?.is_faiseur ? <PlanningConstruction /> : <VueGlobale />
