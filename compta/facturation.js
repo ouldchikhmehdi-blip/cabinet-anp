@@ -160,16 +160,19 @@ if (sqlFichier) {
   }
   writeFileSync(sqlFichier, lignes.join('\n') + '\n')
   console.log(`SQL écrit dans ${sqlFichier} (${r.mensuel.length} + ${r.chirurgiens.length} lignes)`)
+  console.log(`Les ${r.actes.length} lignes d'actes (facturation_actes, export par chirurgien) ne passent pas par --sql : trop volumineuses ; il faut la clé service role.`)
   process.exit(0)
 }
 if (sansBase) { console.log('--sans-base : rien n\'est écrit en base'); process.exit(0) }
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
-for (const table of ['facturation_mensuelle', 'facturation_chirurgiens']) {
+for (const table of ['facturation_mensuelle', 'facturation_chirurgiens', 'facturation_actes']) {
   const { error } = await sb.from(table).delete().eq('annee', annee).in('mois', moisTouches)
   if (error) throw error
 }
 const importe_le = new Date().toISOString()
-for (const [table, rows] of [['facturation_mensuelle', r.mensuel], ['facturation_chirurgiens', r.chirurgiens]]) {
+// facturation_actes : une ligne par acte facturé, sans nom ni prénom de patient (n° de séjour gardé,
+// décision drmoc du 2026-11-01) — pour l'export Excel des actes d'une spécialité ou d'un chirurgien
+for (const [table, rows] of [['facturation_mensuelle', r.mensuel], ['facturation_chirurgiens', r.chirurgiens], ['facturation_actes', r.actes]]) {
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await sb.from(table).insert(rows.slice(i, i + 500).map(x => ({ ...x, importe_le })))
     if (error) throw error

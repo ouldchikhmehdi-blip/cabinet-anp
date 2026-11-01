@@ -11,7 +11,8 @@ import BoutonExport from '../components/BoutonExport'
 import EtatFacturation from '../components/EtatFacturation'
 import { useFacturation } from '../data/facturation'
 import { usePeriode } from '../data/periode'
-import { specialitesFacturation } from '../data/facturationChirurgiens'
+import { specialitesFacturation, clesSelection, feuillesActes } from '../data/facturationChirurgiens'
+import { chargerActes } from '../data/facturationApi'
 import { MOIS_COURT, MOIS_LONG, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
 import { echelle, axeK, sansMoisFuturs } from '../utils/echelle'
 import { moisRenseignes, sommeComparable, dernierMoisRenseigne } from '../utils/periodeComparable'
@@ -137,6 +138,20 @@ export default function FacturationChirurgiens() {
     },
   }]
 
+  // Actes de ce qui est sélectionné : la spécialité entière, ou le(s) praticien(s) choisi(s) —
+  // lus en base à la demande (facturation_actes, sans nom de patient), une feuille par année comparée
+  const idsSel = isSinglePrat || isMultiPrat ? selValides : []
+  const cibleNom = prat ? `${prat.nom} (${spec.nom})` : isMultiPrat ? `${spec.nom} · ${selValides.length} praticiens` : spec.nom
+  const fichier = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()
+  exports.unshift({
+    label: `Actes · ${cibleNom} · ${[...years].sort().join(', ')}`,
+    build: async () => {
+      const actes = await chargerActes({ annees: years, cles: clesSelection(spec, idsSel), de, a })
+      if (!actes.length) throw new Error('aucun acte en base pour cette sélection et cette période (les lignes d\'actes sont-elles importées ?)')
+      return { nomFichier: `actes_${fichier(cibleNom)}_${MOIS_COURT[de]}-${MOIS_COURT[a]}_${[...years].sort().join('-')}.xlsx`, feuilles: feuillesActes(actes, years) }
+    },
+  })
+
   const tooltipStyle = { backgroundColor: '#fff', border: '0.5px solid #d3d1c7', borderRadius: 8, fontSize: 12 }
   const cardStyle = { background: 'var(--color-surface)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
   const pillBase = { fontSize: 11, padding: '4px 12px', borderRadius: 16, border: '0.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s' }
@@ -245,6 +260,11 @@ export default function FacturationChirurgiens() {
           })}
         </div>
       )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+        <span>Actes de la sélection : <strong style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{cibleNom}</strong> · {periode} · {[...years].sort().join(', ')}</span>
+        <BoutonExport exports={[exports[0]]} disabled={masque} />
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         {isSinglePrat ? (

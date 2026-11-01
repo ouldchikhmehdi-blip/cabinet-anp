@@ -85,7 +85,7 @@ const arrondi = (v) => Math.round(v * 100) / 100
 
 const COLONNES = {
   FAC: {
-    sejour: 'N° Dossier', nom: 'Nom', prenom: 'Prénom', code: 'Code Acte', dateActe: 'Date Acte', date: 'Date Facture', entree: 'Date Entrée', sortie: 'Date Sortie',
+    sejour: 'N° Dossier', nom: 'Nom', prenom: 'Prénom', code: 'Code Acte', dateActe: 'Date Acte', date: 'Date Facture', entree: 'Date Entrée', sortie: 'Date Sortie', coef: 'Coef',
     montants: { dh: 'Mt DH', amo: 'Mt AMO', amc: 'Mt AMC', pat: 'Mt Pat', total: 'Mt Total' },
   },
   RED: {
@@ -111,7 +111,7 @@ export function lireJustificatif(rows, { type: typeAttendu } = {}) {
   const col = COLONNES[type]
   const idx = (nom) => entete.findIndex(c => c.toLowerCase() === propre(nom).toLowerCase())
   const iSejour = idx(col.sejour), iNom = idx(col.nom), iPrenom = idx(col.prenom), iCode = idx(col.code), iDateActe = idx(col.dateActe), iDate = idx(col.date)
-  const iEntree = col.entree ? idx(col.entree) : -1, iSortie = col.sortie ? idx(col.sortie) : -1
+  const iEntree = col.entree ? idx(col.entree) : -1, iSortie = col.sortie ? idx(col.sortie) : -1, iCoef = col.coef ? idx(col.coef) : -1
   const iMontants = Object.fromEntries(Object.entries(col.montants).map(([k, nom]) => [k, idx(nom)]))
   const manquantes = [[col.sejour, iSejour], [col.code, iCode], [col.date, iDate], ...Object.entries(col.montants).map(([k, nom]) => [nom, iMontants[k]])].filter(([, i]) => i < 0).map(([n]) => n)
   if (manquantes.length) throw new Error(`Colonnes manquantes : ${manquantes.join(', ')}`)
@@ -137,7 +137,8 @@ export function lireJustificatif(rows, { type: typeAttendu } = {}) {
     lignes.push({
       sejour, nom: String(r[iNom] ?? '').trim(), prenom: String(r[iPrenom] ?? '').trim(),
       code: String(r[iCode] ?? '').trim().toUpperCase(), dateActe: versDate(r[iDateActe]), date: versDate(r[iDate]), ...montants,
-      ...(type === 'FAC' ? { entree: iEntree >= 0 ? versDate(r[iEntree]) : '', sortie: iSortie >= 0 ? versDate(r[iSortie]) : '' } : {}),
+      ...(type === 'FAC' ? { entree: iEntree >= 0 ? versDate(r[iEntree]) : '', sortie: iSortie >= 0 ? versDate(r[iSortie]) : '', coef: iCoef >= 0 ? String(r[iCoef] ?? '').trim() : '' } : {}),
+      ligne: lignes.length + 1,
     })
   }
 
@@ -412,7 +413,7 @@ export function attribuer(ligne, index) {
  * son nom) : lignes des deux tables + lignes mises de côté + contrôle par mois.
  */
 export function agreger(justificatifs, index, { viaCpa = new Set(), historique = null, specDe = null } = {}) {
-  const mensuel = new Map(), chirurgiens = new Map(), misDeCote = [], controle = new Map(), rattachements = []
+  const mensuel = new Map(), chirurgiens = new Map(), misDeCote = [], controle = new Map(), rattachements = [], actes = []
   // Lignes FAC par séjour (tous mois confondus) : l'acte du même jour sert au rattachement des YYYY400
   const parSejour = new Map()
   for (const j of justificatifs) if (j.type === 'FAC') for (const l of j.lignes) {
@@ -450,6 +451,12 @@ export function agreger(justificatifs, index, { viaCpa = new Set(), historique =
           const r = rattacherOpacificationBiliaire(l, { cle, motif }, { lignesDuSejour: parSejour.get(l.sejour) || [], historique, specDe })
           if (r) { ({ cle, motif } = r); rattachements.push({ annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, chirurgien: cle, motif, ...l }) }
         }
+        // Ligne d'acte gardée pour l'export par chirurgien : sans nom ni prénom du patient
+        actes.push({
+          annee: j.annee, mois: j.mois, associe: j.associe, etablissement: j.etablissement, ligne: l.ligne, chirurgien: cle,
+          sejour: l.sejour, date_acte: l.dateActe || null, date_facture: l.date || null, code: l.code, coef: l.coef || '',
+          dh: l.dh, amo: l.amo, amc: l.amc, pat: l.pat, total: l.total, motif: motif || '',
+        })
         const kc = `${j.annee}-${j.mois}-${cle}`
         if (!chirurgiens.has(kc)) chirurgiens.set(kc, { annee: j.annee, mois: j.mois, chirurgien: cle, montant: 0, nb_lignes: 0, sejours: new Set() })
         const ch = chirurgiens.get(kc)
@@ -480,6 +487,7 @@ export function agreger(justificatifs, index, { viaCpa = new Set(), historique =
     chirurgiens: [...chirurgiens.values()].map(({ sejours, ...c }) => ({ ...c, nb_sejours: sejours.size })).sort((a, b) => tri(a, b) || b.montant - a.montant),
     misDeCote,
     rattachements,
+    actes,
     controle: [...controle.entries()].map(([cle, c]) => ({ mois: cle, ...c })).sort((a, b) => a.mois.localeCompare(b.mois)),
   }
 }

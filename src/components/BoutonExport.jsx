@@ -2,15 +2,24 @@ import { useState } from 'react'
 import { exporterExcel, exporterClasseur } from '../utils/export'
 
 // exports = [{ label, build }] où build() renvoie { nomFichier, lignes, feuille } (une feuille)
-// ou { nomFichier, feuilles: [{ nom, lignes }] } (plusieurs feuilles, ex. une par année)
+// ou { nomFichier, feuilles: [{ nom, lignes }] } (plusieurs feuilles, ex. une par année).
+// build() peut être asynchrone (données lues en base à la demande) : le bouton patiente.
 export default function BoutonExport({ exports, disabled = false }) {
   const [ouvert, setOuvert] = useState(false)
+  const [enCours, setEnCours] = useState(false)
 
-  const lancer = (entry) => {
-    const { nomFichier, lignes, feuille, feuilles } = entry.build()
-    if (feuilles) exporterClasseur(nomFichier, feuilles)
-    else exporterExcel(nomFichier, lignes, feuille)
+  const lancer = async (entry) => {
     setOuvert(false)
+    setEnCours(true)
+    try {
+      const { nomFichier, lignes, feuille, feuilles } = await entry.build()
+      if (feuilles) exporterClasseur(nomFichier, feuilles)
+      else exporterExcel(nomFichier, lignes, feuille)
+    } catch (e) {
+      window.alert(`Export impossible : ${e.message || e}`)
+    } finally {
+      setEnCours(false)
+    }
   }
 
   const btnStyle = {
@@ -27,16 +36,16 @@ export default function BoutonExport({ exports, disabled = false }) {
 
   if (exports.length === 1) {
     return (
-      <button style={btnStyle} disabled={disabled} title={titre} onClick={() => lancer(exports[0])}>
-        ⬇ Exporter (Excel)
+      <button style={btnStyle} disabled={disabled || enCours} title={titre} onClick={() => lancer(exports[0])}>
+        {enCours ? '… Export en cours' : '⬇ Exporter (Excel)'}
       </button>
     )
   }
 
   return (
     <div style={{ position: 'relative' }}>
-      <button style={btnStyle} disabled={disabled} title={titre} onClick={() => setOuvert(o => !o)}>
-        ⬇ Exporter (Excel) <span style={{ fontSize: 9 }}>▾</span>
+      <button style={btnStyle} disabled={disabled || enCours} title={titre} onClick={() => setOuvert(o => !o)}>
+        {enCours ? '… Export en cours' : <>⬇ Exporter (Excel) <span style={{ fontSize: 9 }}>▾</span></>}
       </button>
       {ouvert && !disabled && (
         <>

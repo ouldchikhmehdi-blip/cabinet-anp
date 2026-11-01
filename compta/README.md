@@ -245,6 +245,11 @@ dashboard masque les chirurgiens à 0 € sur toutes les années.
   le total de la spécialité sans praticien. Chaque rattachement est listé dans la feuille
   « YYYY400 rattachés » du classeur mis de côté. YYYY108 (surveillance postopératoire de chirurgie
   cardiaque avec CEC) compte en Réanimation / USC.
+- **Lignes d'actes** (`facturation_actes`, décision drmoc du 2026-11-01) : chaque acte compté, avec
+  son chirurgien (même clé que `facturation_chirurgiens`), son n° de séjour, sa date, son code et ses
+  montants, **sans nom ni prénom de patient**. Elles servent à l'export Excel « Actes de la
+  sélection » de la page Par chirurgien (spécialité entière ou praticiens choisis). Écrites seulement
+  avec la clé service role (trop volumineuses pour `--sql`).
 - **Actes à 0 € écartés** de l'attribution (ni chirurgien, ni bucket, ni mis de côté) : codes sans
   tarif (ventilation GLLD…, catécholamines EQLF…) et actes facturés puis annulés dans le même fichier
   (même séjour, code et date d'acte, somme nulle). Le total du mois ne change pas ; `nb_lignes_fac`

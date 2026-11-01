@@ -53,18 +53,46 @@ create table if not exists public.facturation_chirurgiens (
   primary key (annee, mois, chirurgien)
 );
 
+-- ---- 2 bis. Lignes d'actes facturés (export Excel par spécialité ou chirurgien) ----
+-- Ajoutée le 2026-11-01 (décision drmoc) : une ligne par acte FAC rattaché, SANS nom ni prénom de
+-- patient ; le n° de séjour est gardé pour retrouver un dossier à la clinique (donnée pseudonyme).
+-- Écrite par compta/facturation.js (clé service role), un mois rejoué est effacé puis réécrit.
+create table if not exists public.facturation_actes (
+  annee          integer       not null,
+  mois           integer       not null check (mois between 1 and 12),
+  associe        text          not null,
+  etablissement  text          not null,
+  ligne          integer       not null,               -- rang de la ligne dans le fichier FAC
+  chirurgien     text          not null,               -- même clé que facturation_chirurgiens
+  sejour         text          not null default '',
+  date_acte      date,
+  date_facture   date,
+  code           text          not null default '',
+  coef           text          not null default '',
+  dh             numeric(12,2) not null default 0,
+  amo            numeric(12,2) not null default 0,
+  amc            numeric(12,2) not null default 0,
+  pat            numeric(12,2) not null default 0,
+  total          numeric(12,2) not null default 0,
+  motif          text          not null default '',    -- raison d'un bucket ou d'un rattachement YYYY400
+  importe_le     timestamptz   not null default now(),
+  primary key (annee, mois, associe, etablissement, ligne)
+);
+create index if not exists facturation_actes_chirurgien_idx on public.facturation_actes (annee, chirurgien, mois);
+
 create index if not exists facturation_mensuelle_annee_idx   on public.facturation_mensuelle (annee, mois);
 create index if not exists facturation_chirurgiens_annee_idx on public.facturation_chirurgiens (annee, mois);
 
 -- ---- 3. RLS ----
 alter table public.facturation_mensuelle   enable row level security;
 alter table public.facturation_chirurgiens enable row level security;
+alter table public.facturation_actes       enable row level security;
 
 do $$
 declare
   t text;
 begin
-  foreach t in array array['facturation_mensuelle', 'facturation_chirurgiens'] loop
+  foreach t in array array['facturation_mensuelle', 'facturation_chirurgiens', 'facturation_actes'] loop
     execute format('drop policy if exists %I on public.%I', t || '_select', t);
     execute format('create policy %I on public.%I for select to authenticated using (public.acces_cabinet())', t || '_select', t);
     execute format('drop policy if exists %I on public.%I', t || '_insert', t);
@@ -76,4 +104,4 @@ begin
   end loop;
 end $$;
 
-grant select, insert, update, delete on public.facturation_mensuelle, public.facturation_chirurgiens to authenticated;
+grant select, insert, update, delete on public.facturation_mensuelle, public.facturation_chirurgiens, public.facturation_actes to authenticated;

@@ -109,24 +109,29 @@ export const libelleChirurgien = (cle) => {
  */
 export function specialitesFacturation(parChirurgien, annees) {
   const vide = () => Array(12).fill(0)
-  const specs = SPECIALITES.map(s => ({ ...s, praticiens: [], valeurs: {} }))
+  // `cles` : clés du script (« NOM Prenom », __bucket) derrière chaque praticien, et `clesValeurs`
+  // derrière le total sans praticien d'une spécialité — pour aller chercher les actes à exporter
+  const specs = SPECIALITES.map(s => ({ ...s, praticiens: [], valeurs: {}, clesValeurs: [] }))
   const parId = Object.fromEntries(specs.map(s => [s.id, s]))
   const prats = new Map() // id praticien → objet
-  const ajouter = (spec, id, nom, y, serie) => {
+  const ajouter = (spec, id, nom, y, serie, cle) => {
     if (!prats.has(id)) {
-      const p = { id, nom, valeurs: {} }
+      const p = { id, nom, valeurs: {}, cles: [] }
       prats.set(id, p); parId[spec].praticiens.push(p)
     }
     const p = prats.get(id)
+    if (!p.cles.includes(cle)) p.cles.push(cle)
     p.valeurs[y] ||= vide()
     for (let m = 0; m < 12; m++) p.valeurs[y][m] += serie[m] || 0
   }
-  const buckets = BUCKETS.map(b => ({ ...b, valeurs: {} }))
+  const buckets = BUCKETS.map(b => ({ ...b, valeurs: {}, clesValeurs: [b.id] }))
+  const noterCle = (sp, cle) => { if (!sp.clesValeurs.includes(cle)) sp.clesValeurs.push(cle) }
   for (const y of annees) {
     for (const [cle, serie] of Object.entries(parChirurgien[y] || {})) {
       // `__spec_<id>` : total d'une spécialité sans praticien identifié (YYYY400 du script)
       const specSans = cle.match(/^__spec_(.+)$/)
       if (specSans && parId[specSans[1]]) {
+        noterCle(parId[specSans[1]], cle)
         const v = (parId[specSans[1]].valeurs[y] ||= vide())
         for (let m = 0; m < 12; m++) v[m] += serie[m] || 0
         continue
@@ -138,10 +143,11 @@ export function specialitesFacturation(parChirurgien, annees) {
       }
       const p = praticienDe(cle)
       if (p && p.bucket) {
+        noterCle(parId[p.spec], cle)
         const v = (parId[p.spec].valeurs[y] ||= vide())
         for (let m = 0; m < 12; m++) v[m] += serie[m] || 0
-      } else if (p) ajouter(p.spec, p.id, p.nom, y, serie)
-      else ajouter('autres', 'autre:' + cle, libelleChirurgien(cle), y, serie)
+      } else if (p) ajouter(p.spec, p.id, p.nom, y, serie, cle)
+      else ajouter('autres', 'autre:' + cle, libelleChirurgien(cle), y, serie, cle)
     }
   }
   // Ordre stable : praticiens classés par facturé décroissant (toutes années), puis nom
@@ -151,4 +157,56 @@ export function specialitesFacturation(parChirurgien, annees) {
   for (const s of specs) s.praticiens = s.praticiens.filter(p => total(p) !== 0).sort((a, b) => total(b) - total(a) || a.nom.localeCompare(b.nom))
   // Bucket affiché s'il porte un montant (un ancien bucket remis à 0 € disparaît)
   return [...specs, ...buckets.filter(b => Object.values(b.valeurs).flat().some(v => v !== 0))]
+}
+
+/**
+ * Clés du script derrière une sélection de la page : la spécialité entière (praticiens + total sans
+ * praticien), ou seulement les praticiens choisis (ids). Sert à l'export des actes.
+ */
+export function clesSelection(spec, idsPraticiens = []) {
+  const prats = (spec.praticiens || []).filter(p => !idsPraticiens.length || idsPraticiens.includes(p.id))
+  const cles = prats.flatMap(p => p.cles || [])
+  if (!idsPraticiens.length) cles.push(...(spec.clesValeurs || []))
+  return [...new Set(cles)]
+}
+
+const MOIS_NOMS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+const dateFr = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '')
+
+/** Spécialité et libellé lisibles d'une clé du script (praticien, total sans praticien ou bucket). */
+export function decrireCle(cle) {
+  const bucket = BUCKETS.find(b => b.id === cle)
+  if (bucket) return { specialite: bucket.nom, praticien: '' }
+  const specSans = /^__spec_(.+)$/.exec(cle || '')
+  if (specSans) {
+    const sp = SPECIALITES.find(x => x.id === specSans[1])
+    return { specialite: sp?.nom || specSans[1], praticien: '(sans praticien identifié)' }
+  }
+  const p = praticienDe(cle)
+  const sp = SPECIALITES.find(x => x.id === (p?.spec || 'autres'))
+  return { specialite: sp?.nom || '', praticien: p?.nom || libelleChirurgien(cle) }
+}
+
+/**
+ * Lignes d'actes (facturation_actes) → feuilles Excel, une par année : date, séjour, code, montants,
+ * praticien et spécialité lisibles, et une ligne TOTAL. Aucun nom de patient (il n'est pas en base).
+ */
+export function feuillesActes(actes, annees) {
+  return [...annees].sort((x, y) => y - x).map(annee => {
+    const lignes = actes.filter(r => r.annee === annee).map(r => {
+      const { specialite, praticien } = decrireCle(r.chirurgien)
+      return {
+        Mois: MOIS_NOMS[r.mois - 1], 'Date acte': dateFr(r.date_acte), 'Date facture': dateFr(r.date_facture),
+        'N° séjour': r.sejour, 'Code acte': r.code, Coef: r.coef, Spécialité: specialite, Praticien: praticien,
+        Associé: r.associe, Établissement: r.etablissement,
+        'Mt DH': r.dh, 'Mt AMO': r.amo, 'Mt AMC': r.amc, 'Mt Pat': r.pat, 'Mt Total': r.total, Motif: r.motif,
+      }
+    })
+    if (lignes.length) {
+      const somme = (k) => Math.round(lignes.reduce((s, l) => s + l[k], 0) * 100) / 100
+      lignes.push({ Mois: 'TOTAL', 'Date acte': '', 'Date facture': '', 'N° séjour': `${lignes.length} actes`, 'Code acte': '', Coef: '', Spécialité: '', Praticien: '', Associé: '', Établissement: '',
+        'Mt DH': somme('Mt DH'), 'Mt AMO': somme('Mt AMO'), 'Mt AMC': somme('Mt AMC'), 'Mt Pat': somme('Mt Pat'), 'Mt Total': somme('Mt Total'), Motif: '' })
+    }
+    return { nom: `Actes ${annee}`, lignes }
+  })
 }

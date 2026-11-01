@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CHIRURGIENS, SPECIALITES, praticienDe, specialitesFacturation, libelleChirurgien } from './facturationChirurgiens'
+import { CHIRURGIENS, SPECIALITES, praticienDe, specialitesFacturation, libelleChirurgien, clesSelection, decrireCle, feuillesActes } from './facturationChirurgiens'
 import { CONSULT_SPECIALITES } from './mockData'
 
 describe('CHIRURGIENS ↔ Consultations', () => {
@@ -31,6 +31,14 @@ describe('specialitesFacturation', () => {
     expect(neuro.praticiens.map(p => p.id)).toEqual(['dran', 'nogues'])
     expect(neuro.praticiens[1].valeurs).toEqual({ 2026: s(100), 2025: s(50) })
   })
+  it('sait quelles clés du script sont derrière une spécialité, un praticien ou un bucket', () => {
+    const gastro = specs.find(x => x.id === 'endoscopie')
+    expect(clesSelection(gastro).sort()).toEqual(['AYRAL Jean', 'LEON Piera', 'WARTHMANN Paul', '__spec_endoscopie'])
+    expect(clesSelection(gastro, ['ayral'])).toEqual(['AYRAL Jean'])
+    expect(clesSelection(specs.find(x => x.id === 'neurochirurgie')).sort()).toEqual(['DRAN Gregory', 'NOGUES Laurent'])
+    expect(clesSelection(specs.find(x => x.id === 'autres'))).toEqual(['INCONNU Paul'])
+    expect(clesSelection(specs.find(x => x.id === '__consultations'))).toEqual(['__consultations'])
+  })
   it('compte un YYYY400 sans praticien identifié dans le total de sa spécialité', () => {
     expect(specs.find(x => x.id === 'viscerale').valeurs[2026]).toEqual(s(9))
     expect(specs.some(x => x.id === '__spec_viscerale')).toBe(false)
@@ -42,8 +50,25 @@ describe('specialitesFacturation', () => {
     expect(specs.some(x => x.id === 'bariatrique')).toBe(false)
   })
   it('liste les inconnus un par un dans « Autres » et les buckets présents en pseudo-spécialités', () => {
-    expect(specs.find(x => x.id === 'autres').praticiens).toEqual([{ id: 'autre:INCONNU Paul', nom: 'Dr Inconnu', valeurs: { 2026: s(7) } }])
+    expect(specs.find(x => x.id === 'autres').praticiens).toEqual([{ id: 'autre:INCONNU Paul', nom: 'Dr Inconnu', valeurs: { 2026: s(7) }, cles: ['INCONNU Paul'] }])
     expect(specs.filter(x => x.id.startsWith('__')).map(x => x.id)).toEqual(['__consultations', '__sejour_inconnu'])
     expect(specs.find(x => x.id === '__consultations').valeurs[2026]).toEqual(s(40))
+  })
+})
+
+describe('export des actes', () => {
+  const acte = (annee, mois, chirurgien, total) => ({ annee, mois, associe: 'TEST010', etablissement: 'MIL', ligne: 1, chirurgien, sejour: 'H1', date_acte: `${annee}-0${mois}-02`, date_facture: `${annee}-0${mois}-10`, code: 'LDFA003', coef: '1', dh: 0, amo: total, amc: 0, pat: 0, total, motif: '' })
+  it('décrit une clé : praticien, total sans praticien, bucket, non classé', () => {
+    expect(decrireCle('NOGUES Laurent')).toEqual({ specialite: 'Neurochirurgie', praticien: 'Dr Nogues' })
+    expect(decrireCle('__spec_viscerale')).toEqual({ specialite: 'Chirurgie viscérale', praticien: '(sans praticien identifié)' })
+    expect(decrireCle('__reanimation').specialite).toBe('Réanimation / USC')
+    expect(decrireCle('INCONNU Paul')).toEqual({ specialite: 'Autres chirurgiens (à classer)', praticien: 'Dr Inconnu' })
+  })
+  it('fait une feuille par année, la plus récente d\'abord, avec une ligne TOTAL', () => {
+    const f = feuillesActes([acte(2025, 3, 'NOGUES Laurent', 100), acte(2026, 1, 'NOGUES Laurent', 40), acte(2026, 2, 'DRAN Gregory', 60)], [2025, 2026])
+    expect(f.map(x => x.nom)).toEqual(['Actes 2026', 'Actes 2025'])
+    expect(f[0].lignes[0]).toMatchObject({ Mois: 'Janvier', 'Date acte': '02/01/2026', 'N° séjour': 'H1', Praticien: 'Dr Nogues', 'Mt Total': 40 })
+    expect(f[0].lignes.at(-1)).toMatchObject({ Mois: 'TOTAL', 'N° séjour': '2 actes', 'Mt Total': 100 })
+    expect(Object.keys(f[0].lignes[0])).not.toContain('Nom')
   })
 })

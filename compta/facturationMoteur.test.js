@@ -129,6 +129,12 @@ describe('agreger', () => {
     expect(r.chirurgiens.reduce((s, c) => s + c.nb_lignes, 0)).toBe(5)
     expect(r.misDeCote.some(l => l.sejour === 'H8' || l.sejour === 'H7')).toBe(false)
   })
+  it('garde chaque acte compté, avec son chirurgien et son n° de séjour, sans nom de patient', () => {
+    expect(r.actes).toHaveLength(5)
+    expect(r.actes[0]).toMatchObject({ annee: 2026, mois: 3, associe: 'TEST010', etablissement: 'MIL', ligne: 1, chirurgien: 'NOGUES Laurent', sejour: 'H1', code: 'HHFE002', total: 100 })
+    expect(r.actes.map(x => x.chirurgien)).toContain(BUCKETS.reanimation)
+    for (const x of r.actes) { expect(x).not.toHaveProperty('nom'); expect(x).not.toHaveProperty('prenom') }
+  })
   it('refuse deux FAC pour le même mois × associé × établissement', () => {
     expect(() => agreger([jf, { ...jf, fichier: 'g.xlsx' }], index)).toThrow(/Deux fichiers FAC/)
   })
