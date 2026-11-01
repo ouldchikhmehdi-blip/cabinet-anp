@@ -197,8 +197,11 @@ facturée n'y figure pas : il est retrouvé par le **numéro de séjour** (`N° 
 d'actes des associés déposés à la racine de `~/partage/` (`*.xls`, colonnes `sejo.sejo_num_sej`,
 `med0.mede_nom_usu` = chirurgien ou gastro du séjour, jamais l'anesthésiste).
 
-**Séjour absent des exports d'actes** (toute l'année 2025, actes de l'année précédente facturés en
-janvier) : le chirurgien est cherché dans l'**export Diane des CPA** déposé au même endroit (feuille
+**Exports d'actes** : `~/partage/*.xls` et les sous-dossiers `~/partage/extraction…` (depuis le
+2026-11-01, « extraction HM 2024 » : un export par associé, janvier 2024 → octobre 2026, même format).
+Les doublons entre exports sont sans effet (index par séjour).
+
+**Séjour absent des exports d'actes** (actes plus anciens que les exports, facturés plus tard) : le chirurgien est cherché dans l'**export Diane des CPA** déposé au même endroit (feuille
 « Résultats », colonnes `nom`, `nom marital`, `prénom`, `date bloc`, `Chirurgien` ; détecté
 automatiquement). Règle : même nom ou nom marital, prénom compatible (premier prénom commun) et date
 de bloc comprise dans le séjour, de l'entrée − 1 j à la sortie + 1 j. Le nom du chirurgien y est saisi
@@ -216,7 +219,7 @@ node compta/facturation.js --annee 2026 --sans-base
 node --env-file=.env compta/facturation.js --annee 2026 [--mois 2026.09]
 ```
 
-Options : `--dossier` (défaut `~/partage/Facturés réglés`), `--actes` (défaut `~/partage`), `--sortie`
+Options : `--dossier` (défaut `~/partage/Facturés réglés`), `--actes` (dossiers séparés par des virgules ; défaut `~/partage` et ses sous-dossiers `extraction…`), `--sortie`
 (défaut `~/partage/facturation`). Sans clé service role valable dans `.env`, `--sql <fichier.sql>`
 écrit les mêmes écritures dans un fichier local, sans aucun `delete` (refusé par le connecteur
 Supabase) : insertion ou mise à jour, puis mise à zéro des lignes du mois qui ont disparu. Le

@@ -18,7 +18,7 @@
 // Un mois rejoué est effacé puis réécrit (les deux tables). En --sql : insertion ou mise à jour,
 // et mise à zéro des chirurgiens du mois qui ont disparu (aucun delete, accepté par le connecteur).
 
-import { readdirSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { readdirSync, mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createClient } from '@supabase/supabase-js'
@@ -32,7 +32,12 @@ const tilde = (p) => p.replace(/^~(?=$|\/)/, homedir())
 const annee = Number(opt('annee'))
 const moisSeul = opt('mois')                      // ex. 2026.09
 const dossier = tilde(opt('dossier', '~/partage/Facturés réglés'))
-const dossierActes = tilde(opt('actes', '~/partage'))
+// Exports d'actes et CPA : ~/partage et ses sous-dossiers « extraction… » (ex. « extraction HM 2024 »),
+// ou la liste donnée par --actes (dossiers séparés par des virgules)
+const racineActes = tilde('~/partage')
+const dossiersActes = opt('actes')
+  ? opt('actes').split(',').map(d => tilde(d.trim()))
+  : [racineActes, ...(existsSync(racineActes) ? readdirSync(racineActes).filter(d => /^extraction/i.test(d) && statSync(join(racineActes, d)).isDirectory()).map(d => join(racineActes, d)) : [])]
 const sortie = tilde(opt('sortie', '~/partage/facturation'))
 const sansBase = args.includes('--sans-base')
 const sqlFichier = opt('sql') ? tilde(opt('sql')) : null
@@ -50,7 +55,7 @@ const feuille = (chemin) => feuilles(chemin)[0]
 
 // ---- 1. Index séjour → chirurgien (exports d'actes) et consultations d'anesthésie (exports CPA) ----
 const actes = [], cpas = []
-for (const f of readdirSync(dossierActes).filter(f => /\.xlsx?$/i.test(f) && !nomFichier(f))) {
+for (const dossierActes of dossiersActes) for (const f of readdirSync(dossierActes).filter(f => /\.xlsx?$/i.test(f) && !nomFichier(f))) {
   for (const rows of feuilles(join(dossierActes, f))) {
     const lus = lireActes(rows)
     if (lus.length) { actes.push(...lus); console.log(`actes : ${f} → ${lus.length} lignes`); continue }
