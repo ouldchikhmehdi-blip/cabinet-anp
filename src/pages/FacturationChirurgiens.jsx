@@ -69,7 +69,11 @@ export default function FacturationChirurgiens() {
   const totalDe = (y) => sum((S.FACTURE[y] || []).slice(de, a + 1))
   const t1 = totalDe(primary)
   const t2 = sumComparable(S.FACTURE[ref])
-  const attribue = sum(specialites.filter(s => !s.id.startsWith('__')).map(s => sum(specMensuel(s, primary).slice(de, a + 1))))
+  // Attribué = à un chirurgien, à la consultation ou à la réanimation ; non attribué = seulement ce
+  // qui n'a pas pu être rattaché (séjour non retrouvé, à arbitrer)
+  const NON_ATTRIBUES = ['__sejour_inconnu', '__a_arbitrer']
+  const nonAttribue = sum(specialites.filter(s => NON_ATTRIBUES.includes(s.id)).map(s => sum(specMensuel(s, primary).slice(de, a + 1))))
+  const attribue = t1 - nonAttribue
   const cumulAujourdhui = dernierMoisPlein >= 0 ? sum((S.FACTURE[primary] || []).slice(0, dernierMoisPlein + 1)) : 0
 
   const spec = specialites.find(s => s.id === specId) || specialites[0]
@@ -195,8 +199,8 @@ export default function FacturationChirurgiens() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         <KpiCard label={`Facturé · ${primary}`} value={fmtK(t1)} sub={kpiRef(t1, t2)} subColor={kpiCouleur(t1, t2)} />
-        <KpiCard label="Attribué à un chirurgien" value={fmtK(attribue)} sub={`${t1 ? Math.round(attribue / t1 * 100) : 0} % du facturé · ${periode}`} subColor="neutral" />
-        <KpiCard label="Non attribué" value={fmtK(t1 - attribue)} sub="consultations, réa, séjours non retrouvés" subColor="neutral" />
+        <KpiCard label="Attribué" value={fmtK(attribue)} sub={`${t1 ? Math.round(attribue / t1 * 100) : 0} % du facturé · chirurgiens, consultations, réa · ${periode}`} subColor="neutral" />
+        <KpiCard label="Non attribué" value={fmtEur(nonAttribue)} sub="séjours non retrouvés et à arbitrer" subColor="neutral" />
         <KpiCard label="Cumul à ce jour" value={fmtK(cumulAujourdhui)} sub={dernierMoisPlein >= 0 ? `Jan → ${MOIS_COURT[dernierMoisPlein]} ${primary}` : `${primary}`} subColor="neutral" />
       </div>
 
@@ -270,19 +274,19 @@ export default function FacturationChirurgiens() {
         {isSinglePrat ? (
           <>
             <KpiCard label={`${prat.nom} · ${primary}`} value={fmtEur(aTprimary)} sub={periode} subColor="neutral" />
-            <KpiCard label={`${prat.nom} · ${ref ?? '—'}`} value={fmtEur(aTref)} sub={kpiRef(aTprimary, aTref)} subColor={kpiCouleur(aTprimary, aTref)} />
+            {ref !== undefined && <KpiCard label={`${prat.nom} · ${ref ?? '—'}`} value={fmtEur(aTref)} sub={kpiRef(aTprimary, aTref)} subColor={kpiCouleur(aTprimary, aTref)} />}
             <KpiCard label="Part de la spécialité" value={`${specTprimary ? Math.round(aTprimary / specTprimary * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
           </>
         ) : isMultiPrat ? (
           <>
             <KpiCard label={`${detailPrats.length} chirurgiens · ${primary}`} value={fmtEur(detailTprimary)} sub={periode} subColor="neutral" />
-            <KpiCard label={`${detailPrats.length} chirurgiens · ${ref ?? '—'}`} value={fmtEur(detailTref)} sub={kpiRef(detailTprimary, detailTref)} subColor={kpiCouleur(detailTprimary, detailTref)} />
+            {ref !== undefined && <KpiCard label={`${detailPrats.length} chirurgiens · ${ref ?? '—'}`} value={fmtEur(detailTref)} sub={kpiRef(detailTprimary, detailTref)} subColor={kpiCouleur(detailTprimary, detailTref)} />}
             <KpiCard label="Part de la spécialité" value={`${specTprimary ? Math.round(detailTprimary / specTprimary * 100) : 0} %`} sub={`de ${spec.nom} · ${periode}`} subColor="neutral" />
           </>
         ) : (
           <>
             <KpiCard label={`${spec.nom} · ${primary}`} value={fmtEur(specTprimary)} sub={periode} subColor="neutral" />
-            <KpiCard label={`${spec.nom} · ${ref ?? '—'}`} value={fmtEur(specTref)} sub={kpiRef(specTprimary, specTref)} subColor={kpiCouleur(specTprimary, specTref)} />
+            {ref !== undefined && <KpiCard label={`${spec.nom} · ${ref ?? '—'}`} value={fmtEur(specTref)} sub={kpiRef(specTprimary, specTref)} subColor={kpiCouleur(specTprimary, specTref)} />}
             <KpiCard label="Part du facturé" value={`${t1 ? Math.round(specTprimary / t1 * 100) : 0} %`} sub={`du total ${primary} · ${periode}`} subColor="neutral" />
           </>
         )}
