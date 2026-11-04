@@ -34,6 +34,7 @@ const GROUPES_CHARGES = ['Remplaçants', 'Salariés', 'Charges sociales et fisca
 export const GROUPES_DEPENSES = ['Salariés', 'Remplaçants', 'Charges sociales et fiscales', 'Fonctionnement', 'Investissements']
 export const GROUPE_RH = 'Charges ressources humaines'
 const GROUPES_RH = ['Salariés', 'Remplaçants', 'Charges sociales et fiscales']
+const EN_TETE_RH = ['Salaire IADE CDI', 'URSSAF', 'Retraite complémentaire', 'Impôts et taxes']
 const PALETTE = ['#534AB7', '#1D9E75', '#D85A30', '#EF9F27', '#0C447C', '#712B13', '#633806', '#3C3489', '#085041', '#A32D2D', '#444441', '#8C8C86', '#2B7FB8']
 
 const titre = (s) => s.toLowerCase().replace(/(^|[\s-])\S/g, c => c.toUpperCase())
@@ -134,6 +135,10 @@ export function calculerSeries(transactions, soldes = [], doc = null) {
   const iPrev = DEPENSES.findIndex(d => d.id === 'Prévoyance et mutuelle salariés')
   const iImpots = DEPENSES.findIndex(d => d.id === 'Impôts et taxes')
   if (iPrev >= 0 && iImpots >= 0) [DEPENSES[iPrev], DEPENSES[iImpots]] = [DEPENSES[iImpots], DEPENSES[iPrev]]
+  // En tête des charges RH, côte à côte (une ligne de 4 cases) : salaire IADE CDI, URSSAF, retraite,
+  // impôts et taxes (choix de drmoc, 2026-11-02). Les autres cases suivent dans l'ordre ci-dessus.
+  const rang = (d) => d.groupe !== GROUPE_RH ? 0 : (EN_TETE_RH.includes(d.id) ? EN_TETE_RH.indexOf(d.id) - EN_TETE_RH.length : 0)
+  DEPENSES.sort((x, y) => (x.groupe === y.groupe ? rang(x) - rang(y) : 0))
 
   const moisActuel = (y) => {
     const lignes = parAnnee[y] || []

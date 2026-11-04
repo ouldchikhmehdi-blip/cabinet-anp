@@ -62,13 +62,18 @@ describe('calculerSeries', () => {
     expect(S.SALARIES[0].couts[2025]).toBe(2000)
     expect(S.SALARIES[1].couts[2025]).toBe(0)
   })
-  it('dépenses : une série par sous-catégorie non vide, salariés et remplaçants en tête', () => {
-    expect(S.DEPENSES.map(d => d.id)).toEqual(['Salaire IADE CDI', 'Remplaçant MAR', 'Remplaçant IADE (CDD)', 'URSSAF', 'Banque'])
+  it('dépenses : une série par sous-catégorie non vide, charges RH en tête', () => {
+    expect(S.DEPENSES.map(d => d.id)).toEqual(['Salaire IADE CDI', 'URSSAF', 'Remplaçant MAR', 'Remplaçant IADE (CDD)', 'Banque'])
     expect(S.DEPENSES.find(d => d.id === 'URSSAF').montants[2025][1]).toBe(1500)
     expect(S.DEPENSES.find(d => d.id === 'Salaire IADE CDI').montants[2025][1]).toBe(2000)
   })
   it('dépenses : salariés, remplaçants et charges sociales réunis en « Charges ressources humaines »', () => {
     expect(S.DEPENSES.map(d => d.groupe)).toEqual(['Charges ressources humaines', 'Charges ressources humaines', 'Charges ressources humaines', 'Charges ressources humaines', 'Fonctionnement'])
+  })
+  it('dépenses : salaire IADE CDI, URSSAF, retraite et impôts côte à côte en tête des charges RH', () => {
+    const l = (categorie) => ({ date: '2025-01-05', montant: -100, categorie, groupe: groupeDe(categorie), libelle: 'X', tiers: 'X' })
+    const ids = calculerSeries(['Banque', 'Prévoyance et mutuelle salariés', 'Impôts et taxes', 'Remplaçant MAR', 'Retraite complémentaire', 'URSSAF', 'Salaire IADE CDI', 'Épargne salariale'].map(l)).DEPENSES.map(d => d.id)
+    expect(ids).toEqual(['Salaire IADE CDI', 'URSSAF', 'Retraite complémentaire', 'Impôts et taxes', 'Remplaçant MAR', 'Épargne salariale', 'Prévoyance et mutuelle salariés', 'Banque'])
   })
   it('dépenses : les cases historiques gardent leur couleur', () => {
     const seules = calculerSeries(LIGNES.filter(l => ['URSSAF', 'Banque'].includes(l.categorie)), [], DOC).DEPENSES
