@@ -37,9 +37,9 @@ const pastille = (cat) => <span style={{ fontSize: 11, padding: '2px 8px', borde
 
 // ---- Page ----
 
-// `lectureSeule` : associés non administrateurs. Ils voient tout (file d'attente, alertes,
+// `lectureSeule` : ni admin ni rôle Compta. Ces associés voient tout (file d'attente, alertes,
 // dictionnaire) mais aucun contrôle de modification n'est affiché ; la base refuse de toute
-// façon l'écriture aux non-admins (policies is_admin() sur compta_*).
+// façon leur écriture (policies is_admin() et is_compta() sur compta_*).
 export default function ReglesVirements({ lectureSeule = false }) {
   const etat = useCompta()
   const { doc, transactions } = etat
@@ -183,7 +183,7 @@ export default function ReglesVirements({ lectureSeule = false }) {
       <EtatCompta etat={etat} />
       {lectureSeule && (
         <div style={{ background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 14px', fontSize: 12, color: 'var(--color-text-secondary)' }}>
-          Consultation seule : les règles, le classement des lignes et l'import des relevés sont réservés aux administrateurs.
+          Consultation seule : les règles, le classement des lignes et l'import des relevés sont réservés aux administrateurs et au rôle Compta.
         </div>
       )}
       {message && (

@@ -256,8 +256,10 @@ Pas besoin de modifier `ANNEES` (variable partagée par les autres onglets finan
 - **Téléconsultations** = catégorie à part, jamais rattachées à un opérateur.
 - Données **réelles** (pas fictives) ; ne pas recréer de fausses valeurs.
 - L'import **remplace** le mois, il n'additionne pas.
-- **Écriture = admin uniquement**, verrouillée par la RLS (§12) : import, gestion des praticiens et
-  suppression d'un mois. Toute nouvelle action mutant le store doit être masquée hors admin.
+- **Écriture = admin**, verrouillée par la RLS (§12) : import, gestion des praticiens et suppression
+  d'un mois. Toute nouvelle action mutant le store doit être masquée hors admin. Seule exception : le
+  **rôle Compta** peut lancer l'import (`supabase/role_compta.sql`) ; le reste lui est masqué dans
+  l'interface uniquement, la RLS ne distinguant pas un import d'une suppression de mois.
 - `npm run lint` à **0** + `npm run build` OK après chaque intervention (cf. `CLAUDE.md` §8).
 - Pousser uniquement sur demande explicite (« pousse »).
 

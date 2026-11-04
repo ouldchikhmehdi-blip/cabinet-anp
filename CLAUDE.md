@@ -166,7 +166,7 @@ Schéma de référence : **`supabase/schema.sql`**.
 - `user_role` : `admin` | `user` (`user` = lecture seule)
 - `user_status` : `active` | `disabled`
 
-**Drapeaux de rôle sur `profiles`** (au-delà de l'enum) : `is_faiseur` (faiseur de planning, cf. `PLANNING.md`), `is_iade` (compte restreint aux congés) et `is_gestion_iade` (valide les congés IADE) — cf. `IADE.md`.
+**Drapeaux de rôle sur `profiles`** (au-delà de l'enum) : `is_faiseur` (faiseur de planning, cf. `PLANNING.md`), `is_iade` (compte restreint aux congés), `is_gestion_iade` (valide les congés IADE) — cf. `IADE.md` — et `is_compta` (ajoute les consultations Doctolib et tient « Règles virements » : import du relevé, règles, classement des lignes — cf. `supabase/role_compta.sql`).
 
 **Table `profiles`** (1 ligne par `auth.users`)
 - `id` (uuid, FK `auth.users`, `on delete cascade`), `email`, `role` (défaut `user`), `status` (défaut `active`), `created_at`, `updated_at`

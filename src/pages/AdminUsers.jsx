@@ -16,7 +16,7 @@ import { ASSOCIES, appliquerAssocies } from '../data/associes'
 // Tant que ce fichier n'a pas été exécuté en base, la requête échoue : on
 // recharge alors sans ces colonnes et on signale que le module est à activer.
 const CHAMPS_PROFILS       = 'id, email, role, status, initiales, is_faiseur, nom_complet, created_at'
-const CHAMPS_PROFILS_IADE  = `${CHAMPS_PROFILS}, is_iade, is_gestion_iade, is_agent_ia`
+const CHAMPS_PROFILS_IADE  = `${CHAMPS_PROFILS}, is_iade, is_gestion_iade, is_agent_ia, is_compta`
 const CHAMPS_INVITS        = 'id, email, role, expires_at, used_at, created_at'
 const CHAMPS_INVITS_IADE   = `${CHAMPS_INVITS}, is_iade`
 
@@ -136,6 +136,23 @@ export default function AdminUsers() {
       const res = await fetch('/api/planning-attribuer', {
         method: 'POST', headers,
         body: JSON.stringify({ userId, initiales, isFaiseur, nomComplet }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      flash(data.message)
+      charger()
+    } catch (err) {
+      flash(err.message, true)
+    }
+  }
+
+  // ── Rôle Compta : ajoute les consultations Doctolib et tient « Règles virements » ──
+  // Le rôle passe par la même route que Faiseur : initiales et faiseur sont renvoyés tels quels.
+  async function attribuerCompta(p, isCompta) {
+    try {
+      const res = await fetch('/api/planning-attribuer', {
+        method: 'POST', headers,
+        body: JSON.stringify({ userId: p.id, initiales: p.initiales ?? null, isFaiseur: p.is_faiseur === true, isCompta }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -460,7 +477,7 @@ export default function AdminUsers() {
         ) : (
           <div style={s.card}>
             <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1024 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
               <thead>
                 <tr style={s.tr}>
                   <th style={s.th}>E-mail</th>
@@ -469,6 +486,7 @@ export default function AdminUsers() {
                   <th style={s.th}>Initiales</th>
                   <th style={s.th}>Nom complet</th>
                   <th style={s.th}>Faiseur</th>
+                  <th style={s.th} title="Ajoute les consultations Doctolib, importe le relevé bancaire, modifie les règles de virement et classe les lignes">Compta</th>
                   <th style={s.th}>Congés IADE</th>
                   <th style={s.th}>Depuis</th>
                   <th style={s.th}>Actions</th>
@@ -534,6 +552,19 @@ export default function AdminUsers() {
                         {p.is_faiseur && <span style={s.badge('admin', p.status)}>Faiseur</span>}
                       </label>
                     </td>
+                    <td style={s.td}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: p.status === 'active' && !p.is_iade ? 'pointer' : 'default' }}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Rôle Compta pour ${p.email}`}
+                          checked={p.is_compta === true}
+                          disabled={p.status !== 'active' || p.is_iade === true}
+                          onChange={e => attribuerCompta(p, e.target.checked)}
+                          style={{ accentColor: 'var(--color-primary)' }}
+                        />
+                        {p.is_compta && <span style={s.badge('admin', p.status)}>Compta</span>}
+                      </label>
+                    </td>
                     {/* Congés IADE : « Agent » = compte restreint aux congés · « Gestion » = valide les demandes.
                         Les deux sont exclusifs, et un agent IADE ne peut être ni admin, ni faiseur, ni associé. */}
                     <td style={s.td}>
@@ -542,7 +573,7 @@ export default function AdminUsers() {
                           <input
                             type="checkbox"
                             checked={p.is_iade === true}
-                            disabled={!moduleIade || p.status !== 'active' || p.is_gestion_iade === true || p.role === 'admin' || p.is_faiseur === true || !!p.initiales}
+                            disabled={!moduleIade || p.status !== 'active' || p.is_gestion_iade === true || p.role === 'admin' || p.is_faiseur === true || p.is_compta === true || !!p.initiales}
                             onChange={e => attribuerIade(p.id, e.target.checked, false)}
                             style={{ accentColor: 'var(--color-primary)' }}
                           />

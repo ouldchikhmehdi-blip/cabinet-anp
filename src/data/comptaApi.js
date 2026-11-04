@@ -2,7 +2,8 @@
 // comptaApi.js — accès Supabase de la comptabilité.
 //
 // Qui peut quoi est décidé par la RLS (supabase/compta.sql) : lecture pour tout
-// associé actif en 2FA (acces_cabinet()), écriture pour les admins (is_admin()).
+// associé actif en 2FA (acces_cabinet()), écriture pour les admins (is_admin()) et le rôle
+// Compta (is_compta(), supabase/role_compta.sql), sans suppression pour ce dernier.
 // Aucune fonction serverless : le navigateur lit l'OFX, classe avec le même moteur
 // que le script local (compta/moteur.js) et écrit sous RLS.
 // ============================================================

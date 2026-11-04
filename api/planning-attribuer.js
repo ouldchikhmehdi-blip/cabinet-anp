@@ -4,11 +4,13 @@ import { chargerAssocies } from './_lib/associes.js'
 
 /**
  * POST /api/planning-attribuer
- * Body : { userId: string, initiales: string|null, isFaiseur: boolean, nomComplet?: string|null }
+ * Body : { userId: string, initiales: string|null, isFaiseur: boolean, nomComplet?: string|null, isCompta?: boolean }
  *
- * Attribue à un compte ses initiales d'associé, le rôle « faiseur de planning »
- * et/ou son nom complet (export « Planning par service »). Réservé aux
- * administrateurs. Garantit l'unicité des initiales.
+ * Attribue à un compte ses initiales d'associé, le rôle « faiseur de planning »,
+ * son nom complet (export « Planning par service ») et/ou le rôle « Compta »
+ * (supabase/role_compta.sql). Réservé aux administrateurs. Garantit l'unicité des
+ * initiales. Le rôle Compta passe ici et pas par une nouvelle fonction : le plafond
+ * de 12 fonctions serverless est atteint.
  */
 export default async function handler(req, res) {
   setCorsHeaders(res)
@@ -35,6 +37,9 @@ export default async function handler(req, res) {
   // Nom complet : mis à jour seulement s'il est fourni dans le body (sinon on ne le touche pas).
   const aNomComplet = Object.prototype.hasOwnProperty.call(body, 'nomComplet')
   const nomCompletValeur = typeof nomComplet === 'string' && nomComplet.trim() ? nomComplet.trim() : null
+  // Rôle Compta : même logique, absent du body = inchangé.
+  const aCompta = Object.prototype.hasOwnProperty.call(body, 'isCompta')
+  const compta = !!body.isCompta
 
   // Récupère le profil cible
   const { data: cible, error: cibleErr } = await supabaseAdmin
@@ -61,6 +66,7 @@ export default async function handler(req, res) {
 
   const champs = { initiales, is_faiseur: faiseur }
   if (aNomComplet) champs.nom_complet = nomCompletValeur
+  if (aCompta) champs.is_compta = compta
 
   const { error: updateErr } = await supabaseAdmin
     .from('profiles')
@@ -72,7 +78,8 @@ export default async function handler(req, res) {
     if (updateErr.code === '23505') {
       return sendError(res, 409, `Initiales ${initiales} déjà attribuées à un autre compte.`)
     }
-    // 23514 = profiles_iade_exclusif : un compte IADE ne peut être ni associé ni faiseur.
+    // 23514 = profiles_iade_exclusif / profiles_compta_pas_iade : un compte IADE ne peut être
+    // ni associé, ni faiseur, ni Compta.
     if (updateErr.code === '23514') {
       return sendError(res, 400, 'Ce compte est un compte IADE : retirez d\'abord le drapeau « Agent » (colonne Congés IADE).')
     }
@@ -82,6 +89,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     ok: true,
-    message: `Compte ${cible.email} mis à jour${initiales ? ` (${initiales})` : ''}${faiseur ? ' · faiseur' : ''}.`,
+    message: `Compte ${cible.email} mis à jour${initiales ? ` (${initiales})` : ''}${faiseur ? ' · faiseur' : ''}${aCompta && compta ? ' · compta' : ''}.`,
   })
 }

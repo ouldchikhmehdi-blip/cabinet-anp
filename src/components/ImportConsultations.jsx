@@ -173,7 +173,8 @@ const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','A
 const ANNEES_IMPORT = [2022, 2023, 2024, 2025, 2026]
 
 // ─── Composant principal ──────────────────────────────────────────────────────
-export default function ImportConsultations({ onImportValide }) {
+// `peutSupprimerRegles` : réservé à l'admin ; le rôle Compta classe les agendas inconnus sans retirer de règle.
+export default function ImportConsultations({ onImportValide, peutSupprimerRegles = true }) {
   const [ouvert, setOuvert] = useState(false)
   const [reglesPanneauOuvert, setReglesPanneauOuvert] = useState(false)
   const [etape, setEtape] = useState('depot')   // 'depot' | 'mappage' | 'stats' | 'classement' | 'apercu'
@@ -366,9 +367,9 @@ export default function ImportConsultations({ onImportValide }) {
                     : r.action === 'praticien' ? `${r.pratId}`
                     : `${r.specId}`}
                 </div>
-                {estUtilisateur
+                {estUtilisateur && peutSupprimerRegles
                   ? <button onClick={() => supprimerRegle(r.cle)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-md)', border: '0.5px solid #F09595', background: 'transparent', color: '#A32D2D', cursor: 'pointer' }}>Supprimer</button>
-                  : <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', padding: '3px 6px' }}>par défaut</span>
+                  : <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', padding: '3px 6px' }}>{estUtilisateur ? 'personnalisée' : 'par défaut'}</span>
                 }
               </div>
             )

@@ -3,6 +3,7 @@ import { setMasqueMontants } from './data/mockData'
 import { useAuth } from './auth/AuthContext'
 import { supabase } from './lib/supabase'
 import { peutQuitter } from './utils/gardeNavigation'
+import { peutGererCompta } from './utils/droitsCompta'
 import Login from './auth/Login'
 import EnrollMFA from './auth/EnrollMFA'
 import AcceptInvitation from './auth/AcceptInvitation'
@@ -296,7 +297,7 @@ export default function App() {
       case 'depenses':         return <Depenses />
       case 'consultations':    return <Consultations />
       case 'retrocessions':    return <Retrocessions />
-      case 'regles-virements': return <ReglesVirements lectureSeule={profile?.role !== 'admin'} />
+      case 'regles-virements': return <ReglesVirements lectureSeule={!peutGererCompta(profile)} />
       case 'planning-desiderata': return <PlanningDesiderata />
       case 'mon-agenda':          return profile?.initiales ? <MonAgenda /> : <VueGlobale />
       case 'planning-calendrier': return profile?.is_faiseur ? <PlanningConstruction /> : <VueGlobale />

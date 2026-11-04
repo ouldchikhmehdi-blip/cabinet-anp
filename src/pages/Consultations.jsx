@@ -10,6 +10,7 @@ import { getConsultData, setPersisteurDistant, remplacerStore, getReglesUtilisat
 import { chargerConsultations, sauverConsultations } from '../utils/consultationsApi'
 import { MOIS_COURT, ANNEES, sum, diffLabel, diffColor, couleurAnnee, ordreAffichage, periodeParDefaut } from '../data/mockData'
 import { moisRenseignes, sommeComparable, dernierMoisRenseigne } from '../utils/periodeComparable'
+import { peutGererCompta } from '../utils/droitsCompta'
 
 const fmtNb = v => Math.round(v).toLocaleString('fr-FR')
 const PALETTE = ['#534AB7', '#1D9E75', '#EF9F27', '#D85A30', '#7A8B99']
@@ -69,11 +70,13 @@ export default function Consultations() {
   const [erreurSync, setErreurSync] = useState(null)
 
   // Toute modification (import, gestion des praticiens, suppression d'un mois) écrit la ligne
-  // JSON unique `planning_consultations`, dont la RLS est réservée à l'admin
-  // (supabase/planning_consultations_admin.sql). L'interface s'aligne sur la base : sans ce
+  // JSON unique `planning_consultations`, dont la RLS est réservée à l'admin et au rôle Compta
+  // (supabase/role_compta.sql). Compta n'a ici que l'import : sa limite n'existe que dans
+  // l'interface, la base ne distinguant pas un import d'une suppression de mois. Sans ce
   // garde-fou, un faiseur verrait les boutons puis un échec de sauvegarde cloud.
   // La LECTURE reste ouverte : la page s'affiche normalement pour les 8 associés.
   const estAdmin = profile?.role === 'admin'
+  const peutImporter = peutGererCompta(profile)
 
   // Persistance PARTAGÉE (Supabase) — corrige la perte des données entre machines : les consultations
   // n'étaient qu'en localStorage. On enregistre un persisteur distant (toute mutation → base) et on
@@ -258,14 +261,10 @@ export default function Consultations() {
         }}>Activité · nombre</span>
       </div>
 
-      {/* Outils d'administration des données (cf. estAdmin) */}
-      {estAdmin && (
-        <>
-          <ImportConsultations onImportValide={rafraichir} />
-          {/* Correction d'un import erroné */}
-          <SuppressionMois consultData={consultData} onChange={rafraichir} />
-        </>
-      )}
+      {/* Outils d'administration des données (cf. estAdmin, peutImporter) */}
+      {peutImporter && <ImportConsultations onImportValide={rafraichir} peutSupprimerRegles={estAdmin} />}
+      {/* Correction d'un import erroné */}
+      {estAdmin && <SuppressionMois consultData={consultData} onChange={rafraichir} />}
 
       <PeriodeFilter
         moisDe={moisDe} setMoisDe={setMoisDe}

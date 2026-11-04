@@ -26,7 +26,7 @@ script local et le dépôt suivent.
 
 ## Usage mensuel
 
-**Depuis le dashboard (admin, 2FA)** : « Règles virements » → « Importer un relevé (OFX ou CSV BNP) » →
+**Depuis le dashboard (admin ou rôle Compta, 2FA)** : « Règles virements » → « Importer un relevé (OFX ou CSV BNP) » →
 lire la file d'attente → pour chaque ligne, « Cette ligne » (classement manuel, figé) ou
 « Règle sur ce tiers » (règle explicite, rejouée sur toutes les lignes) ou « Ajouter à la
 liste » (nom de salarié / remplaçant) → « Exporter regles.json » → remplacer `compta/regles.json`
@@ -134,9 +134,9 @@ Ordre d'application, la première règle qui matche gagne :
 
 | Table | Contenu | Lecture | Écriture |
 |---|---|---|---|
-| `compta_regles` | une ligne, `doc` jsonb = le dictionnaire | `acces_cabinet()` | `is_admin()` |
-| `compta_transactions` | une ligne par FITID : date, montant, type, libellé, tiers, groupe, catégorie, associé, règle, alerte, `manuel` | `acces_cabinet()` | `is_admin()` |
-| `compta_soldes` | solde d'en-tête du CSV BNP par date, ancre du calcul des soldes de fin de mois (le LEDGERBAL de l'OFX n'est pas repris, cf. ci-dessous) | `acces_cabinet()` | `is_admin()` |
+| `compta_regles` | une ligne, `doc` jsonb = le dictionnaire | `acces_cabinet()` | `is_admin()`, `is_compta()` |
+| `compta_transactions` | une ligne par FITID : date, montant, type, libellé, tiers, groupe, catégorie, associé, règle, alerte, `manuel` | `acces_cabinet()` | `is_admin()`, `is_compta()` (`supabase/role_compta.sql`), sans suppression ni changement de date ou de montant pour ce dernier |
+| `compta_soldes` | solde d'en-tête du CSV BNP par date, ancre du calcul des soldes de fin de mois (le LEDGERBAL de l'OFX n'est pas repris, cf. ci-dessous) | `acces_cabinet()` | `is_admin()`, `is_compta()` |
 
 Aucune fonction serverless (plan Vercel 12/12) : tout passe par le client Supabase sous RLS.
 `manuel = true` fige une ligne classée à la main : le reclassement ne la touche plus.
