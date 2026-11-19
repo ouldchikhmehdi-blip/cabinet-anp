@@ -24,15 +24,16 @@ Trois populations :
 | **Gestionnaire des IADE** | `profiles.is_gestion_iade` | Les demandes (valider / refuser), les heures sup, le calendrier, le récap par agent. |
 | **Faiseur de planning** | `profiles.is_faiseur` | Idem gestionnaire : les congés IADE conditionnent le planning. |
 | **Admin** | `profiles.role = 'admin'` | Idem, plus la création des comptes (onglet « Comptes »). |
-| **Agent IA** | `profiles.is_agent_ia` (sur un compte `is_iade`) | Deux écrans, rien d'autre : « Congés, HS et rempla » **sans** les onglets Créneaux et Synthèse, et « Planning IADE » avec le droit de modifier une case. Ajouté le 2026-09-28 (`supabase/agent_ia.sql`). |
+| **Agent IA** | `profiles.is_agent_ia` (sur un compte `is_iade`) | Deux écrans, rien d'autre : « Congés, HS et rempla » **sans** l'onglet Synthèse, et « Planning IADE » avec le droit de modifier une case (et la colonne « Créneaux en moins »). Ajouté le 2026-09-28 (`supabase/agent_ia.sql`) ; onglet Créneaux ouvert le 2026-11-19. |
 
 Fonction SQL de référence : **`public.peut_gerer_iade()`** = gestionnaire IADE **ou** faiseur **ou** admin **ou** agent IA.
 
 **L'agent IA reste un compte IADE.** C'est ce qui le tient hors de `acces_cabinet()` —
 finances, planning MAR, archives — quel que soit le niveau de sa session, et sans 2FA
 comme les autres comptes IADE (le mot de passe est tenu par l'assistant). Le drapeau
-n'ajoute que la gestion IADE, **moins** les créneaux fermés (policies
-`iade_creneaux_fermes_*` : `peut_gerer_iade() and not is_agent_ia()`). Chaque écriture
+n'ajoute que la gestion IADE, **créneaux fermés compris** depuis le 2026-11-19
+(décision Mehdi : l'agent les saisit à sa place — avant, les policies
+`iade_creneaux_fermes_*` portaient `and not is_agent_ia()`). Chaque écriture
 reste tracée à son uid. Se pose depuis « Comptes » (case « Agent IA », visible sur un
 compte IADE) ; retirer « IADE » retire aussi « Agent IA ».
 
@@ -1362,3 +1363,8 @@ régression du générateur ne doit pas pouvoir republier l'information sans que
 signale. Détail de la chaîne dans `vault/Projects/outils-planning/LISEZ-MOI.md` § 5 et 6.
 
 Lecture : `acces_cabinet() or peut_gerer_iade()`. Écriture : `peut_gerer_iade()` seule.
+
+**Exception : l'agent IA** (compte IADE porteur de `is_agent_ia`) lit **et écrit** les
+créneaux depuis le 2026-11-19 — onglet « Créneaux » ouvert (`ONGLETS_AGENT_IA`) et colonne
+visible dans le planning (`voitCreneaux`). Ce n'est pas un salarié : c'est l'assistant qui
+clique à la place de Mehdi. Policies d'écriture : `supabase/agent_ia.sql` § 4.

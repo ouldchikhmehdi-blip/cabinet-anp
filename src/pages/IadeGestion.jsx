@@ -51,7 +51,7 @@ const ONGLETS = [
 ]
 
 // `onglets` : les identifiants d'onglets ouverts à ce compte (tous par défaut).
-// L'agent IA n'a que congés, heures sup et rempla (cf. App.jsx, PAGES_AGENT_IA).
+// L'agent IA a tout sauf la synthèse comptable (cf. App.jsx, ONGLETS_AGENT_IA).
 export default function IadeGestion({ onglets = null }) {
   const maintenant = new Date()
   const ongletsVisibles = onglets ? ONGLETS.filter(o => onglets.includes(o.id)) : ONGLETS

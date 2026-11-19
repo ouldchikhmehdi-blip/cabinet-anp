@@ -121,7 +121,8 @@ export default function IadePlanning() {
   // Un compte IADE ne voit pas les créneaux en moins. Par défaut on ne les montre
   // PAS : tant que le profil n'est pas chargé, mieux vaut une colonne qui apparaît
   // que des données qui s'affichent une seconde à qui ne doit pas les voir.
-  const voitCreneaux = profile ? !profile.is_iade : false
+  // Exception : l'agent IA, qui saisit lui-même les créneaux (cf. supabase/agent_ia.sql).
+  const voitCreneaux = profile ? (!profile.is_iade || profile.is_agent_ia === true) : false
   // Modifier une case : la gestion IADE (gestionnaire, faiseur de planning, admin) —
   // les mêmes que pour les remplaçants et les créneaux. La RLS le vérifie de son côté.
   const peutModifier = profile?.is_gestion_iade === true || profile?.is_faiseur === true || profile?.role === 'admin'
