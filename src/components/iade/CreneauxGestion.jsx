@@ -25,6 +25,7 @@ import {
   habitudes, momentsDuLot, lotPanache, habitudesOperateur, lundiDe,
 } from '../../utils/iadeCreneaux'
 import { operateursTrame, semaineType, normNom } from '../../utils/iadeBlocB'
+import { operateursTrameA, semaineTypeA } from '../../utils/iadeBlocA'
 import { formatJour, bornesMois } from '../../utils/iadeConges'
 import { MOIS_FR } from '../../utils/calendrier'
 import CalendrierCreneaux from './CalendrierCreneaux'
@@ -87,13 +88,13 @@ export default function CreneauxGestion({ annee }) {
   // faute de frappe qu'on cherche justement à éviter, et une absence rangée dans
   // le mauvais bloc fausse le compte des salles.
   // Au bloc B, les 14 de la trame d'abord : c'est l'orthographe de référence, et
-  // elle contient des opérateurs jamais encore absents. Le bloc A n'a pas de
-  // trame : seuls ceux déjà saisis y sont proposés.
+  // elle contient des opérateurs jamais encore absents. Au bloc A, la trame ne
+  // connaît que la CPRE (`iadeBlocA.js`), suivie de ceux déjà saisis.
   const operateurs = useMemo(() => {
     const duBloc = creneaux.filter(c => (c.secteur ?? 'A') === saisie.secteur)
     const source = saisie.secteur === 'B'
       ? [...operateursTrame(), ...operateursConnus(duBloc)]
-      : operateursConnus(duBloc)
+      : [...operateursTrameA(), ...operateursConnus(duBloc)]
     // Dédoublonnage sur le nom NORMALISÉ (accents, casse et civilité ignorés) :
     // « esperance » saisi à la volée et « Espérance » de la trame sont la même
     // personne, et la liste n'a pas à proposer les deux. La trame étant en tête,
@@ -109,9 +110,9 @@ export default function CreneauxGestion({ annee }) {
   const habs = useMemo(() => habitudes(creneaux), [creneaux])
   // Ce qu'on montre de l'opérateur : sa semaine type SELON LA TRAME si elle le
   // connaît, sinon ce que l'historique de ses absences laisse deviner.
-  // La trame décrit le BLOC B : au bloc A, elle n'a rien à dire.
+  // Chaque bloc a sa trame : les opérateurs d'endoscopie au B, la CPRE au A.
   const semaine = useMemo(
-    () => saisie.secteur === 'B' ? semaineType(saisie.absent) : [],
+    () => saisie.secteur === 'B' ? semaineType(saisie.absent) : semaineTypeA(saisie.absent),
     [saisie.secteur, saisie.absent]
   )
   const habOperateur = useMemo(
@@ -122,7 +123,7 @@ export default function CreneauxGestion({ annee }) {
   // c'est celui du champ « Moment », le même partout.
   const momentsLot = useMemo(
     () => regleMoment === AUTO
-      ? momentsDuLot(habs, saisie.absent, saisie.jours, saisie.moment, { trame: saisie.secteur === 'B' })
+      ? momentsDuLot(habs, saisie.absent, saisie.jours, saisie.moment, { secteur: saisie.secteur })
       : new Map(saisie.jours.map(j => [j, { moment: saisie.moment, source: 'choisi', n: 0, total: 0 }])),
     [regleMoment, habs, saisie.absent, saisie.jours, saisie.moment, saisie.secteur]
   )
@@ -372,14 +373,17 @@ export default function CreneauxGestion({ annee }) {
                 background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
                 borderRadius: 8, padding: '8px 10px',
               }}>
-                <strong style={{ color: 'var(--color-text)' }}>{saisie.absent.trim()}</strong> opère
+                <strong style={{ color: 'var(--color-text)' }}>{saisie.absent.trim()}</strong>
+                {saisie.secteur === 'A' ? ' tourne' : ' opère'}
                 {' '}{semaine.map((j, i) => (
                   <span key={j.jourSemaine}>
                     {i > 0 && (i === semaine.length - 1 ? ' et ' : ', ')}
                     le {j.label} <strong>{momentCourt(j.moment).toLowerCase()}</strong>
-                    <span style={{ color: 'var(--color-text-tertiary)' }}>
-                      {' '}({j.salles.join(' + ')}{j.alterne ? ', semaines impaires' : ''})
-                    </span>
+                    {j.salles.length > 0 && (
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>
+                        {' '}({j.salles.join(' + ')}{j.alterne ? ', semaines impaires' : ''})
+                      </span>
+                    )}
                   </span>
                 ))}.
                 {semaine.some(j => j.salles.length > 1) && (
@@ -397,7 +401,7 @@ export default function CreneauxGestion({ annee }) {
                 borderRadius: 8, padding: '8px 10px',
               }}>
                 <strong style={{ color: 'var(--color-text)' }}>{saisie.absent.trim()}</strong> n'est
-                pas dans la trame du bloc B. D'après ses absences passées, il opère
+                pas dans la trame du bloc {saisie.secteur}. D'après ses absences passées, il opère
                 {' '}{habOperateur.map((h, i) => (
                   <span key={h.jourSemaine}>
                     {i > 0 && (i === habOperateur.length - 1 ? ' et ' : ', ')}
@@ -442,7 +446,7 @@ export default function CreneauxGestion({ annee }) {
                       {formatJour(iso)} — <strong style={{ color: 'var(--color-text)' }}>
                         {momentCourt(m.moment).toLowerCase()}
                       </strong>
-                      {m.source === 'trame' && <span style={{ color: 'var(--color-text-tertiary)' }}> · trame du bloc B{m.salles?.length > 1 ? ` · ${m.salles.length} salles` : ''}</span>}
+                      {m.source === 'trame' && <span style={{ color: 'var(--color-text-tertiary)' }}> · trame du bloc {saisie.secteur}{m.salles?.length > 1 ? ` · ${m.salles.length} salles` : ''}</span>}
                       {m.source === 'jour' && <span style={{ color: 'var(--color-text-tertiary)' }}> · son habitude ce jour-là ({m.n}/{m.total})</span>}
                       {m.source === 'operateur' && <span style={{ color: 'var(--color-amber, #b8860b)' }}> · jamais vu ce jour de la semaine, d'après son habitude générale</span>}
                       {m.source === 'choisi' && <span style={{ color: 'var(--color-text-tertiary)' }}> · rien de connu, valeur du champ</span>}

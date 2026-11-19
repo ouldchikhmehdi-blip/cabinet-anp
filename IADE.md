@@ -1324,6 +1324,28 @@ aux deux endroits.** Les deux implémentations ont été comparées sur 10 cas.
 et l'écran pour la tenir coûteraient plus cher que ce qu'ils apporteraient — la trame a
 duré toute l'année 2026, et une modification se relit en diff.
 
+### La trame du bloc A (CPRE) — ajoutée le 2026-11-19
+
+Au bloc A, la CPRE se saisit comme un opérateur : `absent = 'CPRE'`. Son horaire est
+fixe, transmis par Mehdi :
+
+| Lundi | Mardi | Mercredi | Jeudi | Vendredi |
+|---|---|---|---|---|
+| journée | matin | matin | journée | matin |
+
+**`src/utils/iadeBlocA.js`** (`TRAME_BLOC_A`) le porte, sur le modèle de la trame du
+bloc B : « CPRE » est proposé en tête à la frappe au bloc A, sa semaine type s'affiche,
+et le moment est pré-rempli jour par jour (`momentsDuLot(…, { secteur: 'A' })`).
+**Chaque bloc n'interroge que sa trame** : un homonyme ne passe pas de l'une à l'autre.
+Les autres opérateurs du bloc A restent déduits de l'historique.
+
+**La trame propose, elle n'impose pas.** On peut ne fermer qu'**une demi-journée** d'une
+CPRE à la journée (le lundi matin seul, par exemple) : menu « Quand » → « Matin » ou
+« Après-midi ». Les lundis déjà fermés « matin » en base sont donc légitimes.
+
+Pas de miroir Python à tenir : au bloc A, `convertir_mois.py` recopie le nom et le moment
+saisis, il ne compte pas de salles.
+
 ### ⚠️ Les IADE ne voient pas les créneaux en moins — depuis le 2026-09-03
 
 Décision de Mehdi : **les salles qui ne tournent pas sont une donnée d'organisation du

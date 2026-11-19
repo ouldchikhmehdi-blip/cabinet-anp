@@ -291,7 +291,7 @@ describe('bloc B — le poids des salles vient de la trame', () => {
   })
 })
 
-describe('le moment déduit — la trame ne vaut que pour le bloc B', () => {
+describe('le moment déduit — chaque bloc n\'interroge que sa trame', () => {
   const vide = habitudes([])
 
   it('pré-remplit depuis la trame au bloc B', () => {
@@ -302,8 +302,16 @@ describe('le moment déduit — la trame ne vaut que pour le bloc B', () => {
 
   it('ignore la trame au bloc A, même pour un nom qu\'elle connaît', () => {
     // Un homonyme du bloc A ne doit pas hériter du planning d'endoscopie.
-    const m = momentsDuLot(vide, 'Espérance', ['2026-09-07'], 'journee', { trame: false })
+    const m = momentsDuLot(vide, 'Espérance', ['2026-09-07'], 'journee', { secteur: 'A' })
     expect(m.get('2026-09-07')).toMatchObject({ moment: 'journee', source: 'choisi' })
+  })
+
+  it('pré-remplit la CPRE depuis la trame du bloc A, et seulement au bloc A', () => {
+    const a = momentsDuLot(vide, 'CPRE', ['2026-09-07', '2026-09-08'], 'journee', { secteur: 'A' })
+    expect(a.get('2026-09-07')).toMatchObject({ moment: 'journee', source: 'trame' })
+    expect(a.get('2026-09-08')).toMatchObject({ moment: 'matin', source: 'trame' })
+    const b = momentsDuLot(vide, 'CPRE', ['2026-09-08'], 'journee', { secteur: 'B' })
+    expect(b.get('2026-09-08')).toMatchObject({ source: 'choisi' })
   })
 
   it('retombe sur l\'historique quand la trame ne sait pas', () => {
