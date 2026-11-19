@@ -219,6 +219,29 @@ node compta/facturation.js --annee 2026 --sans-base
 node --env-file=.env compta/facturation.js --annee 2026 [--mois 2026.09]
 ```
 
+### Import depuis le site (bouton « Importer les justificatifs », depuis le 2026-11-19)
+
+Onglet **Facturé → Facturé / réglé**, pour les **admins et le rôle Compta**. On dépose les FAC et RED
+d'un mois (tous associés et établissements, sélection multiple ou glisser-déposer) :
+
+- les fichiers sont **lus dans le navigateur**, avec le même moteur que le script
+  (`src/data/facturationImport.js` → `compta/facturationMoteur.js`) ; seuls les agrégats par associé ×
+  établissement partent en base, **aucun nom de patient** ;
+- mêmes contrôles bloquants que le script (totaux du fichier, un seul FAC / RED par associé ×
+  établissement), plus : un seul mois par import, fichier au nom de l'associé de son nom de fichier ;
+- **aperçu avant import** : totaux par associé, fichiers oubliés probables (présents le mois
+  précédent), moitiés FAC / RED manquantes, et ce qui sera remplacé si le mois est déjà en base ;
+- écriture par la fonction **`facturation_importer_mois(jsonb)`** (`supabase/facturation_import.sql`,
+  `security definer`, vérifie `is_admin() or is_compta()`, 2FA comprise). Un associé × établissement
+  importé est inséré ou remplacé ; la moitié FAC ne touche que les colonnes « facturé », la moitié RED
+  que les colonnes « réglé » ; ceux du mois absents de l'import restent tels quels (un fichier arrivé
+  en retard s'importe seul).
+- **Ce que le bouton ne fait pas : « Par chirurgien »**, qui demande les exports d'actes et les CPA du
+  mini PC (décision drmoc du 2026-11-19). Un mois importé depuis le site est marqué « en attente »
+  dans « Par chirurgien » et **exclu** de cette page (`vueParChirurgien`, `RENSEIGNE_CHIR`) jusqu'au
+  passage suivant de `compta/facturation.js` — qui réécrit le mois, mêmes chiffres pour le facturé /
+  réglé (vérifié sur septembre 2026 : 11 lignes, aucun écart).
+
 Options : `--dossier` (défaut `~/partage/Facturés réglés`), `--actes` (dossiers séparés par des virgules ; défaut `~/partage` et ses sous-dossiers `extraction…`), `--sortie`
 (défaut `~/partage/facturation`). Sans clé service role valable dans `.env`, `--sql <fichier.sql>`
 écrit les mêmes écritures dans un fichier local, sans aucun `delete` (refusé par le connecteur
@@ -267,7 +290,7 @@ dashboard masque les chirurgiens à 0 € sur toutes les années.
 
 | Table | Contenu | Lecture | Écriture |
 |---|---|---|---|
-| `facturation_mensuelle` | une ligne par mois × associé × établissement : facturé (total, DH, AMO, AMC, patient), réglé (total, conv, DH), redevance TTC, nb de lignes, fichiers | `acces_cabinet()` | `is_admin()` (le script écrit en service role) |
+| `facturation_mensuelle` | une ligne par mois × associé × établissement : facturé (total, DH, AMO, AMC, patient), réglé (total, conv, DH), redevance TTC, nb de lignes, fichiers | `acces_cabinet()` | `is_admin()` (le script écrit en service role) ; rôle Compta par `facturation_importer_mois()` seulement |
 | `facturation_chirurgiens` | une ligne par mois × chirurgien (ou bucket `__…`) : montant facturé, nb de lignes, nb de séjours | `acces_cabinet()` | `is_admin()` |
 
 Interdits identiques au reste du dossier : jamais un nom de patient, un numéro de séjour ni un

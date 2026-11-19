@@ -54,3 +54,15 @@ export async function chargerActes({ annees, cles, de = 0, a = 11 }) {
   }
   return tout.map(r => ({ ...r, ...Object.fromEntries(NUM_ACTES.map(k => [k, Number(r[k])])) }))
 }
+
+/**
+ * Import d'un mois depuis le site : les agrégats par associé × établissement, calculés dans le
+ * navigateur (src/data/facturationImport.js). Passe par la fonction facturation_importer_mois
+ * (supabase/facturation_import.sql), réservée aux admins et au rôle Compta. Renvoie le nombre
+ * de lignes écrites.
+ */
+export async function importerFacturationMois(lignes) {
+  const { data, error } = await supabase.rpc('facturation_importer_mois', { p_lignes: lignes })
+  if (error) throw error
+  return data
+}

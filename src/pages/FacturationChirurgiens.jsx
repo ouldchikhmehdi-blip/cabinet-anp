@@ -3,13 +3,13 @@
 // par compta/facturation.js via le numéro de séjour ; ce qui n'a pas pu l'être reste dans des
 // buckets affichés à part (consultations, réa / sans chirurgien, séjour non retrouvé, à arbitrer),
 // et les chirurgiens absents de src/data/facturationChirurgiens.js sont listés « à classer ».
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
 import EtatFacturation from '../components/EtatFacturation'
-import { useFacturation } from '../data/facturation'
+import { useFacturation, vueParChirurgien } from '../data/facturation'
 import { usePeriode } from '../data/periode'
 import { specialitesFacturation, clesSelection, feuillesActes } from '../data/facturationChirurgiens'
 import { chargerActes } from '../data/facturationApi'
@@ -47,7 +47,9 @@ function LegendAnnees({ years, accent, type }) {
 
 export default function FacturationChirurgiens() {
   const etat = useFacturation()
-  const S = etat.series
+  // Seuls les mois ventilés par chirurgien (cf. vueParChirurgien) : un mois importé depuis le
+  // site n'a que le facturé / réglé tant que le script du mini PC n'est pas repassé.
+  const S = useMemo(() => vueParChirurgien(etat.series), [etat.series])
   const P = usePeriode(S.ANNEES)
   const { years, de, a, primary, ref } = P
   const masque = getMasqueMontants()
@@ -194,6 +196,14 @@ export default function FacturationChirurgiens() {
       {periodePartielle && (
         <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '7px 12px' }}>
           ℹ️ {primary} n'est importé que jusqu'à <strong>{MOIS_COURT[moisPleins.at(-1)]}</strong>. Les comparaisons portent sur les mois importés, pas sur des zéros.
+        </div>
+      )}
+
+      {S.moisAttente(primary).length > 0 && (
+        <div style={{ fontSize: 11.5, color: '#3C3489', background: '#EEEDFE', borderRadius: 8, padding: '7px 12px' }}>
+          ⏳ {S.moisAttente(primary).map(m => MOIS_LONG[m]).join(', ')} {primary} : facturé / réglé importé depuis le site, ventilation par
+          chirurgien pas encore calculée. Elle arrive au prochain passage de <code>compta/facturation.js</code> sur le mini PC
+          (il faut les exports d'actes à jour) ; d'ici là, {S.moisAttente(primary).length > 1 ? 'ces mois sont exclus' : 'ce mois est exclu'} de cette page.
         </div>
       )}
 

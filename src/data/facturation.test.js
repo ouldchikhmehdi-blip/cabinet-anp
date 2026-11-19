@@ -1,6 +1,6 @@
 // Séries de facturation sur des agrégats INVENTÉS (montants ronds).
 import { describe, it, expect } from 'vitest'
-import { calculerSeriesFact } from './facturation'
+import { calculerSeriesFact, vueParChirurgien } from './facturation'
 
 const m = (annee, mois, extra = {}) => ({ annee, mois, associe: 'AAAA000', etablissement: 'MIL', facture_total: 1000, facture_dh: 100, facture_amo: 0, facture_amc: 0, facture_pat: 0, regle_total: 800, regle_conv: 500, regle_dh: 300, redevance_ttc: 80, ...extra })
 
@@ -33,5 +33,17 @@ describe('calculerSeriesFact', () => {
     const S = calculerSeriesFact()
     expect(S.ANNEES).toHaveLength(2)
     expect(S.moisActuel(S.ANNEES[0])).toBe(-1)
+  })
+  it('« Par chirurgien » ignore un mois importé depuis le site sans ventilation', () => {
+    // mars : facturé / réglé importé, pas encore de ligne par chirurgien
+    const S = calculerSeriesFact([m(2026, 2), m(2026, 3)], [{ annee: 2026, mois: 2, chirurgien: 'NOGUES Laurent', montant: 1000 }])
+    expect(S.RENSEIGNE[2026].slice(0, 3)).toEqual([false, true, true])
+    expect(S.RENSEIGNE_CHIR[2026].slice(0, 3)).toEqual([false, true, false])
+    const C = vueParChirurgien(S)
+    expect(C.FACTURE[2026].slice(0, 3)).toEqual([0, 1000, 0])
+    expect(C.RENSEIGNE[2026][2]).toBe(false)
+    expect(C.moisActuel(2026)).toBe(1)
+    expect(C.moisAttente(2026)).toEqual([2])
+    expect(S.FACTURE[2026][2]).toBe(1000) // la série d'origine n'est pas touchée
   })
 })

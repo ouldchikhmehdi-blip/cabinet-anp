@@ -11,6 +11,9 @@
 //   series.DH[y][m]               dépassements d'honoraires facturés (FAC, Mt DH)
 //   series.PAR_CHIRURGIEN[y]      { [cle]: [12] } facturé par chirurgien (« NOM Prenom ») ou bucket « __… »
 //   series.RENSEIGNE[y][m]        true quand le mois a été importé (un mois absent n'est pas un 0)
+//   series.RENSEIGNE_CHIR[y][m]   true quand le mois a sa ventilation par chirurgien. Un mois importé
+//                                 depuis le site n'a que le facturé / réglé : le chirurgien arrive au
+//                                 passage suivant du script sur le mini PC (cf. vueParChirurgien)
 //   series.moisActuel(y)          dernier mois (0-11) importé de l'année y, −1 si aucun
 // ============================================================
 import { useEffect, useReducer } from 'react'
@@ -24,9 +27,10 @@ export function calculerSeriesFact(mensuel = [], chirurgiens = []) {
   if (annees.length === 0) annees = [new Date().getFullYear()]
   if (annees.length === 1) annees = [annees[0], annees[0] - 1]
 
-  const FACTURE = {}, REGLE = {}, REDEVANCE = {}, DH = {}, PAR_CHIRURGIEN = {}, RENSEIGNE = {}
+  const FACTURE = {}, REGLE = {}, REDEVANCE = {}, DH = {}, PAR_CHIRURGIEN = {}, RENSEIGNE = {}, RENSEIGNE_CHIR = {}
   for (const y of annees) {
-    FACTURE[y] = VIDE(); REGLE[y] = VIDE(); REDEVANCE[y] = VIDE(); DH[y] = VIDE(); PAR_CHIRURGIEN[y] = {}; RENSEIGNE[y] = Array(12).fill(false)
+    FACTURE[y] = VIDE(); REGLE[y] = VIDE(); REDEVANCE[y] = VIDE(); DH[y] = VIDE(); PAR_CHIRURGIEN[y] = {}
+    RENSEIGNE[y] = Array(12).fill(false); RENSEIGNE_CHIR[y] = Array(12).fill(false)
   }
   for (const r of mensuel) {
     const y = Number(r.annee), m = Number(r.mois) - 1
@@ -43,9 +47,24 @@ export function calculerSeriesFact(mensuel = [], chirurgiens = []) {
     const s = (PAR_CHIRURGIEN[y][r.chirurgien] ||= VIDE())
     s[m] = arrondi(s[m] + r.montant)
     RENSEIGNE[y][m] = true
+    RENSEIGNE_CHIR[y][m] = true
   }
   const moisActuel = (y) => (RENSEIGNE[y] || []).reduce((acc, v, m) => (v ? m : acc), -1)
-  return { ANNEES: annees, FACTURE, REGLE, REDEVANCE, DH, PAR_CHIRURGIEN, RENSEIGNE, moisActuel }
+  return { ANNEES: annees, FACTURE, REGLE, REDEVANCE, DH, PAR_CHIRURGIEN, RENSEIGNE, RENSEIGNE_CHIR, moisActuel }
+}
+
+/**
+ * Les séries vues depuis « Par chirurgien » : seuls les mois qui ont leur ventilation par
+ * chirurgien comptent, y compris pour le facturé total. Sinon un mois importé depuis le site
+ * (facturé / réglé seul) gonflerait le total sans praticien en face, et passerait pour du
+ * non attribué. `moisAttente(y)` liste ces mois (0-11), pour le dire à l'écran.
+ */
+export function vueParChirurgien(S) {
+  const FACTURE = {}
+  for (const y of S.ANNEES) FACTURE[y] = (S.FACTURE[y] || VIDE()).map((v, m) => (S.RENSEIGNE_CHIR[y]?.[m] ? v : 0))
+  const moisActuel = (y) => (S.RENSEIGNE_CHIR[y] || []).reduce((acc, v, m) => (v ? m : acc), -1)
+  const moisAttente = (y) => (S.RENSEIGNE[y] || []).flatMap((v, m) => (v && !S.RENSEIGNE_CHIR[y]?.[m] ? [m] : []))
+  return { ...S, FACTURE, RENSEIGNE: S.RENSEIGNE_CHIR, moisActuel, moisAttente }
 }
 
 // ---- Magasin partagé : chargé une fois, partagé par les deux sous-onglets ----

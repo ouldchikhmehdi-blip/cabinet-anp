@@ -6,6 +6,8 @@ import PeriodeFilter from '../components/PeriodeFilter'
 import KpiCard from '../components/KpiCard'
 import BoutonExport from '../components/BoutonExport'
 import EtatFacturation from '../components/EtatFacturation'
+import ImportFacturation from '../components/ImportFacturation'
+import { useAuth } from '../auth/AuthContext'
 import { useFacturation } from '../data/facturation'
 import { usePeriode } from '../data/periode'
 import { MOIS_COURT, MOIS_LONG, fmtK, fmtEur, sum, diffLabel, diffColor, getMasqueMontants, couleurAnnee, ordreAffichage } from '../data/mockData'
@@ -35,6 +37,9 @@ function Legende({ items }) {
 export default function FacturationMensuel() {
   const etat = useFacturation()
   const S = etat.series
+  // Import des justificatifs : admins et rôle Compta (la fonction en base le revérifie).
+  const { profile } = useAuth()
+  const peutImporter = profile?.role === 'admin' || profile?.is_compta === true
   const P = usePeriode(S.ANNEES)
   const { years, de, a, primary, ref } = P
   const masque = getMasqueMontants()
@@ -118,6 +123,8 @@ export default function FacturationMensuel() {
         tous établissements). <strong>Réglé</strong> = ce qui a été payé dans le mois par les patients, l'AMO et les mutuelles
         (justificatifs RED, base conventionnelle + dépassements), avant la redevance prélevée par la clinique.
       </div>
+
+      {peutImporter && etat.statut === 'pret' && <ImportFacturation mensuelBase={etat.mensuel} />}
 
       <EtatFacturation etat={etat} />
 
