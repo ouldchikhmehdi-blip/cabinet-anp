@@ -24,7 +24,7 @@ Trois populations :
 | **Gestionnaire des IADE** | `profiles.is_gestion_iade` | Les demandes (valider / refuser), les heures sup, le calendrier, le récap par agent. |
 | **Faiseur de planning** | `profiles.is_faiseur` | Idem gestionnaire : les congés IADE conditionnent le planning. |
 | **Admin** | `profiles.role = 'admin'` | Idem, plus la création des comptes (onglet « Comptes »). |
-| **Agent IA** | `profiles.is_agent_ia` (sur un compte `is_iade`) | Deux écrans, rien d'autre : « Congés, HS et rempla » **sans** l'onglet Synthèse, et « Planning IADE » avec le droit de modifier une case (et la colonne « Créneaux en moins »). Ajouté le 2026-09-28 (`supabase/agent_ia.sql`) ; onglet Créneaux ouvert le 2026-11-19. |
+| **Agent IA** | `profiles.is_agent_ia` (sur un compte `is_iade`) | Deux écrans, rien d'autre : « Congés, HS et rempla » (tous les onglets), et « Planning IADE » avec le droit de modifier une case (et la colonne « Créneaux en moins »). Ajouté le 2026-09-28 (`supabase/agent_ia.sql`) ; onglet Créneaux ouvert le 2026-11-19, Synthèse comptable le 2026-11-24 (aucune donnée de plus que ses autres onglets). |
 
 Fonction SQL de référence : **`public.peut_gerer_iade()`** = gestionnaire IADE **ou** faiseur **ou** admin **ou** agent IA.
 

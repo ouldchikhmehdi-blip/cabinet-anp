@@ -2,7 +2,7 @@
 -- agent_ia.sql — le profil « Agent IA » du module IADE (2026-09-28)
 --
 -- Un compte tenu par un assistant IA (Instinct), cloisonné à DEUX écrans :
--- « Congés, HS, créneaux et rempla » (sans l'onglet Synthèse) et
+-- « Congés, HS, créneaux et rempla » (Synthèse comptable comprise depuis le 2026-11-24) et
 -- « Planning IADE » avec le droit de modifier une case. Tout le reste du
 -- dashboard lui est fermé, côté écran (App.jsx) ET côté base (ici).
 --

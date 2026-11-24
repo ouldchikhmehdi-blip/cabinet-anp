@@ -42,10 +42,12 @@ const PAGES_IADE = ['iade-planning', 'iade-mes-conges', 'iade-mes-heures-sup', '
 
 // Seules pages ouvertes à l'agent IA (compte IADE porteur de is_agent_ia, cf.
 // IADE.md § 1 et supabase/agent_ia.sql) : la gestion des congés, heures sup et
-// remplaçants et créneaux fermés — sans l'onglet Synthèse — et le planning IADE,
+// remplaçants, créneaux fermés et synthèse comptable — tous les onglets — et le planning IADE,
 // qu'il peut modifier. Tout le reste lui est fermé, écran ET base.
 const PAGES_AGENT_IA = ['iade-gestion', 'iade-planning']
-const ONGLETS_AGENT_IA = ['conges', 'compteurs', 'hs', 'creneaux', 'rempla']
+// Synthèse comptable ouverte le 2026-11-24 (demande de Mehdi) : elle ne montre que des
+// congés et heures sup que l'agent lit déjà — aucun droit en base à ajouter.
+const ONGLETS_AGENT_IA = ['conges', 'compteurs', 'hs', 'creneaux', 'rempla', 'synthese']
 
 // Écran d'attente plein cadre — le même partout, pour qu'une transition ne
 // ressemble jamais à une page cassée.
