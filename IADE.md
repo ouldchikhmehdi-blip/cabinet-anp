@@ -1346,6 +1346,29 @@ CPRE à la journée (le lundi matin seul, par exemple) : menu « Quand » → «
 Pas de miroir Python à tenir : au bloc A, `convertir_mois.py` recopie le nom et le moment
 saisis, il ne compte pas de salles.
 
+### Les opérateurs du bloc A dans la trame — ajoutés le 2026-11-24
+
+Transmis par Mehdi. Semaines **ISO** paires / impaires, comme au bloc B. Seul le lundi de
+Malgoire est précisé (après-midi) ; le reste est noté **à la journée**.
+
+| | Lundi | Mardi | Mercredi | Jeudi | Vendredi |
+|---|---|---|---|---|---|
+| Flamein | ✓ | ✓ | | paires | impaires |
+| Malgoire | après-midi | | | impaires | ✓ |
+| Pissas | | | ✓ | impaires | paires |
+| Nogues | ✓ | | | ✓ | |
+| Rolland | ✓ | | ✓ | | |
+| Meyer-Bisch | | ✓ | ✓ | | |
+| Dran | | ✓ | | | ✓ |
+
+« meyer bish », déjà saisi ainsi en base, est reconnu comme Meyer-Bisch (`ALIAS`,
+`nomCanoniqueA`) et n'apparaît plus qu'une fois dans la liste.
+
+**Les jours suggérés dans le calendrier (blocs A et B).** Dès qu'un opérateur connu de la
+trame de son bloc est nommé, le calendrier de saisie **cercle en pointillés** les jours où
+il opère (`estSuggere` de `CalendrierCreneaux`), alternance résolue, fériés exclus. Un
+jour déjà fermé garde sa teinte orange. Il ne reste qu'à cliquer ceux qu'il annonce.
+
 ### ⚠️ Les IADE ne voient pas les créneaux en moins — depuis le 2026-09-03
 
 Décision de Mehdi : **les salles qui ne tournent pas sont une donnée d'organisation du

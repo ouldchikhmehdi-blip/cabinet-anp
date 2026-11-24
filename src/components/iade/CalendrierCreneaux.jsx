@@ -8,6 +8,9 @@
 //
 // Les jours qui portent déjà un créneau fermé sont teintés et comptés : on voit
 // tout de suite ce qui est déjà noté, et on ne le repose pas.
+//
+// Une fois l'opérateur nommé, les jours où il opère selon la trame de son bloc
+// sont cerclés (`estSuggere`) : ce sont les seuls qu'il y a lieu de cliquer.
 // ============================================================
 import { grilleMois, INITIALES_JOURS } from '../../utils/iadeConges'
 import { moisAnneeFR } from '../../utils/calendrier'
@@ -21,6 +24,7 @@ export default function CalendrierCreneaux({
   dejaFermes = new Map(),// iso → [créneau déjà enregistré]
   onClicJour,
   monoJour = false,      // en correction : un seul jour à la fois
+  estSuggere = null,     // (iso) → vrai si l'opérateur opère ce jour-là (trame)
 }) {
   const semaines = grilleMois(annee, mois)
   const choisis = new Set(selection)
@@ -31,7 +35,7 @@ export default function CalendrierCreneaux({
     color: 'var(--color-text-secondary)', cursor: 'pointer',
   }
 
-  function styleCase({ jourInfo, choisi, fermes }) {
+  function styleCase({ jourInfo, choisi, fermes, suggere }) {
     const base = {
       minHeight: 44, display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 1, padding: 2,
@@ -52,6 +56,12 @@ export default function CalendrierCreneaux({
       return {
         ...base, background: 'var(--color-amber-light)',
         borderColor: 'var(--color-amber)', color: 'var(--color-amber)', fontWeight: 600,
+      }
+    }
+    if (suggere) {
+      return {
+        ...base, background: 'var(--color-primary-light)',
+        border: '1.5px dashed var(--color-primary)', color: 'var(--color-primary)', fontWeight: 600,
       }
     }
     if (jourInfo.weekend || jourInfo.ferie) {
@@ -85,9 +95,12 @@ export default function CalendrierCreneaux({
 
           const fermes = dejaFermes.get(jourInfo.iso) ?? []
           const choisi = choisis.has(jourInfo.iso)
+          // Un férié ne se propose pas : le bloc ne tourne pas, rien à fermer.
+          const suggere = !!estSuggere && !jourInfo.ferie && estSuggere(jourInfo.iso)
           const titre = [
             fermes.length > 0 ? fermes.map(resume).join(' · ') : null,
             jourInfo.ferie ? `${jourInfo.nomFerie} (férié)` : null,
+            suggere && fermes.length === 0 ? 'Il opère ce jour-là (trame)' : null,
           ].filter(Boolean).join(' — ') || undefined
 
           return (
@@ -97,7 +110,7 @@ export default function CalendrierCreneaux({
               title={titre}
               aria-pressed={choisi}
               onClick={(e) => onClicJour?.(jourInfo.iso, { plage: e.shiftKey })}
-              style={styleCase({ jourInfo, choisi, fermes })}
+              style={styleCase({ jourInfo, choisi, fermes, suggere })}
             >
               <span>{jourInfo.numero}</span>
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', minHeight: 11 }}>
@@ -117,6 +130,9 @@ export default function CalendrierCreneaux({
       }}>
         <span><span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>▉</span> en cours de saisie</span>
         <span><span style={{ color: 'var(--color-amber)', fontWeight: 700 }}>▉</span> déjà fermé</span>
+        {estSuggere && (
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, verticalAlign: -1, border: '1.5px dashed var(--color-primary)', background: 'var(--color-primary-light)', borderRadius: 2 }} /> il opère ce jour-là</span>
+        )}
         <span>• jour férié</span>
       </div>
 

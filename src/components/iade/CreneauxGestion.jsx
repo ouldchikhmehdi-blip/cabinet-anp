@@ -24,8 +24,8 @@ import {
   verifierCreneau, verifierLot, basculerJour, resumeJours,
   habitudes, momentsDuLot, lotPanache, habitudesOperateur, lundiDe,
 } from '../../utils/iadeCreneaux'
-import { operateursTrame, semaineType, normNom } from '../../utils/iadeBlocB'
-import { operateursTrameA, semaineTypeA } from '../../utils/iadeBlocA'
+import { operateursTrame, semaineType, normNom, momentSelonTrame } from '../../utils/iadeBlocB'
+import { operateursTrameA, semaineTypeA, nomCanoniqueA, momentSelonTrameA } from '../../utils/iadeBlocA'
 import { formatJour, bornesMois } from '../../utils/iadeConges'
 import { MOIS_FR } from '../../utils/calendrier'
 import CalendrierCreneaux from './CalendrierCreneaux'
@@ -88,13 +88,14 @@ export default function CreneauxGestion({ annee }) {
   // faute de frappe qu'on cherche justement à éviter, et une absence rangée dans
   // le mauvais bloc fausse le compte des salles.
   // Au bloc B, les 14 de la trame d'abord : c'est l'orthographe de référence, et
-  // elle contient des opérateurs jamais encore absents. Au bloc A, la trame ne
-  // connaît que la CPRE (`iadeBlocA.js`), suivie de ceux déjà saisis.
+  // elle contient des opérateurs jamais encore absents. Au bloc A, de même avec
+  // la trame du bloc A (`iadeBlocA.js`), suivie de ceux déjà saisis — ramenés à
+  // l'orthographe de la trame (« meyer bish » → « Meyer-Bisch »).
   const operateurs = useMemo(() => {
     const duBloc = creneaux.filter(c => (c.secteur ?? 'A') === saisie.secteur)
     const source = saisie.secteur === 'B'
       ? [...operateursTrame(), ...operateursConnus(duBloc)]
-      : [...operateursTrameA(), ...operateursConnus(duBloc)]
+      : [...operateursTrameA(), ...operateursConnus(duBloc).map(nomCanoniqueA)]
     // Dédoublonnage sur le nom NORMALISÉ (accents, casse et civilité ignorés) :
     // « esperance » saisi à la volée et « Espérance » de la trame sont la même
     // personne, et la liste n'a pas à proposer les deux. La trame étant en tête,
@@ -115,6 +116,13 @@ export default function CreneauxGestion({ annee }) {
     () => saisie.secteur === 'B' ? semaineType(saisie.absent) : semaineTypeA(saisie.absent),
     [saisie.secteur, saisie.absent]
   )
+  // Les jours où il opère selon la trame de son bloc : le calendrier les signale,
+  // il ne reste qu'à cliquer ceux qu'il annonce. Rien si la trame ne le connaît pas.
+  const estSuggere = useMemo(() => {
+    if (editeId || semaine.length === 0) return null
+    const selon = saisie.secteur === 'B' ? momentSelonTrame : momentSelonTrameA
+    return (iso) => !!selon(saisie.absent, iso)
+  }, [editeId, semaine, saisie.secteur, saisie.absent])
   const habOperateur = useMemo(
     () => semaine.length > 0 ? [] : habitudesOperateur(habs, saisie.absent),
     [semaine, habs, saisie.absent]
@@ -311,6 +319,7 @@ export default function CreneauxGestion({ annee }) {
             dejaFermes={fermesParJour}
             onClicJour={clicJour}
             monoJour={!!editeId}
+            estSuggere={estSuggere}
           />
 
           <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -383,6 +392,10 @@ export default function CreneauxGestion({ annee }) {
                       <span style={{ color: 'var(--color-text-tertiary)' }}>
                         {' '}({j.salles.join(' + ')}{j.alterne ? ', semaines impaires' : ''})
                       </span>
+                    )}
+                    {/* Bloc A : pas de salle, l'alternance dit la parité de la semaine. */}
+                    {j.salles.length === 0 && typeof j.alterne === 'string' && (
+                      <span style={{ color: 'var(--color-text-tertiary)' }}> (semaines {j.alterne})</span>
                     )}
                   </span>
                 ))}.
